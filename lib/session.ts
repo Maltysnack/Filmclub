@@ -1,0 +1,233 @@
+import { supabase } from "./supabase";
+import { Session, Participant, Film, Match } from "@/types";
+import { getFilmDetail, tmdbToFilm } from "./tmdb";
+
+// ── Session code generation ───────────────────────────────────────────────────
+
+const WORDS = [
+  "WOLF", "BEAR", "HAWK", "NOVA", "DUSK", "REEL", "LENS", "NOIR",
+  "GOLD", "STAR", "FILM", "EPIC", "CAGE", "CULT", "WILD", "IRON",
+  "JADE", "MOON", "REEF", "SAGE",
+];
+
+export function generateCode(): string {
+  const word = WORDS[Math.floor(Math.random() * WORDS.length)];
+  const num = Math.floor(Math.random() * 90) + 10;
+  return `${word}-${num}`;
+}
+
+// ── Local storage ─────────────────────────────────────────────────────────────
+
+export function getParticipantId(sessionCode: string): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(`filmclub_participant_${sessionCode}`);
+}
+
+export function setParticipantId(sessionCode: string, participantId: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(`filmclub_participant_${sessionCode}`, participantId);
+}
+
+// ── Session CRUD ──────────────────────────────────────────────────────────────
+
+export async function createSession(
+  mode: "planned" | "live",
+  deadline: string | null,
+  threshold: number
+): Promise<Session | null> {
+  let code = generateCode();
+  // Ensure uniqueness (retry once if clash)
+  const { data: existing } = await supabase.from("sessions").select("id").eq("code", code).single();
+  if (existing) code = generateCode();
+
+  const { data, error } = await supabase
+    .from("sessions")
+    .insert({ code, mode, deadline, threshold })
+    .select()
+    .single();
+
+  if (error) { console.error(error); return null; }
+  return data;
+}
+
+export async function getSession(code: string): Promise<Session | null> {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("code", code.toUpperCase())
+    .single();
+  if (error) return null;
+  return data;
+}
+
+export async function closeSession(sessionId: string) {
+  await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
+}
+
+// ── Participants ──────────────────────────────────────────────────────────────
+
+export async function joinSession(sessionId: string, name: string): Promise<Participant | null> {
+  const { data, error } = await supabase
+    .from("participants")
+    .insert({ session_id: sessionId, name })
+    .select()
+    .single();
+  if (error) { console.error(error); return null; }
+  return data;
+}
+
+export async function getParticipants(sessionId: string): Promise<Participant[]> {
+  const { data } = await supabase
+    .from("participants")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("created_at");
+  return data ?? [];
+}
+
+// ── Film pool ─────────────────────────────────────────────────────────────────
+
+export async function upsertFilm(tmdbId: number): Promise<Film | null> {
+  // Check cache first
+  const { data: cached } = await supabase
+    .from("films")
+    .select("*")
+    .eq("tmdb_id", tmdbId)
+    .single();
+  if (cached) return cached;
+
+  // Fetch from TMDB and cache
+  const detail = await getFilmDetail(tmdbId);
+  if (!detail) return null;
+
+  const filmData = tmdbToFilm(detail);
+  const { data, error } = await supabase
+    .from("films")
+    .insert(filmData)
+    .select()
+    .single();
+
+  if (error) { console.error(error); return null; }
+  return data;
+}
+
+export async function addFilmToSession(
+  sessionId: string,
+  tmdbId: number,
+  participantId: string | null
+): Promise<boolean> {
+  const film = await upsertFilm(tmdbId);
+  if (!film) return false;
+
+  const { error } = await supabase
+    .from("session_films")
+    .upsert({ session_id: sessionId, film_id: film.id, added_by: participantId });
+
+  return !error;
+}
+
+export async function getSessionFilms(sessionId: string): Promise<Film[]> {
+  const { data } = await supabase
+    .from("session_films")
+    .select("film_id, films(*)")
+    .eq("session_id", sessionId)
+    .order("created_at");
+
+  if (!data) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data as any[]).map((row) => row.films).filter(Boolean) as Film[];
+}
+
+// ── Swipes ────────────────────────────────────────────────────────────────────
+
+export async function recordSwipe(
+  sessionId: string,
+  participantId: string,
+  filmId: string,
+  liked: boolean
+) {
+  await supabase
+    .from("swipes")
+    .upsert({ session_id: sessionId, participant_id: participantId, film_id: filmId, liked });
+}
+
+export async function getMySwipes(sessionId: string, participantId: string): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("swipes")
+    .select("film_id")
+    .eq("session_id", sessionId)
+    .eq("participant_id", participantId);
+  return new Set((data ?? []).map((s: { film_id: string }) => s.film_id));
+}
+
+// ── Match detection ───────────────────────────────────────────────────────────
+
+export async function checkForMatch(
+  sessionId: string,
+  filmId: string,
+  threshold: number
+): Promise<boolean> {
+  const [{ count: participantCount }, { data: likes }] = await Promise.all([
+    supabase
+      .from("participants")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId),
+    supabase
+      .from("swipes")
+      .select("participant_id")
+      .eq("session_id", sessionId)
+      .eq("film_id", filmId)
+      .eq("liked", true),
+  ]);
+
+  if (!participantCount || participantCount < 1) return false;
+  const likeCount = (likes ?? []).length;
+  const pct = (likeCount / participantCount) * 100;
+
+  if (pct >= threshold) {
+    // Record match
+    await supabase.from("matches").upsert({
+      session_id: sessionId,
+      film_id: filmId,
+      score: likeCount,
+    });
+    return true;
+  }
+  return false;
+}
+
+export async function getMatches(sessionId: string): Promise<Match[]> {
+  const { data } = await supabase
+    .from("matches")
+    .select("*, film:films(*)")
+    .eq("session_id", sessionId)
+    .order("score", { ascending: false });
+  return data ?? [];
+}
+
+// ── Scoring for planned mode ──────────────────────────────────────────────────
+
+export async function getFilmScores(sessionId: string): Promise<{ film: Film; score: number; total: number }[]> {
+  const [films, { data: allSwipes }, { count: total }] = await Promise.all([
+    getSessionFilms(sessionId),
+    supabase
+      .from("swipes")
+      .select("film_id, liked, participant_id")
+      .eq("session_id", sessionId),
+    supabase
+      .from("participants")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId),
+  ]);
+
+  const swipes = allSwipes ?? [];
+  const participantCount = total ?? 1;
+
+  return films
+    .map((film) => {
+      const filmSwipes = swipes.filter((s: { film_id: string; liked: boolean }) => s.film_id === film.id);
+      const likes = filmSwipes.filter((s: { liked: boolean }) => s.liked).length;
+      return { film, score: likes, total: participantCount };
+    })
+    .sort((a, b) => b.score - a.score);
+}
