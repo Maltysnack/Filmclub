@@ -11,7 +11,13 @@ export const metadata: Metadata = {
   title: "Filmclub",
   description: "Decide on a film with friends — without the argument.",
   icons: {
-    icon: "/favicon.ico",
+    icon: "/icon",
+    apple: "/apple-icon",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Filmclub",
+    statusBarStyle: "black-translucent",
   },
 };
 
