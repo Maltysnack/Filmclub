@@ -8,18 +8,32 @@ function params(extra: Record<string, string> = {}) {
   return new URLSearchParams({ api_key: KEY, language: "en-US", ...extra });
 }
 
-export async function getPopularFilms(page = 1): Promise<TMDBMovie[]> {
-  const res = await fetch(`${BASE}/movie/popular?${params({ page: String(page) })}`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.results ?? [];
+// Fetch multiple pages and return the flat list
+async function fetchPages(url: string, pages: number): Promise<TMDBMovie[]> {
+  const requests = Array.from({ length: pages }, (_, i) =>
+    fetch(`${url}&${params({ page: String(i + 1) })}`).then((r) => r.ok ? r.json() : { results: [] })
+  );
+  const results = await Promise.all(requests);
+  return results.flatMap((d) => d.results ?? []);
 }
 
-export async function getTrendingFilms(): Promise<TMDBMovie[]> {
-  const res = await fetch(`${BASE}/trending/movie/week?${params()}`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.results ?? [];
+export async function getPopularFilms(pages = 1): Promise<TMDBMovie[]> {
+  return fetchPages(`${BASE}/movie/popular?`, pages);
+}
+
+export async function getTrendingFilms(pages = 1): Promise<TMDBMovie[]> {
+  // Trending uses a slightly different URL structure
+  if (pages === 1) {
+    const res = await fetch(`${BASE}/trending/movie/week?${params()}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.results ?? [];
+  }
+  return fetchPages(`${BASE}/trending/movie/week?`, pages);
+}
+
+export async function getTopRatedFilms(pages = 1): Promise<TMDBMovie[]> {
+  return fetchPages(`${BASE}/movie/top_rated?`, pages);
 }
 
 export async function searchFilms(query: string): Promise<TMDBMovie[]> {
@@ -36,7 +50,7 @@ export async function getFilmDetail(tmdbId: number): Promise<TMDBMovieDetail | n
   return res.json();
 }
 
-export function posterUrl(path: string | null, size: "w342" | "w500" | "original" = "w500"): string {
+export function posterUrl(path: string | null, size: "w342" | "w500" | "w780" | "original" = "w500"): string {
   if (!path) return "/placeholder-poster.jpg";
   return `${TMDB_IMAGE}/${size}${path}`;
 }

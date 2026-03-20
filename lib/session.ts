@@ -152,6 +152,23 @@ export async function getSessionFilms(sessionId: string): Promise<Film[]> {
   return (data as any[]).map((row) => row.films).filter(Boolean) as Film[];
 }
 
+// Returns films with metadata (which participant added them)
+export async function getSessionFilmsWithMeta(
+  sessionId: string
+): Promise<{ film: Film; addedBy: string | null }[]> {
+  const { data } = await supabase
+    .from("session_films")
+    .select("added_by, films(*)")
+    .eq("session_id", sessionId)
+    .order("created_at");
+
+  if (!data) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data as any[])
+    .map((row) => ({ film: row.films as Film, addedBy: row.added_by as string | null }))
+    .filter((r) => r.film);
+}
+
 // ── Swipes ────────────────────────────────────────────────────────────────────
 
 export async function recordSwipe(

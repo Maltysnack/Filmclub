@@ -1,3 +1,7 @@
+"use client";
+
+import { useRouter, usePathname } from "next/navigation";
+
 interface LogoProps {
   size?: "sm" | "md" | "lg";
   showText?: boolean;
@@ -8,9 +12,21 @@ export default function Logo({ size = "md", showText = true }: LogoProps) {
   const textSizes = { sm: "text-lg", md: "text-2xl", lg: "text-4xl" };
   const gaps = { sm: "gap-2", md: "gap-3", lg: "gap-4" };
   const d = dims[size];
+  const router = useRouter();
+  const pathname = usePathname();
+
+  function handleClick() {
+    if (pathname === "/") return;
+    const confirmed = window.confirm("Leave this session and go to the home screen?");
+    if (confirmed) router.push("/");
+  }
 
   return (
-    <div className={`flex items-center ${gaps[size]}`}>
+    <button
+      onClick={handleClick}
+      className={`flex items-center ${gaps[size]} ${pathname !== "/" ? "cursor-pointer" : "cursor-default"}`}
+      aria-label="Filmclub home"
+    >
       {/* Bellows camera SVG */}
       <svg
         width={d}
@@ -43,7 +59,7 @@ export default function Logo({ size = "md", showText = true }: LogoProps) {
         {/* Shutter button */}
         <circle cx="38" cy="12" r="3" fill="#e8b86d" opacity="0.8" />
 
-        {/* Cloth drape hint — curved line below body */}
+        {/* Cloth drape hint */}
         <path
           d="M4 38 Q8 44 14 42 Q18 40 22 43 Q26 46 30 42 Q36 38 44 40"
           stroke="#e8b86d"
@@ -56,12 +72,12 @@ export default function Logo({ size = "md", showText = true }: LogoProps) {
 
       {showText && (
         <span
-          className={`${textSizes[size]} font-light tracking-[0.15em] text-text uppercase`}
-          style={{ letterSpacing: "0.15em" }}
+          className={`${textSizes[size]} font-light tracking-[0.15em] uppercase`}
+          style={{ color: "var(--text)", letterSpacing: "0.15em" }}
         >
           Filmclub
         </span>
       )}
-    </div>
+    </button>
   );
 }

@@ -29,45 +29,47 @@ export default function FilmModal({ film, onClose, onLike, onDislike }: FilmModa
 
           {/* Sheet */}
           <motion.div
-            className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl overflow-hidden"
-            style={{ background: "var(--surface)", maxHeight: "90dvh" }}
+            className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl overflow-hidden flex flex-col"
+            style={{ background: "var(--surface)", maxHeight: "92dvh" }}
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
           >
-            {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 rounded-full" style={{ background: "var(--border)" }} />
+            {/* Hero image — tall, takes up the top ~45% */}
+            <div className="relative shrink-0 overflow-hidden" style={{ height: "42dvh" }}>
+              <img
+                src={posterUrl(film.backdrop_path ?? film.poster_path, "w780")}
+                alt={film.title}
+                className="w-full h-full object-cover"
+              />
+              {/* Gradient fading into the sheet */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "linear-gradient(to top, var(--surface) 0%, rgba(20,20,22,0.2) 50%, transparent 100%)",
+                }}
+              />
+              {/* Close button */}
+              <button
+                onClick={onClose}
+                className="absolute top-4 right-4 p-2 rounded-full"
+                style={{ background: "rgba(0,0,0,0.55)", color: "var(--text)" }}
+              >
+                <X size={18} />
+              </button>
+              {/* Drag handle */}
+              <div className="absolute top-3 left-0 right-0 flex justify-center">
+                <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
+              </div>
             </div>
 
-            <div className="overflow-y-auto" style={{ maxHeight: "calc(90dvh - 20px)" }}>
-              {/* Hero image */}
-              <div className="relative h-56 overflow-hidden">
-                <img
-                  src={posterUrl(film.backdrop_path ?? film.poster_path, "w500")}
-                  alt={film.title}
-                  className="w-full h-full object-cover"
-                  style={{ transform: "scale(1.05)" }}
-                />
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    background: "linear-gradient(to top, var(--surface) 0%, transparent 60%)",
-                  }}
-                />
-                <button
-                  onClick={onClose}
-                  className="absolute top-4 right-4 p-2 rounded-full"
-                  style={{ background: "rgba(0,0,0,0.5)", color: "var(--text)" }}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="px-5 pb-8 -mt-4">
-                {/* Title row */}
-                <h2 className="text-2xl font-semibold mb-1" style={{ color: "var(--text)" }}>
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-5 pt-3 pb-8">
+                {/* Title */}
+                <h2 className="text-2xl font-semibold mb-2 leading-tight" style={{ color: "var(--text)" }}>
                   {film.title}
                 </h2>
 
@@ -115,11 +117,11 @@ export default function FilmModal({ film, onClose, onLike, onDislike }: FilmModa
                       style={{ color: "var(--text-muted)" }}>
                       Cast
                     </h3>
-                    <div className="flex gap-2 overflow-x-auto pb-1">
+                    <div className="flex gap-3 overflow-x-auto pb-1">
                       {film.film_cast.slice(0, 8).map((member, i) => (
-                        <div key={i} className="shrink-0 text-center w-14">
+                        <div key={i} className="shrink-0 text-center w-16">
                           <div
-                            className="w-14 h-14 rounded-full mb-1 overflow-hidden flex items-center justify-center text-xs"
+                            className="w-16 h-16 rounded-full mb-1.5 overflow-hidden flex items-center justify-center text-sm font-medium"
                             style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
                           >
                             {member.profile_path ? (
@@ -132,9 +134,15 @@ export default function FilmModal({ film, onClose, onLike, onDislike }: FilmModa
                               member.name.charAt(0)
                             )}
                           </div>
-                          <p className="text-xs leading-tight truncate" style={{ color: "var(--text)" }}>
-                            {member.name.split(" ")[0]}
+                          {/* Full name, wrapping */}
+                          <p className="text-xs leading-tight" style={{ color: "var(--text)" }}>
+                            {member.name}
                           </p>
+                          {member.character && (
+                            <p className="text-xs leading-tight mt-0.5" style={{ color: "var(--text-muted)" }}>
+                              {member.character}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>

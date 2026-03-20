@@ -113,7 +113,7 @@ export default function Home() {
           <Field label="Your name">
             <input
               type="text"
-              placeholder="e.g. Milo"
+              placeholder="e.g. Red Rebel"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-colors"
@@ -204,7 +204,7 @@ export default function Home() {
           <Field label="Your name">
             <input
               type="text"
-              placeholder="e.g. Milo"
+              placeholder="e.g. Red Rebel"
               value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none"

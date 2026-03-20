@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import { Film } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
@@ -33,7 +33,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop }: Sw
     }
   }
 
-  const poster = posterUrl(film.poster_path, "w500");
+  const poster = posterUrl(film.poster_path, "original");
 
   return (
     <motion.div
@@ -51,13 +51,13 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop }: Sw
         className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl drag-card"
         style={{ background: "var(--surface-2)" }}
       >
-        {/* Poster image — zoomed 30% */}
+        {/* Poster image */}
         <div className="absolute inset-0 overflow-hidden">
           <img
             src={poster}
             alt={film.title}
             className="w-full h-full object-cover pointer-events-none"
-            style={{ transform: "scale(1.3)", transformOrigin: "center center" }}
+            style={{ transformOrigin: "center center" }}
             draggable={false}
           />
           {/* Gradient overlay at bottom */}
