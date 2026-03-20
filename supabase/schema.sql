@@ -33,7 +33,7 @@ create table if not exists films (
   release_year integer,
   runtime      integer,
   genres       jsonb default '[]',
-  cast         jsonb default '[]',
+  film_cast    jsonb default '[]',
   rating       numeric(3,1),
   created_at   timestamptz default now()
 );

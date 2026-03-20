@@ -28,7 +28,7 @@ export interface Film {
   release_year: number | null;
   runtime: number | null;
   genres: { id: number; name: string }[];
-  cast: { name: string; character: string; profile_path: string | null }[];
+  film_cast: { name: string; character: string; profile_path: string | null }[];
   rating: number | null;
 }
 

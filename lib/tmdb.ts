@@ -51,7 +51,7 @@ export function tmdbToFilm(movie: TMDBMovieDetail): Omit<Film, "id"> {
     release_year: movie.release_date ? parseInt(movie.release_date.slice(0, 4)) : null,
     runtime: movie.runtime ?? null,
     genres: movie.genres ?? [],
-    cast: movie.credits?.cast?.slice(0, 10) ?? [],
+    film_cast: movie.credits?.cast?.slice(0, 10) ?? [],
     rating: movie.vote_average ? parseFloat(movie.vote_average.toFixed(1)) : null,
   };
 }

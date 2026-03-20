@@ -109,14 +109,14 @@ export default function FilmModal({ film, onClose, onLike, onDislike }: FilmModa
                 )}
 
                 {/* Cast */}
-                {film.cast && film.cast.length > 0 && (
+                {film.film_cast && film.film_cast.length > 0 && (
                   <div className="mb-6">
                     <h3 className="text-xs font-medium uppercase tracking-wider mb-3"
                       style={{ color: "var(--text-muted)" }}>
                       Cast
                     </h3>
                     <div className="flex gap-2 overflow-x-auto pb-1">
-                      {film.cast.slice(0, 8).map((member, i) => (
+                      {film.film_cast.slice(0, 8).map((member, i) => (
                         <div key={i} className="shrink-0 text-center w-14">
                           <div
                             className="w-14 h-14 rounded-full mb-1 overflow-hidden flex items-center justify-center text-xs"
