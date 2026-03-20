@@ -12,46 +12,44 @@ export default function AppleIcon() {
           height: 180,
           background: "#0c0c0e",
           display: "flex",
-          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: 12,
         }}
       >
-        {/* Viewfinder bump on top of camera */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
+        {/* Viewfinder bump + camera body as one column */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          {/* Viewfinder */}
           <div
             style={{
-              width: 36,
-              height: 10,
-              border: "2.5px solid #e8b86d",
+              width: 44,
+              height: 14,
+              border: "3px solid #e8b86d",
               borderBottom: "none",
-              borderRadius: "4px 4px 0 0",
-              marginBottom: -1,
+              borderRadius: "5px 5px 0 0",
+              marginBottom: -2,
             }}
           />
-          {/* Camera body */}
+          {/* Camera body — fills most of the icon */}
           <div
             style={{
-              width: 90,
-              height: 60,
-              border: "2.5px solid #e8b86d",
-              borderRadius: 8,
+              width: 140,
+              height: 96,
+              border: "3px solid #e8b86d",
+              borderRadius: 12,
               display: "flex",
               alignItems: "center",
               justifyContent: "flex-start",
-              paddingLeft: 14,
-              gap: 0,
+              paddingLeft: 18,
               position: "relative",
             }}
           >
             {/* Lens outer ring */}
             <div
               style={{
-                width: 38,
-                height: 38,
+                width: 62,
+                height: 62,
                 borderRadius: "50%",
-                border: "2.5px solid #e8b86d",
+                border: "3px solid #e8b86d",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -60,37 +58,37 @@ export default function AppleIcon() {
               {/* Lens inner ring */}
               <div
                 style={{
-                  width: 22,
-                  height: 22,
+                  width: 38,
+                  height: 38,
                   borderRadius: "50%",
-                  border: "2px solid #e8b86d",
+                  border: "2.5px solid #e8b86d",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                {/* Lens reflection dot */}
+                {/* Reflection dot */}
                 <div
                   style={{
-                    width: 7,
-                    height: 7,
+                    width: 10,
+                    height: 10,
                     borderRadius: "50%",
                     background: "#e8b86d",
-                    opacity: 0.6,
+                    opacity: 0.55,
                   }}
                 />
               </div>
             </div>
 
-            {/* Bellows lines on right */}
+            {/* Bellows lines */}
             <div
               style={{
                 position: "absolute",
-                right: 10,
-                top: 10,
-                bottom: 10,
+                right: 16,
+                top: 14,
+                bottom: 14,
                 display: "flex",
-                gap: 4,
+                gap: 5,
                 alignItems: "stretch",
               }}
             >
@@ -98,27 +96,29 @@ export default function AppleIcon() {
                 <div
                   key={i}
                   style={{
-                    width: 1.5,
+                    width: 2,
                     background: "#e8b86d",
-                    opacity: 0.5,
-                    borderRadius: 1,
+                    opacity: 0.45,
+                    borderRadius: 2,
                   }}
                 />
               ))}
             </div>
-          </div>
-        </div>
 
-        {/* Wordmark */}
-        <div
-          style={{
-            color: "#f0ede8",
-            fontSize: 20,
-            fontWeight: 300,
-            letterSpacing: "0.2em",
-          }}
-        >
-          FILMCLUB
+            {/* Shutter button top-right */}
+            <div
+              style={{
+                position: "absolute",
+                top: -8,
+                right: 20,
+                width: 14,
+                height: 14,
+                borderRadius: "50%",
+                background: "#e8b86d",
+                opacity: 0.8,
+              }}
+            />
+          </div>
         </div>
       </div>
     ),
