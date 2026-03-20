@@ -8,6 +8,7 @@ export interface Session {
   deadline: string | null;
   threshold: number;
   status: SessionStatus;
+  started: boolean;
   created_at: string;
 }
 

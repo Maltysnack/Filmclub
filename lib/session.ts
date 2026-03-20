@@ -28,6 +28,16 @@ export function setParticipantId(sessionCode: string, participantId: string) {
   localStorage.setItem(`filmclub_participant_${sessionCode}`, participantId);
 }
 
+export function setIsHost(sessionCode: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(`filmclub_host_${sessionCode}`, "true");
+}
+
+export function getIsHost(sessionCode: string): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(`filmclub_host_${sessionCode}`) === "true";
+}
+
 // ── Session CRUD ──────────────────────────────────────────────────────────────
 
 export async function createSession(
@@ -62,6 +72,10 @@ export async function getSession(code: string): Promise<Session | null> {
 
 export async function closeSession(sessionId: string) {
   await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
+}
+
+export async function startSession(sessionId: string) {
+  await supabase.from("sessions").update({ started: true }).eq("id", sessionId);
 }
 
 // ── Participants ──────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ create table if not exists sessions (
   deadline    timestamptz,           -- planned mode only
   threshold   integer default 100,  -- % of participants who must like (100 = unanimous)
   status      text default 'active' check (status in ('active', 'closed')),
+  started     boolean default false,
   created_at  timestamptz default now()
 );
 
@@ -71,6 +72,7 @@ create table if not exists matches (
 -- ============================================================
 -- Enable real-time on the tables we need live updates for
 -- ============================================================
+alter publication supabase_realtime add table sessions;
 alter publication supabase_realtime add table swipes;
 alter publication supabase_realtime add table matches;
 alter publication supabase_realtime add table participants;

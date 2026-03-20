@@ -7,13 +7,13 @@ import Logo from "@/components/Logo";
 import SwipeCard from "@/components/SwipeCard";
 import FilmModal from "@/components/FilmModal";
 import {
-  getSession, getParticipantId, getParticipants, getSessionFilms,
-  getMySwipes, recordSwipe, checkForMatch, getMatches, closeSession,
+  getSession, getParticipantId, getIsHost, getParticipants, getSessionFilms,
+  getMySwipes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
 } from "@/lib/session";
 import { getPopularFilms, getTrendingFilms, posterUrl } from "@/lib/tmdb";
 import { supabase } from "@/lib/supabase";
 import { Film, Session, Participant, Match } from "@/types";
-import { Plus, Users, Trophy, Share2, CheckCircle } from "lucide-react";
+import { Plus, Users, Trophy, Share2, CheckCircle, Play } from "lucide-react";
 
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -22,43 +22,36 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [session, setSession] = useState<Session | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [films, setFilms] = useState<Film[]>([]);
-  const [swiped, setSwiped] = useState<Set<string>>(new Set());
+  const [isHost, setIsHostState] = useState(false);
   const [queue, setQueue] = useState<Film[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
   const [match, setMatch] = useState<Match | null>(null);
   const [allDone, setAllDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // Seed pool with popular films if needed
   async function seedPool(sessionId: string) {
     const { addFilmToSession } = await import("@/lib/session");
     const [trending, popular] = await Promise.all([getTrendingFilms(), getPopularFilms(1)]);
     const combined = [...trending, ...popular].slice(0, 40);
-    await Promise.all(
-      combined.map((m) => addFilmToSession(sessionId, m.id, null))
-    );
+    await Promise.all(combined.map((m) => addFilmToSession(sessionId, m.id, null)));
   }
 
   const loadFilms = useCallback(async (sessionId: string, participantId: string) => {
     let pool = await getSessionFilms(sessionId);
-
     if (pool.length < 10) {
       await seedPool(sessionId);
       pool = await getSessionFilms(sessionId);
     }
-
     const mySwiped = await getMySwipes(sessionId, participantId);
-    setSwiped(mySwiped);
-
     const unswiped = pool.filter((f) => !mySwiped.has(f.id));
     // Shuffle
     for (let i = unswiped.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [unswiped[i], unswiped[j]] = [unswiped[j], unswiped[i]];
     }
-    setFilms(pool);
     setQueue(unswiped);
     setCurrentIndex(0);
     if (unswiped.length === 0) setAllDone(true);
@@ -68,18 +61,20 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     async function init() {
       const s = await getSession(code);
       if (!s) return router.push("/");
-
       const pid = getParticipantId(code);
       if (!pid) return router.push("/");
 
       setSession(s);
+      setIsHostState(getIsHost(code));
 
-      // Check for existing matches
-      const existingMatches = await getMatches(s.id);
-      if (existingMatches.length > 0 && s.mode === "live") {
-        setMatch(existingMatches[0]);
-        setLoading(false);
-        return;
+      // Check for existing live match (only matters if already started)
+      if (s.started && s.mode === "live") {
+        const existingMatches = await getMatches(s.id);
+        if (existingMatches.length > 0 && s.status === "closed") {
+          setMatch(existingMatches[0]);
+          setLoading(false);
+          return;
+        }
       }
 
       const allParticipants = await getParticipants(s.id);
@@ -93,24 +88,42 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     init();
   }, [code, router, loadFilms]);
 
-  // Real-time: listen for new swipes and session_films
+  // Real-time subscriptions
   useEffect(() => {
     if (!session) return;
 
     const channel = supabase
       .channel(`session-${session.id}`)
+      // Session started / closed
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "sessions",
+        filter: `id=eq.${session.id}`,
+      }, (payload) => {
+        const updated = payload.new as Session;
+        setSession(updated);
+        // If just started and already has a match, fire it
+        if (updated.started && updated.mode === "live") {
+          getMatches(session.id).then((matches) => {
+            if (matches.length > 0 && updated.status === "closed") setMatch(matches[0]);
+          });
+        }
+      })
+      // New swipe — check match if session is started
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
         table: "swipes",
         filter: `session_id=eq.${session.id}`,
       }, async () => {
-        // Reload matches after any new swipe
-        if (session.mode === "live") {
+        const s = await getSession(code);
+        if (s?.started && s?.mode === "live") {
           const matches = await getMatches(session.id);
           if (matches.length > 0) setMatch(matches[0]);
         }
       })
+      // New film added to pool
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
@@ -120,6 +133,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         if (!participant) return;
         await loadFilms(session.id, participant.id);
       })
+      // New participant joined
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
@@ -132,20 +146,20 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [session, participant, loadFilms]);
+  }, [session, participant, loadFilms, code]);
 
   async function handleSwipe(liked: boolean) {
     if (!session || !participant || currentIndex >= queue.length) return;
     const film = queue[currentIndex];
 
     await recordSwipe(session.id, participant.id, film.id, liked);
-    setSwiped((prev) => new Set([...prev, film.id]));
 
-    if (liked) {
+    if (liked && session.started) {
       const isMatch = await checkForMatch(session.id, film.id, session.threshold);
       if (isMatch && session.mode === "live") {
         const matches = await getMatches(session.id);
         if (matches.length > 0) {
+          await closeSession(session.id);
           setMatch(matches[0]);
           return;
         }
@@ -157,14 +171,38 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     if (next >= queue.length) setAllDone(true);
   }
 
+  async function handleStart() {
+    if (!session) return;
+    setStarting(true);
+    await startSession(session.id);
+
+    // Check if a match already exists from pre-start swiping
+    if (session.mode === "live") {
+      const pool = await getSessionFilms(session.id);
+      for (const film of pool) {
+        const isMatch = await checkForMatch(session.id, film.id, session.threshold);
+        if (isMatch) {
+          const matches = await getMatches(session.id);
+          if (matches.length > 0) {
+            await closeSession(session.id);
+            setMatch(matches[0]);
+            setStarting(false);
+            return;
+          }
+        }
+      }
+    }
+    setStarting(false);
+  }
+
   async function handleShare() {
     const url = window.location.href;
-    const text = `Join my Filmclub session! Code: ${code}\n${url}`;
     if (navigator.share) {
-      await navigator.share({ title: "Filmclub", text, url });
+      await navigator.share({ title: "Filmclub", text: `Join my Filmclub session! Code: ${code}`, url });
     } else {
       await navigator.clipboard.writeText(url);
-      alert("Link copied!");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   }
 
@@ -181,26 +219,19 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   // Match screen (live mode)
   if (match && match.film) {
-    return <MatchScreen match={match} session={session!} onShare={handleShare} />;
+    return <MatchScreen match={match} onShare={handleShare} />;
   }
 
   const currentFilm = queue[currentIndex];
   const nextFilm = queue[currentIndex + 1];
+  const sessionStarted = session?.started ?? false;
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Header */}
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
         <Logo size="sm" />
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleShare}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
-            style={{ background: "var(--surface)", color: "var(--text-muted)" }}
-          >
-            <Share2 size={13} />
-            {code}
-          </button>
+        <div className="flex items-center gap-2">
           <button
             onClick={() => router.push(`/session/${code}/add`)}
             className="p-2 rounded-lg"
@@ -217,6 +248,69 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           </button>
         </div>
       </header>
+
+      {/* Session code + start bar */}
+      <div className="px-5 pb-3 shrink-0">
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
+          style={{ background: "var(--surface)" }}
+        >
+          {/* Code + share */}
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-2 min-w-0"
+          >
+            <Share2 size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            <span className="font-mono font-bold tracking-widest text-sm" style={{ color: "var(--accent)" }}>
+              {code}
+            </span>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {copied ? "Copied!" : "tap to share"}
+            </span>
+          </button>
+
+          {/* Start button — host only, only before start */}
+          {isHost && !sessionStarted && (
+            <button
+              onClick={handleStart}
+              disabled={starting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-opacity"
+              style={{
+                background: "var(--like)",
+                color: "#0c0c0e",
+                opacity: starting ? 0.6 : 1,
+              }}
+            >
+              <Play size={12} fill="currentColor" />
+              {starting ? "Starting…" : "Start session"}
+            </button>
+          )}
+
+          {/* Started indicator */}
+          {sessionStarted && (
+            <span
+              className="text-xs px-2.5 py-1 rounded-full shrink-0"
+              style={{ background: "rgba(74,222,128,0.12)", color: "var(--like)" }}
+            >
+              Live
+            </span>
+          )}
+        </div>
+
+        {/* Waiting banner for non-hosts before start */}
+        {!sessionStarted && !isHost && (
+          <p className="text-xs text-center mt-2" style={{ color: "var(--text-muted)" }}>
+            Waiting for the host to start — swipe away in the meantime
+          </p>
+        )}
+
+        {/* Nudge for host */}
+        {!sessionStarted && isHost && (
+          <p className="text-xs text-center mt-2" style={{ color: "var(--text-muted)" }}>
+            Share the code, wait for everyone to join, then hit Start
+          </p>
+        )}
+      </div>
 
       {/* Participants */}
       <div className="flex items-center gap-2 px-5 pb-3 shrink-0">
@@ -237,7 +331,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         </div>
       </div>
 
-      {/* Progress */}
+      {/* Progress bar */}
       <div className="px-5 mb-4 shrink-0">
         <div className="h-0.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
           <div
@@ -255,17 +349,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
       {/* Card area */}
       <div className="flex-1 px-5 relative" style={{ minHeight: 0 }}>
-        <div className="relative w-full" style={{ height: "calc(100dvh - 280px)", maxHeight: 520 }}>
+        <div className="relative w-full" style={{ height: "calc(100dvh - 310px)", maxHeight: 480 }}>
           <AnimatePresence>
             {allDone ? (
               <AllDoneScreen
                 mode={session?.mode ?? "live"}
-                code={code}
                 onResults={() => router.push(`/session/${code}/results`)}
               />
             ) : (
               <>
-                {/* Next card (behind) */}
                 {nextFilm && (
                   <SwipeCard
                     key={`${nextFilm.id}-next`}
@@ -276,12 +368,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                     isTop={false}
                   />
                 )}
-                {/* Current card */}
                 {currentFilm && (
                   <motion.div
                     key={currentFilm.id}
                     className="absolute inset-0"
-                    initial={{ scale: 1, opacity: 1 }}
                     exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
                   >
                     <SwipeCard
@@ -299,7 +389,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         </div>
       </div>
 
-      {/* Spacer for action buttons */}
       <div className="h-24 shrink-0" />
 
       <FilmModal
@@ -312,15 +401,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   );
 }
 
-function AllDoneScreen({
-  mode,
-  code,
-  onResults,
-}: {
-  mode: string;
-  code: string;
-  onResults: () => void;
-}) {
+function AllDoneScreen({ mode, onResults }: { mode: string; onResults: () => void }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
       <CheckCircle size={48} style={{ color: "var(--accent)" }} className="mb-4" />
@@ -329,7 +410,7 @@ function AllDoneScreen({
       </h2>
       <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
         {mode === "planned"
-          ? "Results will be revealed at the deadline. Check back later."
+          ? "Results will be revealed at the deadline."
           : "Waiting for the rest of the group. Add more films in the meantime."}
       </p>
       <button
@@ -343,22 +424,16 @@ function AllDoneScreen({
   );
 }
 
-function MatchScreen({ match, session, onShare }: { match: Match; session: Session; onShare: () => void }) {
+function MatchScreen({ match, onShare }: { match: Match; onShare: () => void }) {
   const film = match.film!;
   const router = useRouter();
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-5 relative overflow-hidden"
       style={{ background: "var(--bg)" }}>
-      {/* Background poster */}
       <div className="absolute inset-0 opacity-10">
-        <img
-          src={posterUrl(film.poster_path, "w500")}
-          alt=""
-          className="w-full h-full object-cover"
-        />
+        <img src={posterUrl(film.poster_path, "w500")} alt="" className="w-full h-full object-cover" />
       </div>
-
       <div className="relative z-10 flex flex-col items-center text-center max-w-xs">
         <div className="text-4xl mb-4">🎬</div>
         <h1 className="text-xl font-medium mb-1" style={{ color: "var(--accent)" }}>
@@ -367,22 +442,13 @@ function MatchScreen({ match, session, onShare }: { match: Match; session: Sessi
         <p className="text-xs mb-8" style={{ color: "var(--text-muted)" }}>
           Everyone agreed on tonight&apos;s film
         </p>
-
-        {/* Poster */}
-        <div className="w-48 rounded-2xl overflow-hidden shadow-2xl mb-5"
-          style={{ aspectRatio: "2/3" }}>
-          <img
-            src={posterUrl(film.poster_path, "w342")}
-            alt={film.title}
-            className="w-full h-full object-cover"
-          />
+        <div className="w-48 rounded-2xl overflow-hidden shadow-2xl mb-5" style={{ aspectRatio: "2/3" }}>
+          <img src={posterUrl(film.poster_path, "w342")} alt={film.title} className="w-full h-full object-cover" />
         </div>
-
         <h2 className="text-2xl font-bold mb-1" style={{ color: "var(--text)" }}>{film.title}</h2>
         <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>
-          {film.release_year} {film.rating ? `· ★ ${film.rating}` : ""}
+          {film.release_year}{film.rating ? ` · ★ ${film.rating}` : ""}
         </p>
-
         <div className="flex gap-3 w-full">
           <button
             onClick={onShare}

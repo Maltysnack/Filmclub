@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
-import { createSession, joinSession, getSession, setParticipantId } from "@/lib/session";
+import { createSession, joinSession, getSession, setParticipantId, setIsHost } from "@/lib/session";
 import { Calendar, Zap, ChevronRight, Users } from "lucide-react";
 
 type Tab = "create" | "join";
@@ -44,6 +44,7 @@ export default function Home() {
     if (!participant) { setLoading(false); return setError("Something went wrong. Try again."); }
 
     setParticipantId(session.code, participant.id);
+    setIsHost(session.code);
     router.push(`/session/${session.code}`);
   }
 
