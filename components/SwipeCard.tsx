@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import { Film } from "@/types";
+import { DendyFilm } from "@/lib/dendy";
+import { getService } from "@/lib/streaming";
 import { posterUrl } from "@/lib/tmdb";
 import { Info, Heart, X } from "lucide-react";
 
@@ -12,11 +14,13 @@ interface SwipeCardProps {
   onDislike: () => void;
   onInfo: () => void;
   isTop: boolean;
+  dendyInfo?: DendyFilm;
+  sessionServices?: string[];
 }
 
 const SWIPE_THRESHOLD = 80;
 
-export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop }: SwipeCardProps) {
+export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dendyInfo, sessionServices = [] }: SwipeCardProps) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-18, 18]);
   const likeOpacity = useTransform(x, [20, 100], [0, 1]);
@@ -111,6 +115,29 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop }: Sw
 
         {/* Film info at bottom */}
         <div className="absolute bottom-0 left-0 right-0 p-5">
+          {/* Where-to-watch badges */}
+          {(dendyInfo || sessionServices.length > 0) && (
+            <div className="flex gap-1.5 mb-2 flex-wrap">
+              {dendyInfo && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: "rgba(232,184,109,0.2)", color: "var(--accent)", border: "1px solid rgba(232,184,109,0.3)" }}>
+                  🎬 Dendy {dendyInfo.sessionTimes[0]}
+                  {dendyInfo.tmdbMatch === "low" && " ⚠️"}
+                </span>
+              )}
+              {!dendyInfo && sessionServices.slice(0, 2).map((sid) => {
+                const svc = getService(sid);
+                const providers: { serviceId: string }[] = (film as Film & { watch_providers_au?: { serviceId: string }[] }).watch_providers_au ?? [];
+                if (!svc || !providers.some((p) => p.serviceId === sid)) return null;
+                return (
+                  <span key={sid} className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}40` }}>
+                    {svc.name}
+                  </span>
+                );
+              })}
+            </div>
+          )}
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-xl font-semibold leading-tight truncate" style={{ color: "var(--text)" }}>

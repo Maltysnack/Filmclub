@@ -67,5 +67,6 @@ export function tmdbToFilm(movie: TMDBMovieDetail): Omit<Film, "id"> {
     genres: movie.genres ?? [],
     film_cast: movie.credits?.cast?.slice(0, 10) ?? [],
     rating: movie.vote_average ? parseFloat(movie.vote_average.toFixed(1)) : null,
+    watch_providers_au: [],
   };
 }

@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
-import { Session, Participant, Film, Match } from "@/types";
+import { Session, Participant, Film, Match, WatchMode } from "@/types";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
+import { fetchWatchProvidersAU } from "./streaming";
 
 // ── Session code generation ───────────────────────────────────────────────────
 
@@ -43,16 +44,27 @@ export function getIsHost(sessionCode: string): boolean {
 export async function createSession(
   mode: "planned" | "live",
   deadline: string | null,
-  threshold: number
+  threshold: number,
+  watchMode: WatchMode = "home",
+  streamingServices: string[] = [],
+  cinemaDate: string | null = null,
+  cinemaTimeFrom: string | null = null,
+  cinemaTimeTo: string | null = null,
 ): Promise<Session | null> {
   let code = generateCode();
-  // Ensure uniqueness (retry once if clash)
   const { data: existing } = await supabase.from("sessions").select("id").eq("code", code).single();
   if (existing) code = generateCode();
 
   const { data, error } = await supabase
     .from("sessions")
-    .insert({ code, mode, deadline, threshold })
+    .insert({
+      code, mode, deadline, threshold,
+      watch_mode: watchMode,
+      streaming_services: streamingServices,
+      cinema_date: cinemaDate,
+      cinema_time_from: cinemaTimeFrom,
+      cinema_time_to: cinemaTimeTo,
+    })
     .select()
     .single();
 
@@ -114,10 +126,15 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
   const detail = await getFilmDetail(tmdbId);
   if (!detail) return null;
 
-  const filmData = tmdbToFilm(detail);
+  const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
+  const [filmData, watchProviders] = await Promise.all([
+    Promise.resolve(tmdbToFilm(detail)),
+    fetchWatchProvidersAU(tmdbId, apiKey),
+  ]);
+
   const { data, error } = await supabase
     .from("films")
-    .insert(filmData)
+    .insert({ ...filmData, watch_providers_au: watchProviders })
     .select()
     .single();
 
