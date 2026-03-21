@@ -26,7 +26,7 @@ export function getServiceByTmdbId(tmdbId: number) {
 export async function fetchWatchProvidersAU(
   tmdbId: number,
   apiKey: string
-): Promise<{ serviceId: string; name: string }[]> {
+): Promise<{ serviceId: string; name: string; logoPath: string | null }[]> {
   try {
     const res = await fetch(
       `https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers?api_key=${apiKey}`
@@ -37,17 +37,17 @@ export async function fetchWatchProvidersAU(
     if (!au) return [];
 
     // Combine flatrate (subscription) providers only
-    const flatrate: { provider_id: number; provider_name: string }[] =
+    const flatrate: { provider_id: number; provider_name: string; logo_path?: string }[] =
       au.flatrate ?? [];
 
     return flatrate
       .map((p) => {
         const service = getServiceByTmdbId(p.provider_id);
         return service
-          ? { serviceId: service.id, name: service.name }
+          ? { serviceId: service.id, name: service.name, logoPath: p.logo_path ?? null }
           : null;
       })
-      .filter(Boolean) as { serviceId: string; name: string }[];
+      .filter(Boolean) as { serviceId: string; name: string; logoPath: string | null }[];
   } catch {
     return [];
   }

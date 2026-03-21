@@ -16,7 +16,7 @@ import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, TMDB_GENRES } from "@/lib/streaming";
 import { supabase } from "@/lib/supabase";
 import { Film, Session, Participant, Match } from "@/types";
-import { Plus, Users, Trophy, Share2, CheckCircle, Play, SlidersHorizontal, X } from "lucide-react";
+import { Plus, Users, Trophy, Share2, CheckCircle, Play, SlidersHorizontal, X, Heart } from "lucide-react";
 
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -278,7 +278,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
     const next = currentIndex + 1;
     setCurrentIndex(next);
-    if (next >= queue.length) setAllDone(true);
+    if (next >= queue.length) {
+      setAllDone(true);
+      setInfoFilm(null);
+    } else if (infoFilm) {
+      // Panel is open — slide to the next film's info instead of closing
+      setInfoFilm(queue[next]);
+    }
   }
 
   async function handleStart() {
@@ -541,8 +547,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               <FilmInfoPanel
                 film={infoFilm}
                 onClose={() => setInfoFilm(null)}
-                onLike={!allDone ? () => { handleSwipe(true); setInfoFilm(null); } : undefined}
-                onDislike={!allDone ? () => { handleSwipe(false); setInfoFilm(null); } : undefined}
+                onLike={!allDone ? () => handleSwipe(true) : undefined}
+                onDislike={!allDone ? () => handleSwipe(false) : undefined}
                 dendyInfo={dendyMap.get(infoFilm.id)}
                 sessionServices={session?.streaming_services ?? []}
               />
@@ -627,16 +633,28 @@ function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionSer
               </div>
             )}
             {availableProviders.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {availableProviders.map((p) => {
-                  const svc = getService(p.serviceId);
-                  return svc ? (
-                    <span key={p.serviceId} className="text-xs px-2 py-0.5 rounded font-bold"
-                      style={{ background: `${svc.color}25`, color: svc.color }}>
-                      {svc.abbrev}
-                    </span>
-                  ) : null;
-                })}
+              <div>
+                <p className="text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>🏠 Stream at home</p>
+                <div className="flex flex-wrap gap-2">
+                  {availableProviders.map((p) => {
+                    const svc = getService(p.serviceId);
+                    if (!svc) return null;
+                    const lp = (p as { serviceId: string; logoPath?: string | null }).logoPath;
+                    return lp ? (
+                      <div key={p.serviceId} className="flex items-center gap-1.5">
+                        <img src={`https://image.tmdb.org/t/p/w45${lp}`} alt={svc.name}
+                          title={svc.name}
+                          className="w-7 h-7 rounded-lg object-cover" />
+                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>{svc.name}</span>
+                      </div>
+                    ) : (
+                      <span key={p.serviceId} className="text-xs px-2 py-0.5 rounded font-bold"
+                        style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}50` }}>
+                        {svc.abbrev} {svc.name}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -677,21 +695,31 @@ function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionSer
         )}
       </div>
 
-      {/* Action buttons */}
+      {/* Action buttons — icon buttons matching the main card controls */}
       {(onLike || onDislike) && (
-        <div className="shrink-0 flex gap-2 px-3 pb-3 pt-2">
+        <div className="shrink-0 flex justify-center gap-6 px-3 pb-4 pt-2">
           {onDislike && (
-            <button onClick={onDislike}
-              className="flex-1 py-2.5 rounded-xl text-xs font-semibold border"
-              style={{ borderColor: "var(--dislike)", color: "var(--dislike)", background: "transparent" }}>
-              Nope
+            <button
+              onClick={onDislike}
+              className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95"
+              style={{
+                background: "var(--surface-2)",
+                border: "2px solid var(--dislike)",
+                color: "var(--dislike)",
+              }}>
+              <X size={24} />
             </button>
           )}
           {onLike && (
-            <button onClick={onLike}
-              className="flex-1 py-2.5 rounded-xl text-xs font-semibold"
-              style={{ background: "var(--like)", color: "#0c0c0e" }}>
-              I&apos;m in
+            <button
+              onClick={onLike}
+              className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95"
+              style={{
+                background: "var(--surface-2)",
+                border: "2px solid var(--like)",
+                color: "var(--like)",
+              }}>
+              <Heart size={22} />
             </button>
           )}
         </div>

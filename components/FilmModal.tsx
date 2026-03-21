@@ -136,13 +136,22 @@ export default function FilmModal({ film, onClose, onLike, onDislike, dendyInfo,
                           <div className="flex flex-wrap gap-1.5">
                             {available.map((p) => {
                               const svc = getService(p.serviceId);
-                              return svc ? (
+                              if (!svc) return null;
+                              const lp = (p as { serviceId: string; logoPath?: string | null }).logoPath;
+                              return lp ? (
+                                <div key={p.serviceId} className="flex items-center gap-1.5">
+                                  <img src={`https://image.tmdb.org/t/p/w45${lp}`} alt={svc.name}
+                                    title={svc.name}
+                                    className="w-7 h-7 rounded-lg object-cover" />
+                                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{svc.name}</span>
+                                </div>
+                              ) : (
                                 <span key={p.serviceId} className="text-xs px-2.5 py-1 rounded-lg font-bold"
                                   style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}50` }}>
                                   {svc.abbrev}
                                   <span className="font-normal ml-1 opacity-80">{svc.name}</span>
                                 </span>
-                              ) : null;
+                              );
                             })}
                           </div>
                         </div>

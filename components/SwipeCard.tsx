@@ -55,13 +55,22 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
         className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl drag-card"
         style={{ background: "var(--surface-2)" }}
       >
-        {/* Poster image */}
+        {/* Poster image — blur-behind so the full poster is always visible */}
         <div className="absolute inset-0 overflow-hidden">
+          {/* Blurred background fill (covers letterbox bars) */}
+          <img
+            src={poster}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            style={{ filter: "blur(24px)", transform: "scale(1.15)", opacity: 0.7 }}
+            draggable={false}
+          />
+          {/* Main poster — object-contain so nothing gets cropped */}
           <img
             src={poster}
             alt={film.title}
-            className="w-full h-full object-cover pointer-events-none"
-            style={{ transformOrigin: "center center" }}
+            className="relative w-full h-full object-contain pointer-events-none"
             draggable={false}
           />
           {/* Gradient overlay at bottom */}
@@ -115,28 +124,56 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
 
         {/* Film info at bottom */}
         <div className="absolute bottom-0 left-0 right-0 p-5">
-          {/* Where-to-watch badges */}
-          {(dendyInfo || sessionServices.length > 0) && (
-            <div className="flex gap-1.5 mb-2 flex-wrap">
-                  {dendyInfo && dendyInfo.sessionTimes.slice(0, 4).map((t) => (
-                <span key={t} className="text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{ background: "rgba(232,184,109,0.2)", color: "var(--accent)", border: "1px solid rgba(232,184,109,0.3)" }}>
-                  {t}{dendyInfo.tmdbMatch === "low" && " ⚠️"}
-                </span>
-              ))}
-              {!dendyInfo && sessionServices.slice(0, 3).map((sid) => {
-                const svc = getService(sid);
-                const providers: { serviceId: string }[] = (film as Film & { watch_providers_au?: { serviceId: string }[] }).watch_providers_au ?? [];
-                if (!svc || !providers.some((p) => p.serviceId === sid)) return null;
-                return (
-                  <span key={sid} className="text-xs px-2 py-0.5 rounded-full font-bold"
-                    style={{ background: `${svc.color}30`, color: svc.color, border: `1px solid ${svc.color}50` }}>
-                    {svc.abbrev}
-                  </span>
-                );
-              })}
-            </div>
-          )}
+          {/* Where-to-watch badges — streaming logos left, Dendy right */}
+          {(() => {
+            const providers = film.watch_providers_au ?? [];
+            const available = providers.filter((p) => sessionServices.includes(p.serviceId));
+            if (!dendyInfo && available.length === 0) return null;
+            return (
+              <div className="flex items-start gap-3 mb-2">
+                {/* Streaming service logos — only if film is on a selected service */}
+                {available.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {available.slice(0, 4).map((p) => {
+                      const svc = getService(p.serviceId);
+                      if (!svc) return null;
+                      return p.logoPath ? (
+                        <img
+                          key={p.serviceId}
+                          src={`https://image.tmdb.org/t/p/w45${p.logoPath}`}
+                          alt={svc.name}
+                          title={svc.name}
+                          className="w-6 h-6 rounded object-cover"
+                        />
+                      ) : (
+                        <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded font-bold"
+                          style={{ background: `${svc.color}30`, color: svc.color, border: `1px solid ${svc.color}50` }}>
+                          {svc.abbrev}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Dendy label + session times */}
+                {dendyInfo && (
+                  <div className={`flex flex-col gap-1 shrink-0 ${available.length > 0 ? "items-end ml-auto" : "items-start"}`}>
+                    <span className="text-xs font-medium leading-none"
+                      style={{ color: "var(--accent)" }}>
+                      🎬 Dendy Newtown{dendyInfo.tmdbMatch === "low" ? " ⚠️" : ""}
+                    </span>
+                    <div className="flex gap-1 flex-wrap">
+                      {dendyInfo.sessionTimes.slice(0, 4).map((t) => (
+                        <span key={t} className="text-xs px-1.5 py-0.5 rounded font-medium"
+                          style={{ background: "rgba(232,184,109,0.2)", color: "var(--accent)", border: "1px solid rgba(232,184,109,0.3)" }}>
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-xl font-semibold leading-tight truncate" style={{ color: "var(--text)" }}>

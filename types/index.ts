@@ -19,7 +19,7 @@ export interface Session {
 }
 
 export interface FilmWithMeta extends Film {
-  watch_providers_au: { serviceId: string; name: string }[];
+  watch_providers_au: { serviceId: string; name: string; logoPath?: string | null }[];
   // Cinema session info — populated when film comes from Dendy pool
   dendyTimes?: string[];
   dendyBookingUrls?: Record<string, string>;
@@ -45,7 +45,7 @@ export interface Film {
   genres: { id: number; name: string }[];
   film_cast: { name: string; character: string; profile_path: string | null }[];
   rating: number | null;
-  watch_providers_au: { serviceId: string; name: string }[];
+  watch_providers_au: { serviceId: string; name: string; logoPath?: string | null }[];
 }
 
 export interface SessionFilm {
