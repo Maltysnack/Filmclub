@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, Trophy, Lock, Clock } from "lucide-react";
+import { ArrowLeft, Trophy, Lock, Clock, Plus, Layers } from "lucide-react";
 import { getSession, getParticipantId, getFilmScores, closeSession, getParticipants } from "@/lib/session";
 import { posterUrl } from "@/lib/tmdb";
 import { Film, Session, Participant } from "@/types";
@@ -80,13 +80,25 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
           <h1 className="text-base font-semibold" style={{ color: "var(--text)" }}>Results</h1>
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>{code}</p>
         </div>
-        <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
-          style={{
-            background: session?.status === "closed" ? "rgba(74,222,128,0.1)" : "var(--surface)",
-            color: session?.status === "closed" ? "var(--like)" : "var(--text-muted)",
-          }}>
-          {session?.status === "closed" ? <Lock size={11} /> : <Clock size={11} />}
-          {session?.status === "closed" ? "Closed" : "Live"}
+        <div className="flex items-center gap-2">
+          <button onClick={() => router.push(`/session/${code}/add`)}
+            className="p-2 rounded-lg"
+            style={{ background: "var(--surface)", color: "var(--accent)" }}>
+            <Plus size={18} />
+          </button>
+          <button onClick={() => router.back()}
+            className="p-2 rounded-lg"
+            style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
+            <Layers size={18} />
+          </button>
+          <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+            style={{
+              background: session?.status === "closed" ? "rgba(74,222,128,0.1)" : "var(--surface)",
+              color: session?.status === "closed" ? "var(--like)" : "var(--text-muted)",
+            }}>
+            {session?.status === "closed" ? <Lock size={11} /> : <Clock size={11} />}
+            {session?.status === "closed" ? "Closed" : "Live"}
+          </div>
         </div>
       </header>
 
@@ -186,7 +198,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                         <div className="w-10 rounded-lg overflow-hidden shrink-0"
                           style={{ aspectRatio: "2/3" }}>
                           <img
-                            src={posterUrl(film.poster_path, "w342")}
+                            src={posterUrl(film.poster_path, "w500")}
                             alt={film.title}
                             className="w-full h-full object-cover"
                           />

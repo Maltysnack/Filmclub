@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, Search, Plus, Check, Heart } from "lucide-react";
+import { ArrowLeft, Search, Plus, Check, Heart, Trophy, SlidersHorizontal } from "lucide-react";
 import { searchFilms, getPopularFilms, getTrendingFilms, getTopRatedFilms, posterUrl } from "@/lib/tmdb";
 import { addFilmToSession, getSession, getParticipantId, getSessionFilms, recordSwipe } from "@/lib/session";
 import { TMDBMovie, Film } from "@/types";
@@ -110,7 +110,12 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
           <ArrowLeft size={18} />
         </button>
         <Logo size="sm" showText={false} />
-        <h1 className="text-base font-semibold" style={{ color: "var(--text)" }}>Add films</h1>
+        <h1 className="flex-1 text-base font-semibold" style={{ color: "var(--text)" }}>Add films</h1>
+        <button onClick={() => router.push(`/session/${code}/results`)}
+          className="p-2 rounded-lg"
+          style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
+          <Trophy size={18} />
+        </button>
       </header>
 
       {/* Search */}
@@ -200,7 +205,7 @@ function FilmGrid({
             style={{ aspectRatio: "2/3", background: "var(--surface)" }}
           >
             <img
-              src={posterUrl(movie.poster_path, "w342")}
+              src={posterUrl(movie.poster_path, "w500")}
               alt={movie.title}
               className="w-full h-full object-cover"
             />

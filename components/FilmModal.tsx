@@ -137,9 +137,10 @@ export default function FilmModal({ film, onClose, onLike, onDislike, dendyInfo,
                             {available.map((p) => {
                               const svc = getService(p.serviceId);
                               return svc ? (
-                                <span key={p.serviceId} className="text-xs px-2 py-1 rounded-lg"
-                                  style={{ background: `${svc.color}22`, color: svc.color, border: `1px solid ${svc.color}44` }}>
-                                  {svc.name}
+                                <span key={p.serviceId} className="text-xs px-2.5 py-1 rounded-lg font-bold"
+                                  style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}50` }}>
+                                  {svc.abbrev}
+                                  <span className="font-normal ml-1 opacity-80">{svc.name}</span>
                                 </span>
                               ) : null;
                             })}

@@ -1,13 +1,15 @@
-// Australian streaming services — TMDB provider IDs for region=AU
+// Australian streaming services — TMDB flatrate provider IDs for region=AU
+// Verified: Netflix=8, Prime=9, Disney+=337, Apple TV+=350, Stan=119, Paramount+=531
+// Binge (Foxtel) appears as provider_id 38 in TMDB AU region data
 export const AU_SERVICES = [
-  { id: "netflix",   name: "Netflix",      tmdbId: 8,   color: "#E50914" },
-  { id: "stan",      name: "Stan",         tmdbId: 119, color: "#0069C1" },
-  { id: "disney",    name: "Disney+",      tmdbId: 337, color: "#113CCF" },
-  { id: "prime",     name: "Prime Video",  tmdbId: 9,   color: "#00A8E1" },
-  { id: "apple",     name: "Apple TV+",    tmdbId: 350, color: "#555555" },
-  { id: "binge",     name: "Binge",        tmdbId: 11,  color: "#FF5C35" },
-  { id: "paramount", name: "Paramount+",   tmdbId: 531, color: "#0064FF" },
-  { id: "foxtel",    name: "Foxtel Now",   tmdbId: 272, color: "#000000" },
+  { id: "netflix",   name: "Netflix",      abbrev: "N",   tmdbId: 8,   color: "#E50914" },
+  { id: "stan",      name: "Stan",         abbrev: "S",   tmdbId: 119, color: "#0069C1" },
+  { id: "disney",    name: "Disney+",      abbrev: "D+",  tmdbId: 337, color: "#113CCF" },
+  { id: "prime",     name: "Prime",        abbrev: "P",   tmdbId: 9,   color: "#00A8E1" },
+  { id: "apple",     name: "Apple TV+",    abbrev: "♦",   tmdbId: 350, color: "#888888" },
+  { id: "binge",     name: "Binge",        abbrev: "B",   tmdbId: 38,  color: "#FF5C35" },
+  { id: "paramount", name: "Paramount+",   abbrev: "P+",  tmdbId: 531, color: "#0064FF" },
+  { id: "foxtel",    name: "Foxtel",       abbrev: "F",   tmdbId: 272, color: "#444444" },
 ] as const;
 
 export type ServiceId = (typeof AU_SERVICES)[number]["id"];

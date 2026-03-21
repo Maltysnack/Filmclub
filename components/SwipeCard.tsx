@@ -118,21 +118,20 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
           {/* Where-to-watch badges */}
           {(dendyInfo || sessionServices.length > 0) && (
             <div className="flex gap-1.5 mb-2 flex-wrap">
-              {dendyInfo && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  {dendyInfo && dendyInfo.sessionTimes.slice(0, 4).map((t) => (
+                <span key={t} className="text-xs px-2 py-0.5 rounded-full font-medium"
                   style={{ background: "rgba(232,184,109,0.2)", color: "var(--accent)", border: "1px solid rgba(232,184,109,0.3)" }}>
-                  🎬 Dendy {dendyInfo.sessionTimes[0]}
-                  {dendyInfo.tmdbMatch === "low" && " ⚠️"}
+                  {t}{dendyInfo.tmdbMatch === "low" && " ⚠️"}
                 </span>
-              )}
-              {!dendyInfo && sessionServices.slice(0, 2).map((sid) => {
+              ))}
+              {!dendyInfo && sessionServices.slice(0, 3).map((sid) => {
                 const svc = getService(sid);
                 const providers: { serviceId: string }[] = (film as Film & { watch_providers_au?: { serviceId: string }[] }).watch_providers_au ?? [];
                 if (!svc || !providers.some((p) => p.serviceId === sid)) return null;
                 return (
-                  <span key={sid} className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}40` }}>
-                    {svc.name}
+                  <span key={sid} className="text-xs px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: `${svc.color}30`, color: svc.color, border: `1px solid ${svc.color}50` }}>
+                    {svc.abbrev}
                   </span>
                 );
               })}

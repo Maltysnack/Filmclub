@@ -55,22 +55,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   async function seedHomePool(s: Session) {
-    const [trending, popular] = await Promise.all([getTrendingFilms(3), getPopularFilms(2)]);
+    // One page of trending (~20 films) keeps the initial load fast.
+    // Films are cached in the DB after first fetch so subsequent sessions are instant.
+    const trending = await getTrendingFilms(1);
     const seen = new Set<number>();
-    let combined = [...trending, ...popular].filter((m) => {
+    const combined = trending.filter((m) => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
       return true;
-    });
-
-    // Filter by streaming services if host set them
-    if (s.streaming_services?.length > 0) {
-      // We'll upsert films and the watch_providers_au will be populated
-      // Filter after upserting based on what's stored
-      combined = combined.slice(0, 100);
-    } else {
-      combined = combined.slice(0, 100);
-    }
+    }).slice(0, 20);
 
     await Promise.all(combined.map((m) => addFilmToSession(s.id, m.id, null)));
   }
@@ -121,12 +114,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     const autoSeeded = unswiped.filter(({ addedBy }) => !addedBy || addedBy === participantId);
     setUserAddedIds(new Set(userAdded.map(({ film }) => film.id)));
 
-    // Filter home pool by streaming services
+    // Filter home pool by streaming services.
+    // Films with no provider data yet are included (shown untagged) — only films
+    // that *have* provider data but aren't on any selected service get excluded.
     let filteredAuto = autoSeeded;
     if ((s.watch_mode === "home" || s.watch_mode === "both") && s.streaming_services?.length > 0) {
       filteredAuto = autoSeeded.filter(({ film }) => {
-        const providers: { serviceId: string }[] = (film as Film & { watch_providers_au?: { serviceId: string }[] }).watch_providers_au ?? [];
-        if (!providers.length) return s.watch_mode === "both"; // if "both", keep cinema films
+        const providers: { serviceId: string }[] = film.watch_providers_au ?? [];
+        if (!providers.length) return true; // no data yet — don't exclude
         return providers.some((p) => s.streaming_services.includes(p.serviceId));
       });
     }
@@ -277,7 +272,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       : "Loading session…";
     return (
       <div className="min-h-dvh flex items-center justify-center" style={{ background: "var(--bg)" }}>
-        <div className="text-center space-y-4">
+        <div className="text-center space-y-4 mx-auto" style={{ maxWidth: 480 }}>
           <Logo size="md" />
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>{loadMsg}</p>
         </div>
@@ -286,7 +281,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   if (matchList.length > 0) {
-    return <MatchScreen matches={matchList} session={session!} dendyMap={dendyMap} onShare={handleShare} />;
+    return (
+      <div style={{ background: "var(--bg)" }}>
+        <div className="mx-auto" style={{ maxWidth: 480 }}>
+          <MatchScreen matches={matchList} session={session!} dendyMap={dendyMap} onShare={handleShare} />
+        </div>
+      </div>
+    );
   }
 
   const currentFilm = queue[currentIndex];
@@ -294,7 +295,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const sessionStarted = session?.started ?? false;
 
   return (
-    <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
+    <div className="min-h-dvh" style={{ background: "var(--bg)" }}>
+    <div className="flex flex-col min-h-dvh mx-auto" style={{ maxWidth: 480 }}>
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
         <Logo size="sm" />
         <div className="flex items-center gap-2">
@@ -477,6 +479,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
         sessionServices={session?.streaming_services ?? []} />
     </div>
+    </div>
   );
 }
 
@@ -511,7 +514,7 @@ function MatchScreen({ matches, session, dendyMap, onShare }: {
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
-      <div className="fixed inset-0 opacity-10 pointer-events-none">
+      <div className="fixed inset-0 opacity-10 pointer-events-none overflow-hidden">
         <img src={posterUrl(topFilm.poster_path, "w500")} alt=""
           className="w-full h-full object-cover" style={{ filter: "blur(20px)" }} />
       </div>
@@ -598,9 +601,9 @@ function WatchOptions({ film, dendy, session, compact = false }: {
         {availableProviders.slice(0, 2).map((p) => {
           const svc = getService(p.serviceId);
           return svc ? (
-            <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded"
+            <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded font-bold"
               style={{ background: `${svc.color}22`, color: svc.color }}>
-              {svc.name}
+              {svc.abbrev}
             </span>
           ) : null;
         })}
@@ -635,9 +638,10 @@ function WatchOptions({ film, dendy, session, compact = false }: {
           {availableProviders.map((p) => {
             const svc = getService(p.serviceId);
             return svc ? (
-              <span key={p.serviceId} className="text-xs px-2 py-1 rounded-lg"
-                style={{ background: `${svc.color}22`, color: svc.color, border: `1px solid ${svc.color}44` }}>
-                {svc.name}
+              <span key={p.serviceId} className="text-xs px-2.5 py-1 rounded-lg font-bold"
+                style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}50` }}>
+                {svc.abbrev}
+                <span className="font-normal ml-1 opacity-80">{svc.name}</span>
               </span>
             ) : null;
           })}
