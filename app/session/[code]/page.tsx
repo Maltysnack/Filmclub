@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Logo from "@/components/Logo";
@@ -11,7 +11,7 @@ import {
   getMySwipes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
   addFilmToSession,
 } from "@/lib/session";
-import { getPopularFilms, getTrendingFilms, posterUrl } from "@/lib/tmdb";
+import { getTrendingFilms, getTopRatedFilms, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, TMDB_GENRES } from "@/lib/streaming";
 import { supabase } from "@/lib/supabase";
@@ -38,6 +38,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   // Map from film.id -> dendy session info
   const [dendyMap, setDendyMap] = useState<Map<string, DendyFilm>>(new Map());
+  // Debounce timer so background batch-inserts don't hammer loadFilms
+  const queueRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Derived: genre-filtered queue (user-added films always shown)
   const [userAddedIds, setUserAddedIds] = useState<Set<string>>(new Set());
@@ -54,16 +56,39 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     );
   }
 
+  // Fast initial seed — just enough to show the first card immediately.
+  // session_films upsert is idempotent so re-adding later is safe.
   async function seedHomePool(s: Session) {
-    // One page of trending (~20 films) — cached after first session so subsequent loads are instant.
     const trending = await getTrendingFilms(1);
     const seen = new Set<number>();
-    const combined = trending.filter((m) => {
+    const initial = trending.filter((m) => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
       return true;
-    }).slice(0, 20);
-    await Promise.all(combined.map((m) => addFilmToSession(s.id, m.id, null)));
+    }).slice(0, 5);
+    await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null)));
+  }
+
+  // Background expander — runs silently after the session page is shown.
+  // Adds ~80 more films in batches of 8; the real-time subscription
+  // picks up each batch and extends the live queue automatically.
+  async function seedMoreHomePool(s: Session) {
+    const [moreTrending, topRated] = await Promise.all([
+      getTrendingFilms(3),
+      getTopRatedFilms(2),
+    ]);
+    const seen = new Set<number>();
+    const all = [...moreTrending, ...topRated].filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    }).slice(0, 80);
+
+    const BATCH = 8;
+    for (let i = 0; i < all.length; i += BATCH) {
+      await Promise.all(all.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
+      if (i + BATCH < all.length) await new Promise((r) => setTimeout(r, 400));
+    }
   }
 
   // loadFilms fetches Dendy sessions itself and keeps the result as a local variable.
@@ -87,7 +112,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     }
 
     // ── Seed pool if empty ────────────────────────────────────────────────────
-    if (poolWithMeta.length < 5) {
+    // Use === 0 so that background-loaded batches don't re-trigger seeding.
+    if (poolWithMeta.length === 0) {
       if (s.watch_mode === "cinema" || s.watch_mode === "both") {
         // Add every Dendy film we already fetched
         await Promise.all(
@@ -174,8 +200,16 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
       await loadFilms(s, pid);
       setLoading(false);
+
+      // Fire-and-forget: silently expand the home pool while the user swipes.
+      // The session_films subscription will extend the queue as batches land.
+      if (s.watch_mode === "home" || s.watch_mode === "both") {
+        seedMoreHomePool(s);
+      }
     }
     init();
+  // seedMoreHomePool is stable (defined inside component, no captured state)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, router, loadFilms]);
 
   useEffect(() => {
@@ -200,9 +234,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           }
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "session_films", filter: `session_id=eq.${session.id}` },
-        async () => {
-          if (!participant || !session) return;
-          await loadFilms(session, participant.id);
+        () => {
+          // Debounce: wait 800 ms after the last insert in a batch before refreshing.
+          if (queueRefreshTimer.current) clearTimeout(queueRefreshTimer.current);
+          queueRefreshTimer.current = setTimeout(async () => {
+            if (!participant || !session) return;
+            await loadFilms(session, participant.id);
+          }, 800);
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "participants", filter: `session_id=eq.${session.id}` },
         async () => { setParticipants(await getParticipants(session.id)); })
