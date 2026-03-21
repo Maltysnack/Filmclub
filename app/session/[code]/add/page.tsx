@@ -99,7 +99,8 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   const showSearch = query.trim().length > 0;
 
   return (
-    <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
+    <div className="min-h-dvh" style={{ background: "var(--bg)" }}>
+    <div className="flex flex-col min-h-dvh mx-auto" style={{ maxWidth: 480 }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-5 pt-5 pb-4 shrink-0">
         <button
@@ -177,6 +178,7 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
           </>
         )}
       </div>
+    </div>
     </div>
   );
 }

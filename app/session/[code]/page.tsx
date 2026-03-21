@@ -94,7 +94,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // loadFilms fetches Dendy sessions itself and keeps the result as a local variable.
   // This avoids the stale-closure bug where useCallback captures the initial empty dendyMap
   // state and never sees updates from setDendyMap.
-  const loadFilms = useCallback(async (s: Session, participantId: string) => {
+  const loadFilms = useCallback(async (s: Session, participantId: string, isInitial = false) => {
     let poolWithMeta = await getSessionFilmsWithMeta(s.id);
 
     // ── Fetch Dendy sessions early so we have the map locally ─────────────────
@@ -174,9 +174,23 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setDendyMap(newMap);
     }
 
-    setFullQueue(ordered);
-    setCurrentIndex(0);
-    if (ordered.length === 0) setAllDone(true);
+    // ── Update queue ─────────────────────────────────────────────────────────
+    // isInitial=true  → first load: replace queue entirely and reset position.
+    // isInitial=false → background update: only append genuinely new films so the
+    //   user's current swipe position is preserved (no jarring reset/flash).
+    if (isInitial) {
+      setFullQueue(ordered);
+      setCurrentIndex(0);
+      setAllDone(ordered.length === 0);
+    } else {
+      setFullQueue((prev) => {
+        const existingIds = new Set(prev.map((f) => f.id));
+        const fresh = ordered.filter((f) => !existingIds.has(f.id));
+        if (fresh.length > 0) setAllDone(false);
+        return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -198,7 +212,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setParticipant(allParticipants.find((p) => p.id === pid) ?? null);
       setParticipants(allParticipants);
 
-      await loadFilms(s, pid);
+      await loadFilms(s, pid, true);
       setLoading(false);
 
       // Fire-and-forget: silently expand the home pool while the user swipes.
@@ -327,7 +341,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   return (
     <div className="min-h-dvh" style={{ background: "var(--bg)" }}>
-    <div className="flex flex-col min-h-dvh mx-auto" style={{ maxWidth: 480 }}>
+    <div className="flex flex-col min-h-dvh mx-auto"
+      style={{ maxWidth: infoFilm ? 920 : 480, transition: "max-width 0.3s cubic-bezier(0.4,0,0.2,1)" }}>
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
         <Logo size="sm" />
         <div className="flex items-center gap-2">
@@ -468,9 +483,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         </p>
       </div>
 
-      {/* Cards */}
-      <div className="flex-1 px-5 relative" style={{ minHeight: 0 }}>
-        <div className="relative w-full" style={{ height: "calc(100dvh - 310px)", maxHeight: 480 }}>
+      {/* Cards + info panel — side by side when info is open */}
+      <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}>
+        {/* Swipe card column */}
+        <div className="relative shrink-0 transition-all duration-300"
+          style={{
+            width: infoFilm ? "calc(50% - 6px)" : "100%",
+            height: "calc(100dvh - 310px)",
+            maxHeight: 480,
+          }}>
           <AnimatePresence>
             {allDone || (queue.length === 0 && !loading) ? (
               <AllDoneScreen mode={session?.mode ?? "live"}
@@ -491,7 +512,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                       onLike={() => handleSwipe(true)}
                       onDislike={() => handleSwipe(false)}
                       onInfo={() => setInfoFilm(currentFilm)}
-                      isTop
+                      isTop={!infoFilm}
                       dendyInfo={dendyMap.get(currentFilm.id)}
                       sessionServices={session?.streaming_services ?? []} />
                   </motion.div>
@@ -500,16 +521,181 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             )}
           </AnimatePresence>
         </div>
+
+        {/* Info panel — slides in next to the card */}
+        <AnimatePresence>
+          {infoFilm && (
+            <motion.div
+              className="rounded-2xl overflow-hidden shrink-0 flex flex-col"
+              style={{
+                width: "calc(50% - 6px)",
+                height: "calc(100dvh - 310px)",
+                maxHeight: 480,
+                background: "var(--surface)",
+              }}
+              initial={{ opacity: 0, x: 32 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 32 }}
+              transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            >
+              <FilmInfoPanel
+                film={infoFilm}
+                onClose={() => setInfoFilm(null)}
+                onLike={!allDone ? () => { handleSwipe(true); setInfoFilm(null); } : undefined}
+                onDislike={!allDone ? () => { handleSwipe(false); setInfoFilm(null); } : undefined}
+                dendyInfo={dendyMap.get(infoFilm.id)}
+                sessionServices={session?.streaming_services ?? []}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="h-24 shrink-0" />
-
-      <FilmModal film={infoFilm} onClose={() => setInfoFilm(null)}
-        onLike={infoFilm && !allDone ? () => handleSwipe(true) : undefined}
-        onDislike={infoFilm && !allDone ? () => handleSwipe(false) : undefined}
-        dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
-        sessionServices={session?.streaming_services ?? []} />
     </div>
+    </div>
+  );
+}
+
+// ── Inline info panel (replaces full-screen FilmModal on swipe screen) ────────
+
+function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionServices }: {
+  film: Film;
+  onClose: () => void;
+  onLike?: () => void;
+  onDislike?: () => void;
+  dendyInfo?: DendyFilm;
+  sessionServices: string[];
+}) {
+  const providers: { serviceId: string }[] = film.watch_providers_au ?? [];
+  const availableProviders = providers.filter((p) => sessionServices.includes(p.serviceId));
+  const showWhere = dendyInfo || availableProviders.length > 0;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header row */}
+      <div className="shrink-0 flex items-start justify-between px-3 pt-3 pb-1 gap-2">
+        <h2 className="text-sm font-semibold leading-snug" style={{ color: "var(--text)" }}>
+          {film.title}
+        </h2>
+        <button onClick={onClose} className="shrink-0 p-1.5 rounded-full mt-0.5"
+          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+          <X size={13} />
+        </button>
+      </div>
+
+      {/* Meta */}
+      <div className="shrink-0 flex items-center gap-2 px-3 pb-2 flex-wrap">
+        {film.release_year && (
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>{film.release_year}</span>
+        )}
+        {film.runtime && (
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {Math.floor(film.runtime / 60)}h {film.runtime % 60}m
+          </span>
+        )}
+        {film.rating && (
+          <span className="text-xs font-medium" style={{ color: "var(--accent)" }}>★ {film.rating}</span>
+        )}
+        {film.genres?.slice(0, 2).map((g) => (
+          <span key={g.id} className="text-xs px-1.5 py-0.5 rounded-full"
+            style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+            {g.name}
+          </span>
+        ))}
+      </div>
+
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto px-3 space-y-3 pb-2">
+        {/* Where to watch */}
+        {showWhere && (
+          <div className="p-2.5 rounded-xl space-y-2" style={{ background: "var(--surface-2)" }}>
+            {dendyInfo && (
+              <div>
+                <p className="text-xs font-medium mb-1.5" style={{ color: "var(--accent)" }}>
+                  🎬 Dendy Newtown{dendyInfo.tmdbMatch === "low" ? " ⚠️" : ""}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {dendyInfo.sessionTimes.map((t) => (
+                    <a key={t} href={dendyInfo.bookingUrls[t] ?? "#"} target="_blank" rel="noopener noreferrer"
+                      className="text-xs px-2 py-0.5 rounded font-medium"
+                      style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+                      {t}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {availableProviders.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {availableProviders.map((p) => {
+                  const svc = getService(p.serviceId);
+                  return svc ? (
+                    <span key={p.serviceId} className="text-xs px-2 py-0.5 rounded font-bold"
+                      style={{ background: `${svc.color}25`, color: svc.color }}>
+                      {svc.abbrev}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Overview */}
+        {film.overview && (
+          <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            {film.overview}
+          </p>
+        )}
+
+        {/* Cast */}
+        {film.film_cast && film.film_cast.length > 0 && (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider mb-1.5"
+              style={{ color: "var(--text-muted)" }}>Cast</p>
+            <div className="space-y-1.5">
+              {film.film_cast.slice(0, 6).map((member, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-medium"
+                    style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+                    {member.profile_path
+                      ? <img src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
+                          alt={member.name} className="w-full h-full object-cover" />
+                      : member.name.charAt(0)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs truncate" style={{ color: "var(--text)" }}>{member.name}</p>
+                    {member.character && (
+                      <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{member.character}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      {(onLike || onDislike) && (
+        <div className="shrink-0 flex gap-2 px-3 pb-3 pt-2">
+          {onDislike && (
+            <button onClick={onDislike}
+              className="flex-1 py-2.5 rounded-xl text-xs font-semibold border"
+              style={{ borderColor: "var(--dislike)", color: "var(--dislike)", background: "transparent" }}>
+              Nope
+            </button>
+          )}
+          {onLike && (
+            <button onClick={onLike}
+              className="flex-1 py-2.5 rounded-xl text-xs font-semibold"
+              style={{ background: "var(--like)", color: "#0c0c0e" }}>
+              I&apos;m in
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
