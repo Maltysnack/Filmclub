@@ -55,8 +55,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   async function seedHomePool(s: Session) {
-    // One page of trending (~20 films) keeps the initial load fast.
-    // Films are cached in the DB after first fetch so subsequent sessions are instant.
+    // One page of trending (~20 films) — cached after first session so subsequent loads are instant.
     const trending = await getTrendingFilms(1);
     const seen = new Set<number>();
     const combined = trending.filter((m) => {
@@ -64,44 +63,41 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       seen.add(m.id);
       return true;
     }).slice(0, 20);
-
     await Promise.all(combined.map((m) => addFilmToSession(s.id, m.id, null)));
   }
 
-  async function seedCinemaPool(s: Session) {
-    if (!s.cinema_date) return;
-    const dendySessions = await getDendySessions(
-      s.cinema_date,
-      s.cinema_time_from ?? undefined,
-      s.cinema_time_to ?? undefined
-    );
-
-    // Add Dendy films to pool
-    const newDendyMap = new Map<string, DendyFilm>();
-    for (const df of dendySessions) {
-      if (df.tmdbId) {
-        const success = await addFilmToSession(s.id, df.tmdbId, null);
-        if (success) {
-          // Will set the map after we have DB film IDs — done in loadFilms
-          // Store by tmdbId for now, resolve to DB id after load
-          newDendyMap.set(String(df.tmdbId), df);
-        }
-      }
-    }
-    setDendyMap(newDendyMap);
-  }
-
+  // loadFilms fetches Dendy sessions itself and keeps the result as a local variable.
+  // This avoids the stale-closure bug where useCallback captures the initial empty dendyMap
+  // state and never sees updates from setDendyMap.
   const loadFilms = useCallback(async (s: Session, participantId: string) => {
     let poolWithMeta = await getSessionFilmsWithMeta(s.id);
 
+    // ── Fetch Dendy sessions early so we have the map locally ─────────────────
+    // dendyTmdbMap is keyed by String(tmdbId) and lives only in this call's scope.
+    const dendyTmdbMap = new Map<string, DendyFilm>();
+    if (s.watch_mode !== "home" && s.cinema_date) {
+      const dendySessions = await getDendySessions(
+        s.cinema_date,
+        s.cinema_time_from ?? undefined,
+        s.cinema_time_to ?? undefined
+      );
+      for (const df of dendySessions) {
+        if (df.tmdbId) dendyTmdbMap.set(String(df.tmdbId), df);
+      }
+    }
+
+    // ── Seed pool if empty ────────────────────────────────────────────────────
     if (poolWithMeta.length < 5) {
-      if (s.watch_mode === "cinema") {
-        await seedCinemaPool(s);
-      } else if (s.watch_mode === "home") {
+      if (s.watch_mode === "cinema" || s.watch_mode === "both") {
+        // Add every Dendy film we already fetched
+        await Promise.all(
+          [...dendyTmdbMap.values()].map((df) =>
+            df.tmdbId ? addFilmToSession(s.id, df.tmdbId, null) : Promise.resolve(false)
+          )
+        );
+      }
+      if (s.watch_mode === "home" || s.watch_mode === "both") {
         await seedHomePool(s);
-      } else {
-        // both
-        await Promise.all([seedCinemaPool(s), seedHomePool(s)]);
       }
       poolWithMeta = await getSessionFilmsWithMeta(s.id);
     }
@@ -109,19 +105,18 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     const mySwiped = await getMySwipes(s.id, participantId);
     const unswiped = poolWithMeta.filter(({ film }) => !mySwiped.has(film.id));
 
-    // Track user-added film IDs
     const userAdded = unswiped.filter(({ addedBy }) => addedBy && addedBy !== participantId);
     const autoSeeded = unswiped.filter(({ addedBy }) => !addedBy || addedBy === participantId);
     setUserAddedIds(new Set(userAdded.map(({ film }) => film.id)));
 
     // Filter home pool by streaming services.
-    // Films with no provider data yet are included (shown untagged) — only films
-    // that *have* provider data but aren't on any selected service get excluded.
+    // Only exclude films that have provider data AND none of it matches — never exclude
+    // films with empty watch_providers_au (data may not be populated yet).
     let filteredAuto = autoSeeded;
     if ((s.watch_mode === "home" || s.watch_mode === "both") && s.streaming_services?.length > 0) {
       filteredAuto = autoSeeded.filter(({ film }) => {
         const providers: { serviceId: string }[] = film.watch_providers_au ?? [];
-        if (!providers.length) return true; // no data yet — don't exclude
+        if (!providers.length) return true;
         return providers.some((p) => s.streaming_services.includes(p.serviceId));
       });
     }
@@ -143,13 +138,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       ...filteredAuto.slice(insertAt).map(({ film }) => film),
     ];
 
-    // Build dendy map by db film id
+    // ── Resolve tmdbId-keyed map → DB film.id-keyed map ──────────────────────
     if (s.watch_mode !== "home") {
       const newMap = new Map<string, DendyFilm>();
       for (const { film } of poolWithMeta) {
-        const f = film as Film;
-        const df = dendyMap.get(String(f.tmdb_id));
-        if (df) newMap.set(f.id, df);
+        const df = dendyTmdbMap.get(String(film.tmdb_id));
+        if (df) newMap.set(film.id, df);
       }
       setDendyMap(newMap);
     }
@@ -157,7 +151,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setFullQueue(ordered);
     setCurrentIndex(0);
     if (ordered.length === 0) setAllDone(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

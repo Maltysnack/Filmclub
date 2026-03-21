@@ -44,11 +44,27 @@ export default function Home() {
     if (mode === "planned" && !deadline) return setError("Set a deadline for planned mode");
     if ((watchMode === "home" || watchMode === "both") && selectedServices.length === 0)
       return setError("Select at least one streaming service");
-    if ((watchMode === "cinema" || watchMode === "both") && !cinemaDate)
+    if (mode === "planned" && (watchMode === "cinema" || watchMode === "both") && !cinemaDate)
       return setError("Pick a date for the cinema session");
 
     setLoading(true);
     setError(null);
+
+    // For live + cinema: auto-use today's date and current time as the from-time
+    // so only sessions happening from now onwards are included.
+    const now = new Date();
+    const todayDate = now.toISOString().slice(0, 10);
+    const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const resolvedCinemaDate = watchMode !== "home"
+      ? (mode === "live" ? todayDate : cinemaDate)
+      : null;
+    const resolvedCinemaFrom = watchMode !== "home"
+      ? (mode === "live" ? nowTime : (cinemaFrom || null))
+      : null;
+    const resolvedCinemaTo = watchMode !== "home" && mode === "planned"
+      ? (cinemaTo || null)
+      : null;
 
     const session = await createSession(
       mode,
@@ -56,9 +72,9 @@ export default function Home() {
       threshold,
       watchMode,
       watchMode !== "cinema" ? selectedServices : [],
-      watchMode !== "home" ? cinemaDate : null,
-      watchMode !== "home" && cinemaFrom ? cinemaFrom : null,
-      watchMode !== "home" && cinemaTo ? cinemaTo : null,
+      resolvedCinemaDate,
+      resolvedCinemaFrom,
+      resolvedCinemaTo,
     );
     if (!session) { setLoading(false); return setError("Something went wrong. Try again."); }
 
@@ -221,7 +237,17 @@ export default function Home() {
           )}
 
           {/* Cinema options */}
-          {showCinema && (
+          {showCinema && mode === "live" && (
+            <div className="px-4 py-3 rounded-xl text-sm"
+              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="font-medium mb-0.5" style={{ color: "var(--text)" }}>🎬 Dendy Newtown</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Sessions showing from now today will appear in the pool automatically.
+              </p>
+            </div>
+          )}
+
+          {showCinema && mode === "planned" && (
             <>
               <Field label="Cinema date">
                 <input type="date" min={minDate} value={cinemaDate}
