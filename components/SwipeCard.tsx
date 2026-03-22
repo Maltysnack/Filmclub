@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import { Film } from "@/types";
 import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
@@ -49,6 +49,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
       onDragStart={() => setIsDragging(true)}
       onDragEnd={handleDragEnd}
       whileTap={isTop ? { scale: 1.02 } : undefined}
+      initial={isTop ? false : { scale: 0.96, y: 12 }}
       animate={isTop ? {} : { scale: 0.96, y: 12 }}
     >
       <div
@@ -204,16 +205,24 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
       </div>
 
       {/* Tap buttons (shown only on top card, hidden while dragging) */}
-      {isTop && !isDragging && (
-        <div className="absolute -bottom-16 left-0 right-0 flex justify-center gap-6 pointer-events-none">
-          <ActionButton onClick={onDislike} variant="dislike">
-            <X size={24} />
-          </ActionButton>
-          <ActionButton onClick={onLike} variant="like">
-            <Heart size={22} />
-          </ActionButton>
-        </div>
-      )}
+      <AnimatePresence>
+        {isTop && !isDragging && (
+          <motion.div
+            className="absolute -bottom-16 left-0 right-0 flex justify-center gap-6 pointer-events-none"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            <ActionButton onClick={onDislike} variant="dislike">
+              <X size={24} />
+            </ActionButton>
+            <ActionButton onClick={onLike} variant="like">
+              <Heart size={22} />
+            </ActionButton>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
