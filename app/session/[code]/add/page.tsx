@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Search, Plus, Check, Heart, Trophy, Info } from "lucide-react";
+import { ArrowLeft, Search, Plus, Check, Heart, Trophy, Info, Layers, Lock, Clock } from "lucide-react";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
 import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
 import { addFilmToSession, getSession, getParticipantId, getSessionFilms, recordSwipe } from "@/lib/session";
@@ -22,6 +22,8 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   const [searching, setSearching] = useState(false);
   const [checkingProviders, setCheckingProviders] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const [sessionClosed, setSessionClosed] = useState(false);
   const [participantId, setParticipantIdState] = useState<string | null>(null);
   const [filmIdMap, setFilmIdMap] = useState<Map<number, string>>(new Map());
   const [sessionServices, setSessionServices] = useState<string[]>([]);
@@ -40,6 +42,8 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
       setSessionId(s.id);
       setParticipantIdState(pid);
       setSessionServices(s.streaming_services ?? []);
+      setSessionStarted(s.started);
+      setSessionClosed(s.status === "closed");
 
       const pool = await getSessionFilms(s.id);
       setAlreadyInPool(new Set(pool.map((f: Film) => f.tmdb_id)));
@@ -129,17 +133,27 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
             <ArrowLeft size={18} />
           </button>
           <Logo size="sm" showText={false} />
-          <div className="flex-1">
-            <h1 className="text-base font-semibold" style={{ color: "var(--text)" }}>Add films</h1>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>{code}</p>
+          <h1 className="flex-1 text-base font-semibold" style={{ color: "var(--text)" }}>Add films</h1>
+          <div className="flex items-center gap-2">
+            <button onClick={() => router.push(`/session/${code}/results`)}
+              className="p-2 rounded-lg"
+              style={{ background: "var(--surface)", color: "var(--accent)" }}>
+              <Trophy size={18} />
+            </button>
+            <button onClick={() => router.push(`/session/${code}`)}
+              className="p-2 rounded-lg"
+              style={{ background: "var(--surface)", color: "var(--accent)" }}>
+              <Layers size={18} />
+            </button>
+            <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+              style={{
+                background: sessionClosed ? "rgba(74,222,128,0.1)" : "var(--surface)",
+                color: sessionClosed ? "var(--like)" : "var(--text-muted)",
+              }}>
+              {sessionClosed ? <Lock size={11} /> : <Clock size={11} />}
+              {sessionClosed ? "Closed" : sessionStarted ? "Live" : "Waiting"}
+            </div>
           </div>
-          <button
-            onClick={() => router.push(`/session/${code}/results`)}
-            className="p-2 rounded-lg"
-            style={{ background: "var(--surface)", color: "var(--text-muted)" }}
-          >
-            <Trophy size={18} />
-          </button>
         </header>
 
         {/* Search bar */}

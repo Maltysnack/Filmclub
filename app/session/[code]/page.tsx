@@ -519,7 +519,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           </button>
           <button onClick={() => router.push(`/session/${code}/results`)}
             className="p-2 rounded-lg"
-            style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
+            style={{ background: "var(--surface)", color: "var(--accent)" }}>
             <Trophy size={18} />
           </button>
         </div>
@@ -572,7 +572,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
       {/* Code + start bar */}
       <div className="px-5 pb-3 shrink-0">
-        <p className="text-xs mb-1 px-1" style={{ color: "var(--text-muted)" }}>session code</p>
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
           style={{ background: "var(--surface)" }}>
           <button onClick={handleShare} className="flex items-center gap-2 min-w-0">

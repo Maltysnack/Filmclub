@@ -93,9 +93,9 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
             style={{ background: "var(--surface)", color: "var(--accent)" }}>
             <Plus size={18} />
           </button>
-          <button onClick={() => router.back()}
+          <button onClick={() => router.push(`/session/${code}`)}
             className="p-2 rounded-lg"
-            style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
+            style={{ background: "var(--surface)", color: "var(--accent)" }}>
             <Layers size={18} />
           </button>
           <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
