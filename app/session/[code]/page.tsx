@@ -47,10 +47,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const sessionRef = useRef<Session | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
 
-  // View mode — persisted to localStorage
+  // View mode — persisted to localStorage (scroll is the default)
   const [viewMode, setViewMode] = useState<"swipe" | "scroll">(() => {
-    if (typeof window === "undefined") return "swipe";
-    return (localStorage.getItem("filmclub-view-mode") as "swipe" | "scroll") ?? "swipe";
+    if (typeof window === "undefined") return "scroll";
+    return (localStorage.getItem("filmclub-view-mode") as "swipe" | "scroll") ?? "scroll";
   });
   function toggleViewMode() {
     setViewMode((m) => {
@@ -645,8 +645,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         /* ── Scroll mode ──────────────────────────────────────── */
         <>
           <div className="flex-1 px-5" style={{ minHeight: 0 }}>
-            <div className="relative w-full rounded-2xl overflow-hidden"
-              style={{ height: "calc(100dvh - 250px)", maxHeight: 640 }}>
+            {/* Same height as swipe card — shared constant keeps them in sync */}
+            <div className="relative w-full" style={{ height: "calc(100dvh - 240px)" }}>
               {allDone || (queue.length === 0 && !loading) ? (
                 <AllDoneScreen
                   mode={session?.mode ?? "live"}
@@ -679,12 +679,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         /* ── Swipe mode ───────────────────────────────────────── */
         <>
           <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}>
-            {/* Swipe card — full width on mobile, shrinks on desktop when info open */}
+            {/* Swipe card — same height as scroll mode (calc(100dvh - 240px)) */}
             <div className="relative shrink-0 transition-all duration-300"
               style={{
                 width: (infoFilm && !isMobile) ? "calc(50% - 6px)" : "100%",
-                height: "calc(100dvh - 310px)",
-                maxHeight: 480,
+                height: "calc(100dvh - 240px)",
               }}>
               <AnimatePresence>
                 {allDone || (queue.length === 0 && !loading) ? (
@@ -724,11 +723,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               <AnimatePresence>
                 {infoFilm && (
                   <motion.div
-                    className="rounded-2xl overflow-hidden shrink-0 flex flex-col"
+                    className="rounded-[28px] overflow-hidden shrink-0 flex flex-col"
                     style={{
                       width: "calc(50% - 6px)",
-                      height: "calc(100dvh - 310px)",
-                      maxHeight: 480,
+                      height: "calc(100dvh - 240px)",
                       background: "var(--surface)",
                     }}
                     initial={{ opacity: 0, x: 32 }}

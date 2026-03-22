@@ -8,10 +8,10 @@ import { posterUrl } from "@/lib/tmdb";
 import { getService } from "@/lib/streaming";
 import { Heart, Info } from "lucide-react";
 
-// How much of the next card peeks at the bottom (px)
-const PEEK = 20;
-// Visual gap between cards (px)
-const GAP = 8;
+// Visual gap between cards (px) — increase to taste
+const GAP = 16;
+// Card corner radius — must match SwipeCard (rounded-[28px])
+const CARD_RADIUS = 28;
 
 interface ScrollViewProps {
   films: Film[];
@@ -72,8 +72,8 @@ export default function ScrollView({
     rafRef.current = requestAnimationFrame(step);
   }, []);
 
-  // Slot height = container minus PEEK (so next card always pokes out)
-  const slotHeight = containerHeight > 0 ? containerHeight - PEEK : 0;
+  // Slot height = card + gap (fills full container height)
+  const slotHeight = containerHeight > 0 ? containerHeight : 0;
 
   const snapToNearest = useCallback(() => {
     const el = containerRef.current;
@@ -111,7 +111,7 @@ export default function ScrollView({
     };
   }, []);
 
-  // Card height = slot minus gap (gap is the dark strip between cards)
+  // Card fills the slot minus the gap strip at the bottom
   const cardHeight = slotHeight > 0 ? slotHeight - GAP : 0;
 
   return (
@@ -128,7 +128,7 @@ export default function ScrollView({
         // Slot — determines snap unit
         <div key={film.id} style={{ height: slotHeight || "100%" }}>
           {/* Card — slightly shorter than slot to create gap + peek */}
-          <div style={{ height: cardHeight || "calc(100% - 8px)", borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ height: cardHeight || `calc(100% - ${GAP}px)`, borderRadius: CARD_RADIUS, overflow: "hidden" }}>
             <FilmScrollCard
               film={film}
               liked={likedIds.has(film.id)}

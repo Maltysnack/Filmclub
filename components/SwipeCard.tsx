@@ -52,7 +52,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
       animate={isTop ? {} : { scale: 0.96, y: 12 }}
     >
       <div
-        className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl drag-card"
+        className="relative w-full h-full rounded-[28px] overflow-hidden shadow-2xl drag-card"
         style={{ background: "var(--surface-2)" }}
       >
         {/* Poster image */}
