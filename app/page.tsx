@@ -6,7 +6,7 @@ import Logo from "@/components/Logo";
 import DendyLogo from "@/components/DendyLogo";
 import { createSession, joinSession, getSession, getParticipants, setParticipantId, setIsHost } from "@/lib/session";
 import { AU_SERVICES } from "@/lib/streaming";
-import { Calendar, Zap, ChevronRight, Users, Home as HomeIcon, Clapperboard } from "lucide-react";
+import { Calendar, Zap, ChevronRight, ChevronDown, Users, Home as HomeIcon, Clapperboard } from "lucide-react";
 import type { WatchMode } from "@/types";
 
 type Tab = "create" | "join";
@@ -28,6 +28,7 @@ export default function Home() {
   const [cinemaDate, setCinemaDate] = useState("");
   const [cinemaFrom, setCinemaFrom] = useState("");
   const [cinemaTo, setCinemaTo] = useState("");
+  const [streamingOpen, setStreamingOpen] = useState(false);
 
   // Join form
   const [joinCode, setJoinCode] = useState("");
@@ -233,28 +234,45 @@ export default function Home() {
 
           {/* Streaming services */}
           {showStreaming && (
-            <Field label="Streaming services available">
-              <div className="flex flex-wrap gap-2">
-                {AU_SERVICES.map((svc) => {
-                  const on = selectedServices.includes(svc.id);
-                  return (
-                    <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
-                      className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
-                      style={{
-                        background: on ? svc.color : "var(--surface)",
-                        borderColor: on ? svc.color : "var(--border)",
-                        color: on ? "#fff" : "var(--text-muted)",
-                        opacity: on ? 1 : 0.8,
-                      }}>
-                      {svc.name}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
-                Only films available on these services will be shown
-              </p>
-            </Field>
+            <div>
+              <button type="button" onClick={() => setStreamingOpen(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors"
+                style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+                <span className="flex items-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
+                  Streaming services available
+                  {selectedServices.length > 0 && (
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+                      {selectedServices.length}
+                    </span>
+                  )}
+                </span>
+                <ChevronDown size={15} style={{
+                  color: "var(--text-muted)",
+                  transform: streamingOpen ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s",
+                }} />
+              </button>
+              {streamingOpen && (
+                <div className="flex flex-wrap gap-2 mt-2 px-1">
+                  {AU_SERVICES.map((svc) => {
+                    const on = selectedServices.includes(svc.id);
+                    return (
+                      <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
+                        className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
+                        style={{
+                          background: on ? svc.color : "var(--surface)",
+                          borderColor: on ? svc.color : "var(--border)",
+                          color: on ? "#fff" : "var(--text-muted)",
+                          opacity: on ? 1 : 0.8,
+                        }}>
+                        {svc.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Cinema options */}
@@ -269,35 +287,23 @@ export default function Home() {
           )}
 
           {showCinema && mode === "planned" && (
-            <>
-              <Field label="Cinema date">
+            <Field label="Cinema date & time window">
+              <div className="flex items-center gap-2">
                 <input type="date" min={minDate} value={cinemaDate}
                   onChange={(e) => setCinemaDate(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                  className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none min-w-0"
                   style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", colorScheme: "dark" }} />
-              </Field>
-              <Field label="Session time window (optional)">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>From</p>
-                    <input type="time" value={cinemaFrom}
-                      onChange={(e) => setCinemaFrom(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                      style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", colorScheme: "dark" }} />
-                  </div>
-                  <div>
-                    <p className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>To</p>
-                    <input type="time" value={cinemaTo}
-                      onChange={(e) => setCinemaTo(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-                      style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", colorScheme: "dark" }} />
-                  </div>
-                </div>
-                <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
-                  Only films with sessions in this window will appear
-                </p>
-              </Field>
-            </>
+                <input type="time" value={cinemaFrom}
+                  onChange={(e) => setCinemaFrom(e.target.value)}
+                  className="w-24 px-2 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", colorScheme: "dark" }} />
+                <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>→</span>
+                <input type="time" value={cinemaTo}
+                  onChange={(e) => setCinemaTo(e.target.value)}
+                  className="w-24 px-2 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", colorScheme: "dark" }} />
+              </div>
+            </Field>
           )}
 
           {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
