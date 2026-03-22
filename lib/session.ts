@@ -290,7 +290,7 @@ export async function getMatches(sessionId: string): Promise<Match[]> {
 
 // ── Scoring for planned mode ──────────────────────────────────────────────────
 
-export async function getFilmScores(sessionId: string): Promise<{ film: Film; score: number; total: number }[]> {
+export async function getFilmScores(sessionId: string): Promise<{ film: Film; score: number; total: number; likedByIds: string[] }[]> {
   const [films, { data: allSwipes }, { count: total }] = await Promise.all([
     getSessionFilms(sessionId),
     supabase
@@ -308,9 +308,14 @@ export async function getFilmScores(sessionId: string): Promise<{ film: Film; sc
 
   return films
     .map((film) => {
-      const filmSwipes = swipes.filter((s: { film_id: string; liked: boolean }) => s.film_id === film.id);
-      const likes = filmSwipes.filter((s: { liked: boolean }) => s.liked).length;
-      return { film, score: likes, total: participantCount };
+      const filmSwipes = swipes.filter((s: { film_id: string; liked: boolean; participant_id: string }) => s.film_id === film.id);
+      const likeSwipes = filmSwipes.filter((s: { liked: boolean }) => s.liked);
+      return {
+        film,
+        score: likeSwipes.length,
+        total: participantCount,
+        likedByIds: likeSwipes.map((s: { participant_id: string }) => s.participant_id),
+      };
     })
     .sort((a, b) => b.score - a.score);
 }

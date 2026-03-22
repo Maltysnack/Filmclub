@@ -14,6 +14,7 @@ interface FilmScore {
   film: Film;
   score: number;
   total: number;
+  likedByIds: string[];
 }
 
 export default function ResultsPage({ params }: { params: Promise<{ code: string }> }) {
@@ -172,6 +173,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                         {topFilm.film.title}
                       </h2>
                       <ScoreBar score={topFilm.score} total={topFilm.total} highlight />
+                      <LikedByNames ids={topFilm.likedByIds} participants={participants} />
                     </div>
                   </motion.button>
                 </div>
@@ -185,7 +187,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                     Also liked
                   </p>
                   <div className="space-y-2">
-                    {scores.slice(1).map(({ film, score, total }, i) => (
+                    {scores.slice(1).map(({ film, score, total, likedByIds }, i) => (
                       <motion.button
                         key={film.id}
                         onClick={() => setInfoFilm(film)}
@@ -212,6 +214,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                             {film.release_year}
                           </p>
                           <ScoreBar score={score} total={total} />
+                          <LikedByNames ids={likedByIds} participants={participants} />
                         </div>
                       </motion.button>
                     ))}
@@ -242,6 +245,19 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
       <FilmModal film={infoFilm} onClose={() => setInfoFilm(null)} />
     </div>
     </div>
+  );
+}
+
+function LikedByNames({ ids, participants }: { ids: string[]; participants: Participant[] }) {
+  if (!ids.length) return null;
+  const names = ids
+    .map((id) => participants.find((p) => p.id === id)?.name)
+    .filter(Boolean) as string[];
+  if (!names.length) return null;
+  return (
+    <p className="text-xs mt-1.5 truncate" style={{ color: "var(--text-muted)" }}>
+      ❤️ {names.join(", ")}
+    </p>
   );
 }
 

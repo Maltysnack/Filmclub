@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
-import { createSession, joinSession, getSession, setParticipantId, setIsHost } from "@/lib/session";
+import { createSession, joinSession, getSession, getParticipants, setParticipantId, setIsHost } from "@/lib/session";
 import { AU_SERVICES } from "@/lib/streaming";
 import { Calendar, Zap, ChevronRight, Users, Home as HomeIcon, Clapperboard } from "lucide-react";
 import type { WatchMode } from "@/types";
@@ -32,10 +32,31 @@ export default function Home() {
   const [joinCode, setJoinCode] = useState("");
   const [joinName, setJoinName] = useState("");
 
-  function resolveName(raw: string): string {
-    if (!raw.trim()) return "Red Rebel";
-    if (raw.trim().toLowerCase() === "tom") return "Blue Bandit";
-    return raw.trim();
+  const MYSTERY_NAMES = [
+    "James Bond", "Mr. X", "Mrs. X", "Ethan Hunt",
+    "Keyser Söze", "John Doe", "Batman",
+  ];
+
+  function pickMysteryName(takenNames: string[]): string {
+    const available = MYSTERY_NAMES.filter((n) => !takenNames.includes(n));
+    const pool = available.length > 0 ? available : MYSTERY_NAMES;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function resolveName(raw: string, takenNames: string[] = []): string {
+    const trimmed = raw.trim();
+    if (!trimmed) return pickMysteryName(takenNames);
+    if (trimmed.toLowerCase() === "tom") return "Blue Bandit";
+    if (trimmed.toLowerCase() === "pop") return "Pop ❤️";
+    if (trimmed.toLowerCase() === "poppy") return "Poppy ❤️";
+    return trimmed;
+  }
+
+  function normaliseCode(raw: string): string {
+    // Strip any hyphens then reinsert after position 4 (WORD-NN format)
+    const stripped = raw.trim().toUpperCase().replace(/-/g, "");
+    if (stripped.length > 4) return `${stripped.slice(0, 4)}-${stripped.slice(4)}`;
+    return stripped;
   }
 
   function toggleService(id: string) {
@@ -90,6 +111,7 @@ export default function Home() {
     setParticipantId(session.code, participant.id);
     setIsHost(session.code);
     router.push(`/session/${session.code}`);
+
   }
 
   async function handleJoin(e: React.FormEvent) {
@@ -100,12 +122,14 @@ export default function Home() {
     setLoading(true);
     setError(null);
 
-    const code = joinCode.trim().toUpperCase();
+    const code = normaliseCode(joinCode);
     const session = await getSession(code);
     if (!session) { setLoading(false); return setError("Session not found. Check the code."); }
     if (session.status === "closed") { setLoading(false); return setError("This session has ended."); }
 
-    const participant = await joinSession(session.id, resolveName(joinName));
+    const existing = await getParticipants(session.id);
+    const takenNames = existing.map((p) => p.name);
+    const participant = await joinSession(session.id, resolveName(joinName, takenNames));
     if (!participant) { setLoading(false); return setError("Something went wrong. Try again."); }
 
     setParticipantId(session.code, participant.id);
