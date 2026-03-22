@@ -608,11 +608,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             Waiting for the host to start — swipe away in the meantime
           </p>
         )}
-        {!sessionStarted && isHost && (
-          <p className="text-xs text-center mt-2" style={{ color: "var(--text-muted)" }}>
-            Share the code, wait for everyone to join, then hit Start
-          </p>
-        )}
       </div>
 
       {/* Participants */}
@@ -645,8 +640,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         /* ── Scroll mode ──────────────────────────────────────── */
         <>
           <div className="flex-1 px-5" style={{ minHeight: 0 }}>
-            {/* Same height as swipe card — shared constant keeps them in sync */}
-            <div className="relative w-full" style={{ height: "calc(100dvh - 240px)" }}>
+            {/* Scroll container. Visual card height = this - GAP(16px).
+                Swipe container is set to this - 16px so both modes show identical card height. */}
+            <div className="relative w-full" style={{ height: "calc(100dvh - 212px)" }}>
               {allDone || (queue.length === 0 && !loading) ? (
                 <AllDoneScreen
                   mode={session?.mode ?? "live"}
@@ -679,11 +675,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         /* ── Swipe mode ───────────────────────────────────────── */
         <>
           <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}>
-            {/* Swipe card — same height as scroll mode (calc(100dvh - 240px)) */}
+            {/* Swipe card — scroll container (212px) minus GAP (16px) = same visual height */}
             <div className="relative shrink-0 transition-all duration-300"
               style={{
                 width: (infoFilm && !isMobile) ? "calc(50% - 6px)" : "100%",
-                height: "calc(100dvh - 240px)",
+                height: "calc(100dvh - 228px)",
               }}>
               <AnimatePresence>
                 {allDone || (queue.length === 0 && !loading) ? (
@@ -726,7 +722,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                     className="rounded-[28px] overflow-hidden shrink-0 flex flex-col"
                     style={{
                       width: "calc(50% - 6px)",
-                      height: "calc(100dvh - 240px)",
+                      height: "calc(100dvh - 228px)",
                       background: "var(--surface)",
                     }}
                     initial={{ opacity: 0, x: 32 }}
