@@ -11,9 +11,9 @@ import {
   getMySwipes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
   addFilmToSession,
 } from "@/lib/session";
-import { getTrendingFilms, getTopRatedFilms, posterUrl } from "@/lib/tmdb";
+import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
-import { getService, TMDB_GENRES } from "@/lib/streaming";
+import { getService, AU_SERVICES, TMDB_GENRES } from "@/lib/streaming";
 import { supabase } from "@/lib/supabase";
 import { Film, Session, Participant, Match } from "@/types";
 import { Plus, Users, Trophy, Share2, CheckCircle, Play, SlidersHorizontal, X, Heart } from "lucide-react";
@@ -57,11 +57,24 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   // Fast initial seed — just enough to show the first card immediately.
+  // Resolve session streaming_services (service IDs like "netflix") → TMDB provider IDs
+  function sessionProviderTmdbIds(s: Session): number[] {
+    return (s.streaming_services ?? [])
+      .map((sid) => AU_SERVICES.find((svc) => svc.id === sid)?.tmdbId ?? null)
+      .filter((id): id is number => id !== null);
+  }
+
   // session_films upsert is idempotent so re-adding later is safe.
   async function seedHomePool(s: Session) {
-    const trending = await getTrendingFilms(1);
+    const providerIds = sessionProviderTmdbIds(s);
+    // When streaming services are selected, seed from TMDB Discover so only
+    // films actually available on those services are added.
+    // Fall back to trending when no services are specified.
+    const films = providerIds.length > 0
+      ? await discoverFilmsByProviders(providerIds, 1)
+      : await getTrendingFilms(1);
     const seen = new Set<number>();
-    const initial = trending.filter((m) => {
+    const initial = films.filter((m) => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
       return true;
@@ -73,21 +86,21 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Adds ~80 more films in batches of 8; the real-time subscription
   // picks up each batch and extends the live queue automatically.
   async function seedMoreHomePool(s: Session) {
-    const [moreTrending, topRated] = await Promise.all([
-      getTrendingFilms(3),
-      getTopRatedFilms(2),
-    ]);
+    const providerIds = sessionProviderTmdbIds(s);
+    const raw = providerIds.length > 0
+      ? await discoverFilmsByProviders(providerIds, 4)
+      : await Promise.all([getTrendingFilms(3), getTopRatedFilms(2)]).then(([a, b]) => [...a, ...b]);
     const seen = new Set<number>();
-    const all = [...moreTrending, ...topRated].filter((m) => {
+    const deduped = raw.filter((m) => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
       return true;
     }).slice(0, 80);
 
     const BATCH = 8;
-    for (let i = 0; i < all.length; i += BATCH) {
-      await Promise.all(all.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
-      if (i + BATCH < all.length) await new Promise((r) => setTimeout(r, 400));
+    for (let i = 0; i < deduped.length; i += BATCH) {
+      await Promise.all(deduped.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
+      if (i + BATCH < deduped.length) await new Promise((r) => setTimeout(r, 400));
     }
   }
 
@@ -136,13 +149,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setUserAddedIds(new Set(userAdded.map(({ film }) => film.id)));
 
     // Filter home pool by streaming services.
-    // Only exclude films that have provider data AND none of it matches — never exclude
-    // films with empty watch_providers_au (data may not be populated yet).
+    // Since we now seed from TMDB Discover (provider-filtered), films in the pool
+    // should already match. This filter is the final safety net.
+    // Films with no provider data are excluded when services are selected — they
+    // shouldn't be in the pool anyway if seeding worked correctly.
     let filteredAuto = autoSeeded;
     if ((s.watch_mode === "home" || s.watch_mode === "both") && s.streaming_services?.length > 0) {
       filteredAuto = autoSeeded.filter(({ film }) => {
         const providers: { serviceId: string }[] = film.watch_providers_au ?? [];
-        if (!providers.length) return true;
         return providers.some((p) => s.streaming_services.includes(p.serviceId));
       });
     }

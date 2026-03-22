@@ -36,6 +36,20 @@ export async function getTopRatedFilms(pages = 1): Promise<TMDBMovie[]> {
   return fetchPages(`${BASE}/movie/top_rated?`, pages);
 }
 
+// Films available on specific streaming services in AU (TMDB Discover)
+// providerIds: TMDB provider IDs, joined with | (OR logic)
+export async function discoverFilmsByProviders(
+  providerIds: number[],
+  pages = 1
+): Promise<TMDBMovie[]> {
+  if (!providerIds.length) return [];
+  const withProviders = providerIds.join("|");
+  return fetchPages(
+    `${BASE}/discover/movie?watch_region=AU&with_watch_providers=${withProviders}&sort_by=popularity.desc&`,
+    pages
+  );
+}
+
 export async function searchFilms(query: string): Promise<TMDBMovie[]> {
   if (!query.trim()) return [];
   const res = await fetch(`${BASE}/search/movie?${params({ query, include_adult: "false" })}`);
