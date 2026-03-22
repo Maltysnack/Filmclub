@@ -9,7 +9,7 @@ import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
 import { addFilmToSession, getSession, getParticipantId, getSessionFilms, recordSwipe } from "@/lib/session";
 import { TMDBMovie, Film } from "@/types";
 import Logo from "@/components/Logo";
-import FilmInfoPanel from "@/components/FilmInfoPanel";
+import FilmInfoOverlay from "@/components/FilmInfoOverlay";
 
 export default function AddFilmsPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -228,66 +228,16 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
         </div>
       </div>
 
-      {/* Film info overlay — same side-by-side layout as swipe page */}
-      <AnimatePresence>
-        {infoFilm && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              className="fixed inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.75)" }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setInfoFilm(null)}
-            />
-            {/* Content — centred, phone-sized, side by side */}
-            <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center px-5"
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            >
-              <div className="flex gap-3 w-full" style={{ maxWidth: 480, height: "min(72dvh, 480px)" }}>
-                {/* Poster card */}
-                <div className="relative rounded-2xl overflow-hidden shrink-0"
-                  style={{ width: "calc(50% - 6px)", height: "100%" }}>
-                  <img
-                    src={posterUrl(infoFilm.poster_path, "w500")}
-                    alt={infoFilm.title}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0"
-                    style={{ background: "linear-gradient(to top, rgba(12,12,14,0.85) 0%, transparent 50%)" }} />
-                  <div className="absolute bottom-0 left-0 right-0 p-3">
-                    <p className="text-sm font-semibold leading-tight" style={{ color: "var(--text)" }}>
-                      {infoFilm.title}
-                    </p>
-                    {infoFilm.release_year && (
-                      <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{infoFilm.release_year}</p>
-                    )}
-                  </div>
-                </div>
-                {/* Info panel */}
-                <div className="rounded-2xl overflow-hidden shrink-0 flex flex-col"
-                  style={{ width: "calc(50% - 6px)", height: "100%", background: "var(--surface)" }}>
-                  <FilmInfoPanel
-                    film={infoFilm}
-                    onClose={() => setInfoFilm(null)}
-                    onLike={() => {
-                      const movie = results.find((r) => r.id === infoFilm.tmdb_id);
-                      if (movie) handleLike(movie);
-                      setInfoFilm(null);
-                    }}
-                    sessionServices={sessionServices}
-                  />
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <FilmInfoOverlay
+        film={infoFilm}
+        onClose={() => setInfoFilm(null)}
+        onLike={infoFilm ? () => {
+          const movie = results.find((r) => r.id === infoFilm.tmdb_id);
+          if (movie) handleLike(movie);
+          setInfoFilm(null);
+        } : undefined}
+        sessionServices={sessionServices}
+      />
 
       {/* Loading spinner while fetching info */}
       <AnimatePresence>

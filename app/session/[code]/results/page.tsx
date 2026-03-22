@@ -3,12 +3,12 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, Trophy, Lock, Clock, Plus, Layers } from "lucide-react";
+import { ArrowLeft, Trophy, Lock, Clock, Plus, Layers, Info } from "lucide-react";
 import { getSession, getParticipantId, getFilmScores, closeSession, getParticipants } from "@/lib/session";
 import { posterUrl } from "@/lib/tmdb";
 import { Film, Session, Participant } from "@/types";
 import Logo from "@/components/Logo";
-import FilmModal from "@/components/FilmModal";
+import FilmInfoOverlay from "@/components/FilmInfoOverlay";
 
 interface FilmScore {
   film: Film;
@@ -162,11 +162,9 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                     style={{ color: "var(--accent)" }}>
                     Top pick
                   </p>
-                  <motion.button
-                    onClick={() => setInfoFilm(topFilm.film)}
+                  <motion.div
                     className="w-full relative rounded-2xl overflow-hidden text-left"
                     style={{ aspectRatio: "16/9", background: "var(--surface)" }}
-                    whileTap={{ scale: 0.98 }}
                   >
                     <img
                       src={posterUrl(topFilm.film.backdrop_path ?? topFilm.film.poster_path, "w500")}
@@ -183,7 +181,14 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                       <ScoreBar score={topFilm.score} total={topFilm.total} highlight />
                       <LikedByNames ids={topFilm.likedByIds} participants={participants} />
                     </div>
-                  </motion.button>
+                    <button
+                      onClick={() => setInfoFilm(topFilm.film)}
+                      className="absolute top-3 right-3 p-1.5 rounded-full"
+                      style={{ background: "rgba(0,0,0,0.55)", color: "white" }}
+                    >
+                      <Info size={14} />
+                    </button>
+                  </motion.div>
                 </div>
               )}
 
@@ -196,15 +201,13 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                   </p>
                   <div className="space-y-2">
                     {scores.slice(1).map(({ film, score, total, likedByIds }, i) => (
-                      <motion.button
+                      <motion.div
                         key={film.id}
-                        onClick={() => setInfoFilm(film)}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.05 }}
-                        className="w-full flex items-center gap-3 p-3 rounded-xl text-left"
+                        className="w-full flex items-center gap-3 p-3 rounded-xl"
                         style={{ background: "var(--surface)" }}
-                        whileTap={{ scale: 0.98 }}
                       >
                         <div className="w-10 rounded-lg overflow-hidden shrink-0"
                           style={{ aspectRatio: "2/3" }}>
@@ -224,7 +227,14 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                           <ScoreBar score={score} total={total} />
                           <LikedByNames ids={likedByIds} participants={participants} />
                         </div>
-                      </motion.button>
+                        <button
+                          onClick={() => setInfoFilm(film)}
+                          className="shrink-0 p-1.5 rounded-full ml-1"
+                          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
+                        >
+                          <Info size={14} />
+                        </button>
+                      </motion.div>
                     ))}
                   </div>
                 </>
@@ -250,7 +260,11 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         </div>
       )}
 
-      <FilmModal film={infoFilm} onClose={() => setInfoFilm(null)} />
+      <FilmInfoOverlay
+        film={infoFilm}
+        onClose={() => setInfoFilm(null)}
+        sessionServices={session?.streaming_services ?? []}
+      />
     </div>
     </div>
   );
