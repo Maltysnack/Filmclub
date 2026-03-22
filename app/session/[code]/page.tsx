@@ -61,8 +61,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Resolve session streaming_services (service IDs like "netflix") → TMDB provider IDs
   function sessionProviderTmdbIds(s: Session): number[] {
     return (s.streaming_services ?? [])
-      .map((sid) => AU_SERVICES.find((svc) => svc.id === sid)?.tmdbId ?? null)
-      .filter((id): id is number => id !== null);
+      .flatMap((sid) => {
+        const tmdbId = AU_SERVICES.find((svc) => svc.id === sid)?.tmdbId;
+        return tmdbId != null ? [tmdbId] : [];
+      });
   }
 
   // session_films upsert is idempotent so re-adding later is safe.
