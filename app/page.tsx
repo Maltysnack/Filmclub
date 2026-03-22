@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
+import DendyLogo from "@/components/DendyLogo";
 import { createSession, joinSession, getSession, getParticipants, setParticipantId, setIsHost } from "@/lib/session";
 import { AU_SERVICES } from "@/lib/streaming";
 import { Calendar, Zap, ChevronRight, Users, Home as HomeIcon, Clapperboard } from "lucide-react";
@@ -270,7 +271,7 @@ export default function Home() {
           {showCinema && mode === "live" && (
             <div className="px-4 py-3 rounded-xl text-sm"
               style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-              <p className="font-medium mb-0.5" style={{ color: "var(--text)" }}>🎬 Dendy Newtown</p>
+              <div className="mb-1"><DendyLogo height={14} /></div>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                 Sessions showing from now today will appear in the pool automatically.
               </p>

@@ -7,6 +7,7 @@ import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
 import { posterUrl } from "@/lib/tmdb";
 import { Info, Heart, X } from "lucide-react";
+import DendyLogo from "./DendyLogo";
 
 interface SwipeCardProps {
   film: Film;
@@ -150,9 +151,9 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
                 {/* Dendy label + session times */}
                 {dendyInfo && (
                   <div className={`flex flex-col gap-1 shrink-0 ${available.length > 0 ? "items-end ml-auto" : "items-start"}`}>
-                    <span className="text-xs font-medium leading-none"
-                      style={{ color: "var(--accent)" }}>
-                      🎬 Dendy Newtown{dendyInfo.tmdbMatch === "low" ? " ⚠️" : ""}
+                    <span className="flex items-center gap-1 leading-none">
+                      <DendyLogo height={12} />
+                      {dendyInfo.tmdbMatch === "low" && <span style={{ color: "var(--accent)" }}>⚠️</span>}
                     </span>
                     <div className="flex gap-1 flex-wrap">
                       {dendyInfo.sessionTimes.slice(0, 4).map((t) => (

@@ -6,6 +6,7 @@ import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
 import { posterUrl } from "@/lib/tmdb";
 import { X, Clock, Star } from "lucide-react";
+import DendyLogo from "./DendyLogo";
 
 interface FilmModalProps {
   film: Film | null;
@@ -112,9 +113,10 @@ export default function FilmModal({ film, onClose, onLike, onDislike, dendyInfo,
                   <div className="mb-4 p-3 rounded-xl space-y-2" style={{ background: "var(--surface-2)" }}>
                     {dendyInfo && (
                       <div>
-                        <p className="text-xs font-medium mb-1.5" style={{ color: "var(--accent)" }}>
-                          🎬 At Dendy Newtown{dendyInfo.tmdbMatch === "low" ? " ⚠️" : ""}
-                        </p>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <DendyLogo height={13} />
+                          {dendyInfo.tmdbMatch === "low" && <span className="text-xs" style={{ color: "var(--accent)" }}>⚠️</span>}
+                        </div>
                         <div className="flex flex-wrap gap-1.5">
                           {dendyInfo.sessionTimes.map((t) => (
                             <a key={t} href={dendyInfo.bookingUrls[t] ?? "#"} target="_blank" rel="noopener noreferrer"

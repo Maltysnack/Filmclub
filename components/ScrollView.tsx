@@ -7,6 +7,7 @@ import { DendyFilm } from "@/lib/dendy";
 import { posterUrl } from "@/lib/tmdb";
 import { getService } from "@/lib/streaming";
 import { Heart, Info } from "lucide-react";
+import DendyLogo from "./DendyLogo";
 
 // Visual gap between cards (px) — increase to taste
 const GAP = 16;
@@ -273,8 +274,9 @@ function FilmScrollCard({
             )}
             {dendyInfo && (
               <div className={`flex flex-col gap-1 shrink-0 ${providers.length > 0 ? "items-end ml-auto" : "items-start"}`}>
-                <span className="text-xs font-medium leading-none" style={{ color: "var(--accent)" }}>
-                  🎬 Dendy Newtown{dendyInfo.tmdbMatch === "low" ? " ⚠️" : ""}
+                <span className="flex items-center gap-1 leading-none">
+                  <DendyLogo height={12} />
+                  {dendyInfo.tmdbMatch === "low" && <span style={{ color: "var(--accent)" }}>⚠️</span>}
                 </span>
                 <div className="flex gap-1 flex-wrap">
                   {dendyInfo.sessionTimes.slice(0, 4).map((t) => (

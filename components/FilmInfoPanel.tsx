@@ -4,6 +4,7 @@ import { Film } from "@/types";
 import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
 import { X, Heart } from "lucide-react";
+import DendyLogo from "./DendyLogo";
 
 interface FilmInfoPanelProps {
   film: Film;
@@ -60,9 +61,10 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
           <div className="p-2.5 rounded-xl space-y-2" style={{ background: "var(--surface-2)" }}>
             {dendyInfo && (
               <div>
-                <p className="text-xs font-medium mb-1.5" style={{ color: "var(--accent)" }}>
-                  🎬 Dendy Newtown{dendyInfo.tmdbMatch === "low" ? " ⚠️" : ""}
-                </p>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <DendyLogo height={13} />
+                  {dendyInfo.tmdbMatch === "low" && <span className="text-xs" style={{ color: "var(--accent)" }}>⚠️</span>}
+                </div>
                 <div className="flex flex-wrap gap-1">
                   {dendyInfo.sessionTimes.map((t) => (
                     <a key={t} href={dendyInfo.bookingUrls[t] ?? "#"} target="_blank" rel="noopener noreferrer"

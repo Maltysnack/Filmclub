@@ -9,6 +9,7 @@ import FilmModal from "@/components/FilmModal";
 import FilmInfoPanel from "@/components/FilmInfoPanel";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
 import ScrollView from "@/components/ScrollView";
+import DendyLogo from "@/components/DendyLogo";
 import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
   getMySwipes, getMyLikes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
@@ -947,7 +948,7 @@ function WatchOptions({ film, dendy, session, compact = false }: {
     <div className="w-full mb-4">
       {dendy && (
         <div className="p-3 rounded-xl mb-2" style={{ background: "rgba(232,184,109,0.08)", border: "1px solid rgba(232,184,109,0.2)" }}>
-          <p className="text-xs font-medium mb-1.5" style={{ color: "var(--accent)" }}>🎬 At Dendy Newtown</p>
+          <div className="mb-1.5"><DendyLogo height={13} /></div>
           <div className="flex flex-wrap gap-1.5">
             {dendy.sessionTimes.map((t) => (
               <a key={t} href={dendy.bookingUrls[t] ?? "#"} target="_blank" rel="noopener noreferrer"
