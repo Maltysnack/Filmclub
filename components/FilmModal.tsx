@@ -127,7 +127,7 @@ export default function FilmModal({ film, onClose, onLike, onDislike, dendyInfo,
                       </div>
                     )}
                     {sessionServices.length > 0 && (() => {
-                      const providers: { serviceId: string }[] = (film as Film & { watch_providers_au?: { serviceId: string }[] }).watch_providers_au ?? [];
+                      const providers = film.watch_providers_au ?? [];
                       const available = providers.filter((p) => sessionServices.includes(p.serviceId));
                       if (!available.length) return null;
                       return (
