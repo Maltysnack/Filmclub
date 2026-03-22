@@ -465,7 +465,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             session={session!}
             dendyMap={dendyMap}
             isHost={isHost}
-            onShare={handleShare}
+
             onRandomise={async (winnerFilmId: string) => {
               await resolveMatch(session!.id, winnerFilmId);
               // Real-time subscription will fire on all devices and show the winner
@@ -800,12 +800,11 @@ function AllDoneScreen({ mode, watchMode, neverHadFilms, onResults }: {
   );
 }
 
-function MatchScreen({ matches, session, dendyMap, isHost, onShare, onRandomise, onVoteAgain }: {
+function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAgain }: {
   matches: Match[];
   session: Session;
   dendyMap: Map<string, DendyFilm>;
   isHost: boolean;
-  onShare: () => void;
   onRandomise?: (winnerFilmId: string) => Promise<void>;
   onVoteAgain?: () => void;
 }) {
@@ -901,8 +900,6 @@ function MatchScreen({ matches, session, dendyMap, isHost, onShare, onRandomise,
 
         {!isTied && (
           <div className="flex gap-3 w-full max-w-xs mt-auto pt-4">
-            <button onClick={onShare} className="flex-1 py-3 rounded-xl text-sm font-medium border"
-              style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>Share</button>
             <button onClick={() => router.push("/")} className="flex-1 py-3 rounded-xl text-sm font-semibold"
               style={{ background: "var(--accent)", color: "#0c0c0e" }}>Done</button>
           </div>
