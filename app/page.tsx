@@ -208,16 +208,6 @@ export default function Home() {
             </Field>
           )}
 
-          {mode === "live" && (
-            <Field label={`Match threshold — ${threshold === 100 ? "unanimous" : `${threshold}%`}`}>
-              <input type="range" min={50} max={100} step={10} value={threshold}
-                onChange={(e) => setThreshold(Number(e.target.value))}
-                className="w-full" style={{ accentColor: "var(--accent)" }} />
-              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                {threshold === 100 ? "Everyone must like it" : `${threshold}% of the group must like it`}
-              </p>
-            </Field>
-          )}
 
           {/* Watch mode */}
           <Field label="Watching at">
