@@ -120,7 +120,26 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
     .select("*")
     .eq("tmdb_id", tmdbId)
     .single();
-  if (cached) return cached;
+
+  if (cached) {
+    // If cached providers are missing logoPath, refresh them silently
+    const providers: { serviceId: string; name: string; logoPath?: string | null }[] =
+      cached.watch_providers_au ?? [];
+    const needsLogoRefresh =
+      providers.length > 0 && providers.every((p) => p.logoPath == null);
+    if (needsLogoRefresh) {
+      const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
+      const fresh = await fetchWatchProvidersAU(tmdbId, apiKey);
+      if (fresh.length > 0) {
+        await supabase
+          .from("films")
+          .update({ watch_providers_au: fresh })
+          .eq("id", cached.id);
+        return { ...cached, watch_providers_au: fresh };
+      }
+    }
+    return cached;
+  }
 
   // Fetch from TMDB and cache
   const detail = await getFilmDetail(tmdbId);

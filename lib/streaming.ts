@@ -1,15 +1,17 @@
 // Australian streaming services — TMDB flatrate provider IDs for region=AU
 // Verified: Netflix=8, Prime=9, Disney+=337, Apple TV+=350, Stan=119, Paramount+=531
 // Binge (Foxtel) appears as provider_id 38 in TMDB AU region data
+// tmdbLogoPath: the static TMDB logo path for this service (used as fallback
+// when a cached film's watch_providers_au entry has no logoPath)
 export const AU_SERVICES = [
-  { id: "netflix",   name: "Netflix",      abbrev: "N",   tmdbId: 8,   color: "#E50914" },
-  { id: "stan",      name: "Stan",         abbrev: "S",   tmdbId: 119, color: "#0069C1" },
-  { id: "disney",    name: "Disney+",      abbrev: "D+",  tmdbId: 337, color: "#113CCF" },
-  { id: "prime",     name: "Prime",        abbrev: "P",   tmdbId: 9,   color: "#00A8E1" },
-  { id: "apple",     name: "Apple TV+",    abbrev: "♦",   tmdbId: 350, color: "#888888" },
-  { id: "binge",     name: "Binge",        abbrev: "B",   tmdbId: 38,  color: "#FF5C35" },
-  { id: "paramount", name: "Paramount+",   abbrev: "P+",  tmdbId: 531, color: "#0064FF" },
-  { id: "foxtel",    name: "Foxtel",       abbrev: "F",   tmdbId: 272, color: "#444444" },
+  { id: "netflix",   name: "Netflix",      abbrev: "N",   tmdbId: 8,   color: "#E50914", tmdbLogoPath: "/t2yyOv40HZeVlLjYsCsPHnWLk4W.jpg" },
+  { id: "stan",      name: "Stan",         abbrev: "S",   tmdbId: 119, color: "#0069C1", tmdbLogoPath: "/3hI22hp7YDZXyrmhWxgLGPCotbz.jpg" },
+  { id: "disney",    name: "Disney+",      abbrev: "D+",  tmdbId: 337, color: "#113CCF", tmdbLogoPath: "/7rwgEs15tFwyR9NPQ5tjkWB43Hh.jpg" },
+  { id: "prime",     name: "Prime",        abbrev: "P",   tmdbId: 9,   color: "#00A8E1", tmdbLogoPath: "/dQeAar5H991VYporEjUspolDarG.jpg" },
+  { id: "apple",     name: "Apple TV+",    abbrev: "♦",   tmdbId: 350, color: "#888888", tmdbLogoPath: "/6uhKBfmtzFqOcLousHwZuzcrScK.jpg" },
+  { id: "binge",     name: "Binge",        abbrev: "B",   tmdbId: 38,  color: "#FF5C35", tmdbLogoPath: "/l1c5kNNQrLNRtR2U2Fjq0SoVMBY.jpg" },
+  { id: "paramount", name: "Paramount+",   abbrev: "P+",  tmdbId: 531, color: "#0064FF", tmdbLogoPath: "/xbhHHa1YgtpwhC8lb1NQ3ACVcLd.jpg" },
+  { id: "foxtel",    name: "Foxtel",       abbrev: "F",   tmdbId: 272, color: "#444444", tmdbLogoPath: null },
 ] as const;
 
 export type ServiceId = (typeof AU_SERVICES)[number]["id"];

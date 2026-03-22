@@ -137,10 +137,12 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
                     {available.slice(0, 4).map((p) => {
                       const svc = getService(p.serviceId);
                       if (!svc) return null;
-                      return p.logoPath ? (
+                      // Use per-film logoPath, fall back to service's static logo
+                      const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
+                      return logo ? (
                         <img
                           key={p.serviceId}
-                          src={`https://image.tmdb.org/t/p/w45${p.logoPath}`}
+                          src={`https://image.tmdb.org/t/p/w45${logo}`}
                           alt={svc.name}
                           title={svc.name}
                           className="w-6 h-6 rounded object-cover"

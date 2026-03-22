@@ -137,7 +137,7 @@ export default function FilmModal({ film, onClose, onLike, onDislike, dendyInfo,
                             {available.map((p) => {
                               const svc = getService(p.serviceId);
                               if (!svc) return null;
-                              const lp = (p as { serviceId: string; logoPath?: string | null }).logoPath;
+                              const lp = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
                               return lp ? (
                                 <div key={p.serviceId} className="flex items-center gap-1.5">
                                   <img src={`https://image.tmdb.org/t/p/w45${lp}`} alt={svc.name}
