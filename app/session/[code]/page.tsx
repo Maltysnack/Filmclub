@@ -19,7 +19,7 @@ import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, AU_SERVICES, TMDB_GENRES } from "@/lib/streaming";
 import { supabase } from "@/lib/supabase";
 import { Film, Session, Participant, Match } from "@/types";
-import { Plus, Users, Trophy, Share2, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List } from "lucide-react";
+import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List } from "lucide-react";
 
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -429,14 +429,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   async function handleShare() {
-    const url = window.location.href;
-    if (navigator.share) {
-      await navigator.share({ title: "Filmclub", text: `Join my Filmclub session! Code: ${code}`, url });
-    } else {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    await navigator.clipboard.writeText(`filmclub.watch ${code}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   if (loading) {
@@ -580,13 +575,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
           style={{ background: "var(--surface)" }}>
           <button onClick={handleShare} className="flex items-center gap-2 min-w-0">
-            <Share2 size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
             <span className="font-mono font-bold tracking-widest text-sm" style={{ color: "var(--accent)" }}>
               {code}
             </span>
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              {copied ? "Copied!" : "tap to share"}
-            </span>
+            {copied && (
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Copied</span>
+            )}
           </button>
           {isHost && !sessionStarted && (
             <button onClick={handleStart} disabled={starting}
