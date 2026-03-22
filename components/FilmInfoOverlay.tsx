@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Film } from "@/types";
 import { DendyFilm } from "@/lib/dendy";
@@ -19,6 +20,16 @@ interface FilmInfoOverlayProps {
 export default function FilmInfoOverlay({
   film, onClose, onLike, onDislike, sessionServices, dendyInfo,
 }: FilmInfoOverlayProps) {
+  // Lock body scroll while overlay is open
+  useEffect(() => {
+    if (film) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [film]);
+
   return (
     <AnimatePresence>
       {film && (

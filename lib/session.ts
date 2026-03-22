@@ -258,6 +258,16 @@ export async function getMySwipes(sessionId: string, participantId: string): Pro
   return new Set((data ?? []).map((s: { film_id: string }) => s.film_id));
 }
 
+export async function getMyLikes(sessionId: string, participantId: string): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("swipes")
+    .select("film_id")
+    .eq("session_id", sessionId)
+    .eq("participant_id", participantId)
+    .eq("liked", true);
+  return new Set((data ?? []).map((s: { film_id: string }) => s.film_id));
+}
+
 // ── Match detection ───────────────────────────────────────────────────────────
 
 export async function checkForMatch(

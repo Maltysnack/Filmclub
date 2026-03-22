@@ -8,9 +8,10 @@ import SwipeCard from "@/components/SwipeCard";
 import FilmModal from "@/components/FilmModal";
 import FilmInfoPanel from "@/components/FilmInfoPanel";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
+import ScrollView from "@/components/ScrollView";
 import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
-  getMySwipes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
+  getMySwipes, getMyLikes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
   startTiebreaker, resolveMatch, addFilmToSession,
 } from "@/lib/session";
 import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getAUProviderList, posterUrl } from "@/lib/tmdb";
@@ -18,7 +19,7 @@ import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, AU_SERVICES, TMDB_GENRES } from "@/lib/streaming";
 import { supabase } from "@/lib/supabase";
 import { Film, Session, Participant, Match } from "@/types";
-import { Plus, Users, Trophy, Share2, CheckCircle, Play, SlidersHorizontal, X, Heart } from "lucide-react";
+import { Plus, Users, Trophy, Share2, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List } from "lucide-react";
 
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -45,6 +46,22 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so handleSwipe always sees the latest session without stale closure
   const sessionRef = useRef<Session | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
+
+  // View mode — persisted to localStorage
+  const [viewMode, setViewMode] = useState<"swipe" | "scroll">(() => {
+    if (typeof window === "undefined") return "swipe";
+    return (localStorage.getItem("filmclub-view-mode") as "swipe" | "scroll") ?? "swipe";
+  });
+  function toggleViewMode() {
+    setViewMode((m) => {
+      const next = m === "swipe" ? "scroll" : "swipe";
+      localStorage.setItem("filmclub-view-mode", next);
+      return next;
+    });
+  }
+
+  // Liked film IDs for scroll mode (starts empty, populated from swipe history + new likes)
+  const [likedInScroll, setLikedInScroll] = useState<Set<string>>(new Set());
 
   // Responsive: mobile shows full-screen overlay, desktop shows inline side-by-side
   const [isMobile, setIsMobile] = useState(false);
@@ -174,7 +191,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       poolWithMeta = poolWithMeta.filter(({ film }) => ids.has(film.id));
     }
 
-    const mySwiped = await getMySwipes(s.id, participantId);
+    const [mySwiped, myLikes] = await Promise.all([
+      getMySwipes(s.id, participantId),
+      getMyLikes(s.id, participantId),
+    ]);
+    setLikedInScroll(myLikes);
     const unswiped = poolWithMeta.filter(({ film }) => !mySwiped.has(film.id));
 
     const userAdded = unswiped.filter(({ addedBy }) => addedBy && addedBy !== participantId);
@@ -384,6 +405,29 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setStarting(false);
   }
 
+  async function handleScrollLike(film: Film) {
+    const s = sessionRef.current ?? session;
+    if (!s || !participant) return;
+    setLikedInScroll((prev) => new Set([...prev, film.id]));
+    await recordSwipe(s.id, participant.id, film.id, true);
+    if (s.started) {
+      const isMatch = await checkForMatch(s.id, film.id, s.threshold);
+      if (isMatch && s.mode === "live") {
+        await closeSession(s.id);
+        await new Promise((r) => setTimeout(r, 300));
+        const allMatches = await getMatches(s.id);
+        if (allMatches.length > 0) setMatchList(allMatches);
+      }
+    }
+  }
+
+  async function handleScrollUnlike(film: Film) {
+    const s = sessionRef.current ?? session;
+    if (!s || !participant) return;
+    setLikedInScroll((prev) => { const next = new Set(prev); next.delete(film.id); return next; });
+    await recordSwipe(s.id, participant.id, film.id, false);
+  }
+
   async function handleShare() {
     const url = window.location.href;
     if (navigator.share) {
@@ -456,6 +500,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
         <Logo size="sm" />
         <div className="flex items-center gap-2">
+          <button onClick={toggleViewMode}
+            className="p-2 rounded-lg"
+            title={viewMode === "swipe" ? "Switch to scroll" : "Switch to swipe"}
+            style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
+            {viewMode === "swipe" ? <List size={18} /> : <Layers size={18} />}
+          </button>
           <button onClick={() => setShowGenreFilter((v) => !v)}
             className="p-2 rounded-lg relative"
             style={{ background: "var(--surface)", color: selectedGenres.length > 0 ? "var(--accent)" : "var(--text-muted)" }}>
@@ -591,88 +641,127 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       <div className="mb-4 shrink-0" />
 
       {/* Cards + info panel */}
-      <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}>
-        {/* Swipe card — full width on mobile, shrinks on desktop when info open */}
-        <div className="relative shrink-0 transition-all duration-300"
-          style={{
-            width: (infoFilm && !isMobile) ? "calc(50% - 6px)" : "100%",
-            height: "calc(100dvh - 310px)",
-            maxHeight: 480,
-          }}>
-          <AnimatePresence>
-            {allDone || (queue.length === 0 && !loading) ? (
-              <AllDoneScreen
-                mode={session?.mode ?? "live"}
-                watchMode={session?.watch_mode ?? "home"}
-                neverHadFilms={queue.length === 0}
-                onResults={() => router.push(`/session/${code}/results`)} />
-            ) : (
-              <>
-                {nextFilm && (
-                  <SwipeCard key={`${nextFilm.id}-next`} film={nextFilm}
-                    onLike={() => {}} onDislike={() => {}}
-                    onInfo={() => setInfoFilm(nextFilm)} isTop={false}
-                    dendyInfo={dendyMap.get(nextFilm.id)}
-                    sessionServices={session?.streaming_services ?? []} />
+      {viewMode === "scroll" ? (
+        /* ── Scroll mode ──────────────────────────────────────── */
+        <>
+          <div className="flex-1 px-5" style={{ minHeight: 0 }}>
+            <div className="relative w-full rounded-2xl overflow-hidden"
+              style={{ height: "calc(100dvh - 310px)", maxHeight: 560 }}>
+              {allDone || (queue.length === 0 && !loading) ? (
+                <AllDoneScreen
+                  mode={session?.mode ?? "live"}
+                  watchMode={session?.watch_mode ?? "home"}
+                  neverHadFilms={queue.length === 0}
+                  onResults={() => router.push(`/session/${code}/results`)} />
+              ) : (
+                <ScrollView
+                  films={queue}
+                  likedIds={likedInScroll}
+                  sessionServices={session?.streaming_services ?? []}
+                  dendyMap={dendyMap}
+                  onLike={handleScrollLike}
+                  onUnlike={handleScrollUnlike}
+                  onInfo={(film) => setInfoFilm(film)}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Info overlay for scroll mode (all screen sizes) */}
+          <FilmInfoOverlay
+            film={infoFilm}
+            onClose={() => setInfoFilm(null)}
+            sessionServices={session?.streaming_services ?? []}
+            dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
+          />
+        </>
+      ) : (
+        /* ── Swipe mode ───────────────────────────────────────── */
+        <>
+          <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}>
+            {/* Swipe card — full width on mobile, shrinks on desktop when info open */}
+            <div className="relative shrink-0 transition-all duration-300"
+              style={{
+                width: (infoFilm && !isMobile) ? "calc(50% - 6px)" : "100%",
+                height: "calc(100dvh - 310px)",
+                maxHeight: 480,
+              }}>
+              <AnimatePresence>
+                {allDone || (queue.length === 0 && !loading) ? (
+                  <AllDoneScreen
+                    mode={session?.mode ?? "live"}
+                    watchMode={session?.watch_mode ?? "home"}
+                    neverHadFilms={queue.length === 0}
+                    onResults={() => router.push(`/session/${code}/results`)} />
+                ) : (
+                  <>
+                    {nextFilm && (
+                      <SwipeCard key={`${nextFilm.id}-next`} film={nextFilm}
+                        onLike={() => {}} onDislike={() => {}}
+                        onInfo={() => setInfoFilm(nextFilm)} isTop={false}
+                        dendyInfo={dendyMap.get(nextFilm.id)}
+                        sessionServices={session?.streaming_services ?? []} />
+                    )}
+                    {currentFilm && (
+                      <motion.div key={currentFilm.id} className="absolute inset-0"
+                        exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}>
+                        <SwipeCard film={currentFilm}
+                          onLike={() => handleSwipe(true)}
+                          onDislike={() => handleSwipe(false)}
+                          onInfo={() => setInfoFilm(currentFilm)}
+                          isTop={!(infoFilm && !isMobile)}
+                          dendyInfo={dendyMap.get(currentFilm.id)}
+                          sessionServices={session?.streaming_services ?? []} />
+                      </motion.div>
+                    )}
+                  </>
                 )}
-                {currentFilm && (
-                  <motion.div key={currentFilm.id} className="absolute inset-0"
-                    exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}>
-                    <SwipeCard film={currentFilm}
-                      onLike={() => handleSwipe(true)}
-                      onDislike={() => handleSwipe(false)}
-                      onInfo={() => setInfoFilm(currentFilm)}
-                      isTop={!(infoFilm && !isMobile)}
-                      dendyInfo={dendyMap.get(currentFilm.id)}
-                      sessionServices={session?.streaming_services ?? []} />
+              </AnimatePresence>
+            </div>
+
+            {/* Desktop-only inline info panel */}
+            {!isMobile && (
+              <AnimatePresence>
+                {infoFilm && (
+                  <motion.div
+                    className="rounded-2xl overflow-hidden shrink-0 flex flex-col"
+                    style={{
+                      width: "calc(50% - 6px)",
+                      height: "calc(100dvh - 310px)",
+                      maxHeight: 480,
+                      background: "var(--surface)",
+                    }}
+                    initial={{ opacity: 0, x: 32 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 32 }}
+                    transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                  >
+                    <FilmInfoPanel
+                      film={infoFilm}
+                      onClose={() => setInfoFilm(null)}
+                      onLike={!allDone ? () => handleSwipe(true) : undefined}
+                      onDislike={!allDone ? () => handleSwipe(false) : undefined}
+                      dendyInfo={dendyMap.get(infoFilm.id)}
+                      sessionServices={session?.streaming_services ?? []}
+                    />
                   </motion.div>
                 )}
-              </>
+              </AnimatePresence>
             )}
-          </AnimatePresence>
-        </div>
+          </div>
 
-        {/* Desktop-only inline info panel */}
-        {!isMobile && (
-          <AnimatePresence>
-            {infoFilm && (
-              <motion.div
-                className="rounded-2xl overflow-hidden shrink-0 flex flex-col"
-                style={{
-                  width: "calc(50% - 6px)",
-                  height: "calc(100dvh - 310px)",
-                  maxHeight: 480,
-                  background: "var(--surface)",
-                }}
-                initial={{ opacity: 0, x: 32 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 32 }}
-                transition={{ type: "spring", damping: 28, stiffness: 300 }}
-              >
-                <FilmInfoPanel
-                  film={infoFilm}
-                  onClose={() => setInfoFilm(null)}
-                  onLike={!allDone ? () => handleSwipe(true) : undefined}
-                  onDislike={!allDone ? () => handleSwipe(false) : undefined}
-                  dendyInfo={dendyMap.get(infoFilm.id)}
-                  sessionServices={session?.streaming_services ?? []}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        )}
-      </div>
-
-      {/* Mobile-only full-screen info overlay */}
-      {isMobile && (
-        <FilmInfoOverlay
-          film={infoFilm}
-          onClose={() => setInfoFilm(null)}
-          onLike={!allDone ? () => { handleSwipe(true); setInfoFilm(null); } : undefined}
-          onDislike={!allDone ? () => { handleSwipe(false); setInfoFilm(null); } : undefined}
-          dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
-          sessionServices={session?.streaming_services ?? []}
-        />
+          {/* Mobile-only full-screen info overlay */}
+          {isMobile && (
+            <FilmInfoOverlay
+              film={infoFilm}
+              onClose={() => setInfoFilm(null)}
+              onLike={!allDone ? () => { handleSwipe(true); setInfoFilm(null); } : undefined}
+              onDislike={!allDone ? () => { handleSwipe(false); setInfoFilm(null); } : undefined}
+              dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
+              sessionServices={session?.streaming_services ?? []}
+            />
+          )}
+        </>
       )}
 
       <div className="h-24 shrink-0" />
