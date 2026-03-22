@@ -153,11 +153,14 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
 
   const { data, error } = await supabase
     .from("films")
-    .insert({ ...filmData, watch_providers_au: watchProviders })
+    .upsert({ ...filmData, watch_providers_au: watchProviders }, { onConflict: "tmdb_id" })
     .select()
     .single();
 
-  if (error) { console.error(error); return null; }
+  if (error) {
+    console.error("upsertFilm error:", error.message ?? JSON.stringify(error));
+    return null;
+  }
   return data;
 }
 
