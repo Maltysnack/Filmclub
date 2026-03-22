@@ -46,8 +46,11 @@ export default function ScrollView({
     return () => ro.disconnect();
   }, []);
 
-  // Whether the user's finger is currently down
+  // Whether touch/pointer is currently active (mobile finger OR mouse button held)
   const touching = useRef(false);
+  // Whether wheel events are actively firing (trackpad two-finger scroll on desktop)
+  const wheeling = useRef(false);
+  const wheelEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Custom 2s ease-in-out snap animation
   const animateScroll = useCallback((target: number) => {
@@ -97,9 +100,23 @@ export default function ScrollView({
     snapTimer.current = setTimeout(snapToNearest, 130);
   }, [snapToNearest]);
 
-  // Scroll events: only used to re-debounce during momentum after lift
+  // Wheel = Mac trackpad two-finger scroll (touch events don't fire on desktop).
+  // Each wheel event means the user is actively in control — cancel any pending snap.
+  // 200ms after the last wheel event we assume they've stopped and snap.
+  const handleWheel = useCallback(() => {
+    if (isSnapping.current) { cancelAnimationFrame(rafRef.current!); isSnapping.current = false; }
+    wheeling.current = true;
+    if (snapTimer.current) clearTimeout(snapTimer.current);
+    if (wheelEndTimer.current) clearTimeout(wheelEndTimer.current);
+    wheelEndTimer.current = setTimeout(() => {
+      wheeling.current = false;
+      snapToNearest();
+    }, 200);
+  }, [snapToNearest]);
+
+  // Scroll events: only used to re-debounce during momentum after touch lift
   const handleScroll = useCallback(() => {
-    if (isSnapping.current || touching.current) return;
+    if (isSnapping.current || touching.current || wheeling.current) return;
     if (snapTimer.current) clearTimeout(snapTimer.current);
     snapTimer.current = setTimeout(snapToNearest, 130);
   }, [snapToNearest]);
@@ -107,6 +124,7 @@ export default function ScrollView({
   useEffect(() => {
     return () => {
       if (snapTimer.current) clearTimeout(snapTimer.current);
+      if (wheelEndTimer.current) clearTimeout(wheelEndTimer.current);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
@@ -120,6 +138,7 @@ export default function ScrollView({
       className="w-full h-full overflow-y-scroll"
       style={{ scrollbarWidth: "none" }}
       onScroll={handleScroll}
+      onWheel={handleWheel}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
