@@ -55,22 +55,12 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
         className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl drag-card"
         style={{ background: "var(--surface-2)" }}
       >
-        {/* Poster image — blur-behind so the full poster is always visible */}
+        {/* Poster image */}
         <div className="absolute inset-0 overflow-hidden">
-          {/* Blurred background fill (covers letterbox bars) */}
-          <img
-            src={poster}
-            alt=""
-            aria-hidden
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-            style={{ filter: "blur(24px)", transform: "scale(1.15)", opacity: 0.7 }}
-            draggable={false}
-          />
-          {/* Main poster — object-contain so nothing gets cropped */}
           <img
             src={poster}
             alt={film.title}
-            className="relative w-full h-full object-contain pointer-events-none"
+            className="w-full h-full object-cover pointer-events-none"
             draggable={false}
           />
           {/* Gradient overlay at bottom */}

@@ -11,7 +11,7 @@ import {
   getMySwipes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
   addFilmToSession,
 } from "@/lib/session";
-import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, posterUrl } from "@/lib/tmdb";
+import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getAUProviderList, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, AU_SERVICES, TMDB_GENRES } from "@/lib/streaming";
 import { supabase } from "@/lib/supabase";
@@ -67,18 +67,29 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // session_films upsert is idempotent so re-adding later is safe.
   async function seedHomePool(s: Session) {
     const providerIds = sessionProviderTmdbIds(s);
+    console.log("[seed] services:", s.streaming_services, "→ providerIds:", providerIds);
+    // DEV: log the real TMDB AU provider list once to verify IDs
+    if (process.env.NODE_ENV === "development") {
+      getAUProviderList().then((list) => {
+        const relevant = list.filter((p) =>
+          /stan|binge|netflix|prime|disney|apple|paramount|foxtel/i.test(p.provider_name)
+        );
+        console.log("[TMDB AU providers]", relevant.map(p => `${p.provider_name} (${p.provider_id})`));
+      });
+    }
     // When streaming services are selected, seed from TMDB Discover so only
     // films actually available on those services are added.
     // Fall back to trending when no services are specified.
     const films = providerIds.length > 0
       ? await discoverFilmsByProviders(providerIds, 1)
       : await getTrendingFilms(1);
+    console.log("[seed] discover returned", films.length, "films, titles:", films.slice(0, 3).map(f => f.title));
     const seen = new Set<number>();
     const initial = films.filter((m) => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
       return true;
-    }).slice(0, 5);
+    }).slice(0, 10);
     await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null)));
   }
 
@@ -155,10 +166,16 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     // shouldn't be in the pool anyway if seeding worked correctly.
     let filteredAuto = autoSeeded;
     if ((s.watch_mode === "home" || s.watch_mode === "both") && s.streaming_services?.length > 0) {
+      console.log("[filter] session services:", s.streaming_services);
+      console.log("[filter] pool before filter:", autoSeeded.length, "films");
+      autoSeeded.slice(0, 5).forEach(({ film }) =>
+        console.log(`  "${film.title}" providers:`, film.watch_providers_au?.map(p => p.serviceId))
+      );
       filteredAuto = autoSeeded.filter(({ film }) => {
         const providers: { serviceId: string }[] = film.watch_providers_au ?? [];
         return providers.some((p) => s.streaming_services.includes(p.serviceId));
       });
+      console.log("[filter] pool after filter:", filteredAuto.length, "films");
     }
 
     function shuffle<T>(arr: T[]): T[] {
@@ -334,11 +351,19 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   if (loading) {
     const loadMsg = session?.watch_mode === "cinema"
       ? "Checking what's on at Dendy…"
-      : "Loading session…";
+      : "Finding films for you…";
     return (
       <div className="min-h-dvh flex items-center justify-center" style={{ background: "var(--bg)" }}>
-        <div className="text-center space-y-4 mx-auto" style={{ maxWidth: 480 }}>
+        <div className="text-center space-y-5 mx-auto px-6" style={{ maxWidth: 480 }}>
           <Logo size="md" />
+          {/* Spinning film reel */}
+          <div className="flex justify-center">
+            <div className="relative w-16 h-16">
+              <div className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin"
+                style={{ borderColor: `var(--accent) transparent var(--accent) var(--accent)` }} />
+              <div className="absolute inset-0 flex items-center justify-center text-2xl">🎬</div>
+            </div>
+          </div>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>{loadMsg}</p>
         </div>
       </div>
@@ -514,7 +539,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           }}>
           <AnimatePresence>
             {allDone || (queue.length === 0 && !loading) ? (
-              <AllDoneScreen mode={session?.mode ?? "live"}
+              <AllDoneScreen
+                mode={session?.mode ?? "live"}
+                watchMode={session?.watch_mode ?? "home"}
+                neverHadFilms={queue.length === 0}
                 onResults={() => router.push(`/session/${code}/results`)} />
             ) : (
               <>
@@ -648,7 +676,6 @@ function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionSer
             )}
             {availableProviders.length > 0 && (
               <div>
-                <p className="text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>🏠 Stream at home</p>
                 <div className="flex flex-wrap gap-2">
                   {availableProviders.map((p) => {
                     const svc = getService(p.serviceId);
@@ -742,18 +769,34 @@ function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionSer
   );
 }
 
-function AllDoneScreen({ mode, onResults }: { mode: string; onResults: () => void }) {
+function AllDoneScreen({ mode, watchMode, neverHadFilms, onResults }: {
+  mode: string;
+  watchMode: string;
+  neverHadFilms: boolean;
+  onResults: () => void;
+}) {
+  const isCinemaOnly = watchMode === "cinema";
+  const noSessionsToday = isCinemaOnly && neverHadFilms;
+
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-      <CheckCircle size={48} style={{ color: "var(--accent)" }} className="mb-4" />
-      <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text)" }}>You&apos;re all caught up</h2>
+      <div className="text-4xl mb-4">{noSessionsToday ? "🎭" : "✅"}</div>
+      <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text)" }}>
+        {noSessionsToday ? "Nothing on tonight" : "You're all caught up"}
+      </h2>
       <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
-        {mode === "planned" ? "Results will be revealed at the deadline." : "Waiting for the rest of the group."}
+        {noSessionsToday
+          ? "No sessions found at Dendy Newtown for today's time window. Try again later or switch to a streaming session."
+          : mode === "planned"
+            ? "Results will be revealed at the deadline."
+            : "Waiting for the rest of the group."}
       </p>
-      <button onClick={onResults} className="px-6 py-3 rounded-xl text-sm font-semibold"
-        style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-        {mode === "planned" ? "See current scores" : "See what everyone liked"}
-      </button>
+      {!noSessionsToday && (
+        <button onClick={onResults} className="px-6 py-3 rounded-xl text-sm font-semibold"
+          style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+          {mode === "planned" ? "See current scores" : "See what everyone liked"}
+        </button>
+      )}
     </div>
   );
 }

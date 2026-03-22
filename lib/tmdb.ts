@@ -36,17 +36,42 @@ export async function getTopRatedFilms(pages = 1): Promise<TMDBMovie[]> {
   return fetchPages(`${BASE}/movie/top_rated?`, pages);
 }
 
-// Films available on specific streaming services in AU (TMDB Discover)
-// providerIds: TMDB provider IDs, joined with | (OR logic)
+// Films available on specific streaming services in AU (TMDB Discover).
+// Calls once per provider (avoids pipe-OR URL ambiguity) then deduplicates.
+// with_watch_monetization_types=flatrate limits to subscription streaming only.
 export async function discoverFilmsByProviders(
   providerIds: number[],
-  pages = 1
+  pagesPerProvider = 1
 ): Promise<TMDBMovie[]> {
   if (!providerIds.length) return [];
-  const withProviders = providerIds.join("|");
-  return fetchPages(
-    `${BASE}/discover/movie?watch_region=AU&with_watch_providers=${withProviders}&sort_by=popularity.desc&`,
-    pages
+
+  const perProvider = await Promise.all(
+    providerIds.map((id) =>
+      fetchPages(
+        `${BASE}/discover/movie?watch_region=AU&with_watch_providers=${id}&with_watch_monetization_types=flatrate&sort_by=popularity.desc&`,
+        pagesPerProvider
+      )
+    )
+  );
+
+  // Deduplicate across providers, keeping insertion order
+  const seen = new Set<number>();
+  return perProvider.flat().filter((m) => {
+    if (seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
+}
+
+// Fetch the full list of AU streaming providers from TMDB.
+// Call this from the browser console to verify/correct provider IDs:
+//   import { getAUProviderList } from "@/lib/tmdb"; getAUProviderList().then(console.log)
+export async function getAUProviderList(): Promise<{ provider_id: number; provider_name: string; logo_path: string }[]> {
+  const res = await fetch(`${BASE}/watch/providers/movie?${params({ watch_region: "AU" })}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.results ?? []).sort((a: { provider_name: string }, b: { provider_name: string }) =>
+    a.provider_name.localeCompare(b.provider_name)
   );
 }
 

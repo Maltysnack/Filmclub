@@ -122,21 +122,23 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
     .single();
 
   if (cached) {
-    // If cached providers are missing logoPath, refresh them silently
     const providers: { serviceId: string; name: string; logoPath?: string | null }[] =
       cached.watch_providers_au ?? [];
-    const needsLogoRefresh =
-      providers.length > 0 && providers.every((p) => p.logoPath == null);
-    if (needsLogoRefresh) {
+    // Refresh if: (a) no providers stored yet, or (b) providers exist but lack logoPath.
+    // Case (a) covers films cached before provider tracking was added.
+    // Case (b) covers films cached before logo_path capture was added.
+    const needsRefresh =
+      providers.length === 0 ||
+      providers.every((p) => p.logoPath == null);
+    if (needsRefresh) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
       const fresh = await fetchWatchProvidersAU(tmdbId, apiKey);
-      if (fresh.length > 0) {
-        await supabase
-          .from("films")
-          .update({ watch_providers_au: fresh })
-          .eq("id", cached.id);
-        return { ...cached, watch_providers_au: fresh };
-      }
+      // Always update the DB (even if fresh is empty — marks the film as "checked")
+      await supabase
+        .from("films")
+        .update({ watch_providers_au: fresh })
+        .eq("id", cached.id);
+      return { ...cached, watch_providers_au: fresh };
     }
     return cached;
   }
@@ -174,7 +176,10 @@ export async function addFilmToSession(
 
   const { error } = await supabase
     .from("session_films")
-    .upsert({ session_id: sessionId, film_id: film.id, added_by: participantId });
+    .upsert(
+      { session_id: sessionId, film_id: film.id, added_by: participantId },
+      { onConflict: "session_id,film_id", ignoreDuplicates: true }
+    );
 
   return !error;
 }
