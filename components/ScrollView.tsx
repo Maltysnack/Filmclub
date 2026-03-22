@@ -8,6 +8,11 @@ import { posterUrl } from "@/lib/tmdb";
 import { getService } from "@/lib/streaming";
 import { Heart, Info } from "lucide-react";
 
+// How much of the next card peeks at the bottom (px)
+const PEEK = 20;
+// Visual gap between cards (px)
+const GAP = 8;
+
 interface ScrollViewProps {
   films: Film[];
   likedIds: Set<string>;
@@ -18,36 +23,78 @@ interface ScrollViewProps {
   onInfo: (film: Film) => void;
 }
 
+function easeInOutCubic(t: number) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 export default function ScrollView({
   films, likedIds, sessionServices, dendyMap, onLike, onUnlike, onInfo,
 }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
   const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSnapping = useRef(false);
+  const [containerHeight, setContainerHeight] = useState(0);
+
+  // Track container height so cards can be sized correctly
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setContainerHeight(el.clientHeight));
+    ro.observe(el);
+    setContainerHeight(el.clientHeight);
+    return () => ro.disconnect();
+  }, []);
+
+  // Slow custom animation (~700ms ease-in-out) instead of browser smooth scroll
+  const animateScroll = useCallback((target: number) => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const start = el.scrollTop;
+    const distance = target - start;
+    if (Math.abs(distance) < 2) { isSnapping.current = false; return; }
+    const duration = Math.min(700, 300 + Math.abs(distance) * 0.4);
+    const startTime = performance.now();
+
+    function step(now: number) {
+      const progress = Math.min((now - startTime) / duration, 1);
+      el!.scrollTop = start + distance * easeInOutCubic(progress);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        isSnapping.current = false;
+      }
+    }
+    rafRef.current = requestAnimationFrame(step);
+  }, []);
+
+  // Slot height = container minus PEEK (so next card always pokes out)
+  const slotHeight = containerHeight > 0 ? containerHeight - PEEK : 0;
 
   const snapToNearest = useCallback(() => {
     const el = containerRef.current;
-    if (!el) return;
-    const cardHeight = el.clientHeight;
-    if (cardHeight === 0) return;
-    const index = Math.round(el.scrollTop / cardHeight);
-    const target = index * cardHeight;
-    if (Math.abs(el.scrollTop - target) < 2) return;
+    if (!el || slotHeight === 0) return;
+    const index = Math.round(el.scrollTop / slotHeight);
     isSnapping.current = true;
-    el.scrollTo({ top: target, behavior: "smooth" });
-    // Clear snapping flag after animation settles
-    setTimeout(() => { isSnapping.current = false; }, 600);
-  }, []);
+    animateScroll(index * slotHeight);
+  }, [slotHeight, animateScroll]);
 
   const handleScroll = useCallback(() => {
     if (isSnapping.current) return;
     if (snapTimer.current) clearTimeout(snapTimer.current);
-    snapTimer.current = setTimeout(snapToNearest, 120);
+    snapTimer.current = setTimeout(snapToNearest, 130);
   }, [snapToNearest]);
 
   useEffect(() => {
-    return () => { if (snapTimer.current) clearTimeout(snapTimer.current); };
+    return () => {
+      if (snapTimer.current) clearTimeout(snapTimer.current);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, []);
+
+  // Card height = slot minus gap (gap is the dark strip between cards)
+  const cardHeight = slotHeight > 0 ? slotHeight - GAP : 0;
 
   return (
     <div
@@ -57,16 +104,21 @@ export default function ScrollView({
       onScroll={handleScroll}
     >
       {films.map((film) => (
-        <FilmScrollCard
-          key={film.id}
-          film={film}
-          liked={likedIds.has(film.id)}
-          sessionServices={sessionServices}
-          dendyInfo={dendyMap.get(film.id)}
-          onLike={() => onLike(film)}
-          onUnlike={() => onUnlike(film)}
-          onInfo={() => onInfo(film)}
-        />
+        // Slot — determines snap unit
+        <div key={film.id} style={{ height: slotHeight || "100%" }}>
+          {/* Card — slightly shorter than slot to create gap + peek */}
+          <div style={{ height: cardHeight || "calc(100% - 8px)", borderRadius: 16, overflow: "hidden" }}>
+            <FilmScrollCard
+              film={film}
+              liked={likedIds.has(film.id)}
+              sessionServices={sessionServices}
+              dendyInfo={dendyMap.get(film.id)}
+              onLike={() => onLike(film)}
+              onUnlike={() => onUnlike(film)}
+              onInfo={() => onInfo(film)}
+            />
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -108,8 +160,7 @@ function FilmScrollCard({
 
   return (
     <div
-      className="relative w-full shrink-0 overflow-hidden"
-      style={{ height: "100%" }}
+      className="relative w-full h-full overflow-hidden"
       onClick={handleTap}
     >
       {/* Poster */}
@@ -157,9 +208,8 @@ function FilmScrollCard({
         )}
       </AnimatePresence>
 
-      {/* Bottom info — matches SwipeCard layout */}
+      {/* Bottom info — matches SwipeCard layout exactly */}
       <div className="absolute bottom-0 left-0 right-0 p-5 pointer-events-none">
-        {/* Streaming + Dendy badges */}
         {(providers.length > 0 || dendyInfo) && (
           <div className="flex items-start gap-3 mb-2">
             {providers.length > 0 && (
@@ -220,7 +270,7 @@ function FilmScrollCard({
             </div>
           </div>
           <button
-            className="pointer-events-auto shrink-0 p-2 rounded-full transition-opacity"
+            className="pointer-events-auto shrink-0 p-2 rounded-full"
             style={{ background: "rgba(28,28,32,0.8)", color: "var(--text-muted)" }}
             onClick={(e) => { e.stopPropagation(); onInfo(); }}
           >

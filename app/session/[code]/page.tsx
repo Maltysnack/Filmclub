@@ -646,7 +646,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         <>
           <div className="flex-1 px-5" style={{ minHeight: 0 }}>
             <div className="relative w-full rounded-2xl overflow-hidden"
-              style={{ height: "calc(100dvh - 310px)", maxHeight: 560 }}>
+              style={{ height: "calc(100dvh - 250px)", maxHeight: 640 }}>
               {allDone || (queue.length === 0 && !loading) ? (
                 <AllDoneScreen
                   mode={session?.mode ?? "live"}
