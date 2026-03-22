@@ -127,15 +127,18 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
 
           {/* Participants */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
-            {participants.map((p) => (
-              <span
-                key={p.id}
-                className="text-xs px-2.5 py-1 rounded-full"
-                style={{ background: "var(--surface)", color: "var(--text-muted)" }}
-              >
-                {p.name}
-              </span>
-            ))}
+            {participants.map((p) => {
+              const color = participantColor(p.name);
+              return (
+                <span
+                  key={p.id}
+                  className="text-xs px-2.5 py-1 rounded-full font-medium"
+                  style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}
+                >
+                  {p.name}
+                </span>
+              );
+            })}
           </div>
 
           {scores.length === 0 ? (
@@ -248,6 +251,15 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
   );
 }
 
+const PERSON_COLORS = ["#22c55e","#a855f7","#f97316","#06b6d4","#ec4899","#eab308","#6366f1","#14b8a6"];
+function participantColor(name: string): string {
+  if (name === "Red Rebel") return "#ef4444";
+  if (name === "Blue Bandit") return "#3b82f6";
+  let h = 0;
+  for (let i = 0; i < name.length; i++) { h = name.charCodeAt(i) + ((h << 5) - h); h |= 0; }
+  return PERSON_COLORS[Math.abs(h) % PERSON_COLORS.length];
+}
+
 function LikedByNames({ ids, participants }: { ids: string[]; participants: Participant[] }) {
   if (!ids.length) return null;
   const names = ids
@@ -256,7 +268,7 @@ function LikedByNames({ ids, participants }: { ids: string[]; participants: Part
   if (!names.length) return null;
   return (
     <p className="text-xs mt-1.5 truncate" style={{ color: "var(--text-muted)" }}>
-      ❤️ {names.join(", ")}
+      {names.join(", ")}
     </p>
   );
 }
