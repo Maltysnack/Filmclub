@@ -46,7 +46,12 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         getFilmScores(s.id),
         getParticipants(s.id),
       ]);
-      setScores(allScores.filter((s) => s.score > 0).slice(0, 20));
+      const tiebreakerIds = s.tiebreaker_film_ids?.length ? new Set(s.tiebreaker_film_ids) : null;
+      const filtered = allScores
+        .filter((fs) => fs.score > 0)
+        .filter((fs) => !tiebreakerIds || tiebreakerIds.has(fs.film.id))
+        .slice(0, 20);
+      setScores(filtered);
       setParticipants(allParticipants);
       setLoading(false);
     }

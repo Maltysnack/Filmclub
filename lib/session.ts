@@ -292,6 +292,14 @@ export async function checkForMatch(
   return false;
 }
 
+export async function resolveMatch(sessionId: string, winnerFilmId: string) {
+  // Delete all non-winner matches then close — all devices pick up the single winner
+  await supabase.from("matches").delete()
+    .eq("session_id", sessionId)
+    .neq("film_id", winnerFilmId);
+  await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
+}
+
 export async function getMatches(sessionId: string): Promise<Match[]> {
   const { data } = await supabase
     .from("matches")
