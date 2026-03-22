@@ -46,7 +46,10 @@ export default function ScrollView({
     return () => ro.disconnect();
   }, []);
 
-  // Slow custom animation (~700ms ease-in-out) instead of browser smooth scroll
+  // Whether the user's finger is currently down
+  const touching = useRef(false);
+
+  // Custom 2s ease-in-out snap animation
   const animateScroll = useCallback((target: number) => {
     const el = containerRef.current;
     if (!el) return;
@@ -54,7 +57,7 @@ export default function ScrollView({
     const start = el.scrollTop;
     const distance = target - start;
     if (Math.abs(distance) < 2) { isSnapping.current = false; return; }
-    const duration = Math.min(700, 300 + Math.abs(distance) * 0.4);
+    const duration = 2000;
     const startTime = performance.now();
 
     function step(now: number) {
@@ -80,8 +83,23 @@ export default function ScrollView({
     animateScroll(index * slotHeight);
   }, [slotHeight, animateScroll]);
 
+  // While finger is down: cancel any pending snap
+  const handleTouchStart = useCallback(() => {
+    touching.current = true;
+    if (snapTimer.current) clearTimeout(snapTimer.current);
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); isSnapping.current = false; }
+  }, []);
+
+  // When finger lifts: start the snap timer (handles both still and flick)
+  const handleTouchEnd = useCallback(() => {
+    touching.current = false;
+    if (snapTimer.current) clearTimeout(snapTimer.current);
+    snapTimer.current = setTimeout(snapToNearest, 130);
+  }, [snapToNearest]);
+
+  // Scroll events: only used to re-debounce during momentum after lift
   const handleScroll = useCallback(() => {
-    if (isSnapping.current) return;
+    if (isSnapping.current || touching.current) return;
     if (snapTimer.current) clearTimeout(snapTimer.current);
     snapTimer.current = setTimeout(snapToNearest, 130);
   }, [snapToNearest]);
@@ -102,6 +120,9 @@ export default function ScrollView({
       className="w-full h-full overflow-y-scroll"
       style={{ scrollbarWidth: "none" }}
       onScroll={handleScroll}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
     >
       {films.map((film) => (
         // Slot — determines snap unit
