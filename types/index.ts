@@ -15,6 +15,7 @@ export interface Session {
   cinema_date: string | null;       // "2026-03-25"
   cinema_time_from: string | null;  // "18:00"
   cinema_time_to: string | null;    // "20:00"
+  tiebreaker_film_ids: string[] | null;
   created_at: string;
 }
 

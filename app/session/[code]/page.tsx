@@ -10,7 +10,7 @@ import FilmInfoPanel from "@/components/FilmInfoPanel";
 import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
   getMySwipes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
-  addFilmToSession,
+  startTiebreaker, addFilmToSession,
 } from "@/lib/session";
 import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getAUProviderList, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
@@ -155,6 +155,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       poolWithMeta = await getSessionFilmsWithMeta(s.id);
     }
 
+    // In tiebreaker mode only show the tied films
+    if (s.tiebreaker_film_ids?.length) {
+      const ids = new Set(s.tiebreaker_film_ids);
+      poolWithMeta = poolWithMeta.filter(({ film }) => ids.has(film.id));
+    }
+
     const mySwiped = await getMySwipes(s.id, participantId);
     const unswiped = poolWithMeta.filter(({ film }) => !mySwiped.has(film.id));
 
@@ -271,6 +277,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           if (updated.status === "closed") {
             const existing = await getMatches(session.id);
             if (existing.length > 0) setMatchList(existing);
+          } else if (updated.tiebreaker_film_ids?.length && participant) {
+            // Tiebreaker started — reload queue with only tied films
+            setMatchList([]);
+            setAllDone(false);
+            setCurrentIndex(0);
+            await loadFilms(updated, participant.id, true);
           }
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "swipes", filter: `session_id=eq.${session.id}` },
@@ -382,7 +394,20 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     return (
       <div style={{ background: "var(--bg)" }}>
         <div className="mx-auto" style={{ maxWidth: 480 }}>
-          <MatchScreen matches={matchList} session={session!} dendyMap={dendyMap} onShare={handleShare} />
+          <MatchScreen
+            matches={matchList}
+            session={session!}
+            dendyMap={dendyMap}
+            onShare={handleShare}
+            onVoteAgain={async () => {
+              const filmIds = matchList.map((m) => m.film_id);
+              await startTiebreaker(session!.id, filmIds);
+              setMatchList([]);
+              setAllDone(false);
+              setCurrentIndex(0);
+              await loadFilms({ ...session!, tiebreaker_film_ids: filmIds, status: "active", started: true }, participant!.id, true);
+            }}
+          />
         </div>
       </div>
     );
@@ -652,17 +677,20 @@ function AllDoneScreen({ mode, watchMode, neverHadFilms, onResults }: {
   );
 }
 
-function MatchScreen({ matches, session, dendyMap, onShare }: {
+function MatchScreen({ matches, session, dendyMap, onShare, onVoteAgain }: {
   matches: Match[];
   session: Session;
   dendyMap: Map<string, DendyFilm>;
   onShare: () => void;
+  onVoteAgain?: () => void;
 }) {
   const router = useRouter();
-  const topMatch = matches[0];
+  const [winner, setWinner] = useState<Match | null>(null);
+  const topMatch = winner ?? matches[0];
   const topFilm = topMatch?.film;
   if (!topFilm) return null;
   const hasMultiple = matches.length > 1;
+  const isTied = hasMultiple && !winner;
   const topDendy = dendyMap.get(topFilm.id);
 
   return (
@@ -674,10 +702,10 @@ function MatchScreen({ matches, session, dendyMap, onShare }: {
       <div className="relative z-10 flex flex-col items-center px-5 pt-12 pb-8 flex-1 overflow-y-auto">
         <div className="text-4xl mb-3">🎬</div>
         <h1 className="text-xl font-medium mb-1" style={{ color: "var(--accent)" }}>
-          {hasMultiple ? "You've got matches" : "You've got a match"}
+          {winner ? "Tonight's film" : hasMultiple ? "It's a tie!" : "You've got a match"}
         </h1>
         <p className="text-xs mb-8 text-center" style={{ color: "var(--text-muted)" }}>
-          {hasMultiple ? `${matches.length} films everyone agreed on` : "Everyone agreed on tonight's film"}
+          {winner ? "Randomly selected from the tie" : hasMultiple ? `${matches.length} films everyone agreed on` : "Everyone agreed on tonight's film"}
         </p>
 
         <div className="w-44 rounded-2xl overflow-hidden shadow-2xl mb-4" style={{ aspectRatio: "2/3" }}>
@@ -692,14 +720,11 @@ function MatchScreen({ matches, session, dendyMap, onShare }: {
         {/* Where to watch */}
         <WatchOptions film={topFilm} dendy={topDendy} session={session} />
 
-        {/* Runner-ups */}
-        {hasMultiple && (
-          <div className="w-full mb-6 mt-4">
-            <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
-              Also matched
-            </p>
+        {/* Tied films list — shown when there's a tie and no winner picked yet */}
+        {isTied && (
+          <div className="w-full mb-2 mt-2">
             <div className="space-y-2">
-              {matches.slice(1).map((m) => m.film && (
+              {matches.map((m) => m.film && (
                 <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl"
                   style={{ background: "var(--surface)" }}>
                   <div className="w-10 rounded-lg overflow-hidden shrink-0" style={{ aspectRatio: "2/3" }}>
@@ -719,12 +744,59 @@ function MatchScreen({ matches, session, dendyMap, onShare }: {
           </div>
         )}
 
-        <div className="flex gap-3 w-full max-w-xs mt-auto pt-4">
-          <button onClick={onShare} className="flex-1 py-3 rounded-xl text-sm font-medium border"
-            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>Share</button>
-          <button onClick={() => router.push("/")} className="flex-1 py-3 rounded-xl text-sm font-semibold"
-            style={{ background: "var(--accent)", color: "#0c0c0e" }}>Done</button>
-        </div>
+        {/* Runner-ups after randomise */}
+        {winner && hasMultiple && (
+          <div className="w-full mb-6 mt-4">
+            <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
+              Also matched
+            </p>
+            <div className="space-y-2">
+              {matches.filter((m) => m.id !== winner.id).map((m) => m.film && (
+                <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl"
+                  style={{ background: "var(--surface)" }}>
+                  <div className="w-10 rounded-lg overflow-hidden shrink-0" style={{ aspectRatio: "2/3" }}>
+                    <img src={posterUrl(m.film.poster_path, "w342")} alt={m.film.title}
+                      className="w-full h-full object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate" style={{ color: "var(--text)" }}>{m.film.title}</p>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      {m.film.release_year}{m.film.rating ? ` · ★ ${m.film.rating}` : ""}
+                    </p>
+                    <WatchOptions film={m.film} dendy={dendyMap.get(m.film.id)} session={session} compact />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tiebreaker actions */}
+        {isTied && (
+          <div className="flex gap-3 w-full max-w-xs mt-4">
+            {onVoteAgain && (
+              <button onClick={onVoteAgain} className="flex-1 py-3 rounded-xl text-sm font-semibold border"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+                Vote again
+              </button>
+            )}
+            <button
+              onClick={() => setWinner(matches[Math.floor(Math.random() * matches.length)])}
+              className="flex-1 py-3 rounded-xl text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+              Randomise
+            </button>
+          </div>
+        )}
+
+        {!isTied && (
+          <div className="flex gap-3 w-full max-w-xs mt-auto pt-4">
+            <button onClick={onShare} className="flex-1 py-3 rounded-xl text-sm font-medium border"
+              style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>Share</button>
+            <button onClick={() => router.push("/")} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "#0c0c0e" }}>Done</button>
+          </div>
+        )}
       </div>
     </div>
   );

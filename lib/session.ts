@@ -90,6 +90,21 @@ export async function startSession(sessionId: string) {
   await supabase.from("sessions").update({ started: true }).eq("id", sessionId);
 }
 
+export async function startTiebreaker(sessionId: string, filmIds: string[]) {
+  // Reopen session, mark started, store the tiebreaker film IDs, clear old matches
+  await Promise.all([
+    supabase.from("sessions").update({
+      status: "active",
+      started: true,
+      tiebreaker_film_ids: filmIds,
+    }).eq("id", sessionId),
+    supabase.from("matches").delete().eq("session_id", sessionId),
+    supabase.from("swipes").delete()
+      .eq("session_id", sessionId)
+      .in("film_id", filmIds),
+  ]);
+}
+
 // ── Participants ──────────────────────────────────────────────────────────────
 
 export async function joinSession(sessionId: string, name: string): Promise<Participant | null> {
