@@ -147,8 +147,8 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
             </button>
             <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
               style={{
-                background: sessionClosed ? "rgba(74,222,128,0.1)" : "var(--surface)",
-                color: sessionClosed ? "var(--like)" : "var(--text-muted)",
+                background: (sessionStarted || sessionClosed) ? "rgba(74,222,128,0.1)" : "var(--surface)",
+                color: (sessionStarted || sessionClosed) ? "var(--like)" : "var(--text-muted)",
               }}>
               {sessionClosed ? <Lock size={11} /> : <Clock size={11} />}
               {sessionClosed ? "Closed" : sessionStarted ? "Live" : "Waiting"}

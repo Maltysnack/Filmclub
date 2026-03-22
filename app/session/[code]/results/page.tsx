@@ -98,14 +98,20 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
             style={{ background: "var(--surface)", color: "var(--accent)" }}>
             <Layers size={18} />
           </button>
-          <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
-            style={{
-              background: session?.status === "closed" ? "rgba(74,222,128,0.1)" : "var(--surface)",
-              color: session?.status === "closed" ? "var(--like)" : "var(--text-muted)",
-            }}>
-            {session?.status === "closed" ? <Lock size={11} /> : <Clock size={11} />}
-            {session?.status === "closed" ? "Closed" : "Live"}
-          </div>
+          {(() => {
+            const isClosed = session?.status === "closed";
+            const isLive = session?.started && !isClosed;
+            return (
+              <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
+                style={{
+                  background: (isLive || isClosed) ? "rgba(74,222,128,0.1)" : "var(--surface)",
+                  color: (isLive || isClosed) ? "var(--like)" : "var(--text-muted)",
+                }}>
+                {isClosed ? <Lock size={11} /> : <Clock size={11} />}
+                {isClosed ? "Closed" : isLive ? "Live" : "Waiting"}
+              </div>
+            );
+          })()}
         </div>
       </header>
 
