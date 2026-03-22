@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 import { Session, Participant, Film, Match, WatchMode } from "@/types";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
-import { fetchWatchProvidersAU } from "./streaming";
+import { fetchWatchProvidersAU, getService } from "./streaming";
 
 // ── Session code generation ───────────────────────────────────────────────────
 
@@ -122,14 +122,22 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
     .single();
 
   if (cached) {
-    const providers: { serviceId: string; name: string; logoPath?: string | null }[] =
+    const providers: { serviceId: string; name: string; logoPath?: string | null; tmdbProviderId?: number | null }[] =
       cached.watch_providers_au ?? [];
-    // Refresh if: (a) no providers stored yet, or (b) providers exist but lack logoPath.
-    // Case (a) covers films cached before provider tracking was added.
-    // Case (b) covers films cached before logo_path capture was added.
+    // Refresh if:
+    //  (a) no providers stored yet — film cached before provider tracking
+    //  (b) providers exist but lack logoPath — cached before logo capture
+    //  (c) a stored entry's tmdbProviderId doesn't match the current AU_SERVICES
+    //      mapping — catches stale data after provider ID corrections
+    const hasWrongIds = providers.some((p) => {
+      if (!p.tmdbProviderId) return false;
+      const svc = getService(p.serviceId);
+      return svc != null && svc.tmdbId !== p.tmdbProviderId;
+    });
     const needsRefresh =
       providers.length === 0 ||
-      providers.every((p) => p.logoPath == null);
+      providers.every((p) => p.logoPath == null) ||
+      hasWrongIds;
     if (needsRefresh) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
       const fresh = await fetchWatchProvidersAU(tmdbId, apiKey);

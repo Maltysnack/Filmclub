@@ -45,10 +45,10 @@ export async function fetchWatchProvidersAU(
       .map((p) => {
         const service = getServiceByTmdbId(p.provider_id);
         return service
-          ? { serviceId: service.id, name: service.name, logoPath: p.logo_path ?? null }
+          ? { serviceId: service.id, name: service.name, logoPath: p.logo_path ?? null, tmdbProviderId: p.provider_id }
           : null;
       })
-      .filter(Boolean) as { serviceId: string; name: string; logoPath: string | null }[];
+      .filter(Boolean) as { serviceId: string; name: string; logoPath: string | null; tmdbProviderId: number }[];
   } catch {
     return [];
   }
