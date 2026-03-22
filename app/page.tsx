@@ -32,6 +32,12 @@ export default function Home() {
   const [joinCode, setJoinCode] = useState("");
   const [joinName, setJoinName] = useState("");
 
+  function resolveName(raw: string): string {
+    if (!raw.trim()) return "Red Rebel";
+    if (raw.trim().toLowerCase() === "tom") return "Blue Bandit";
+    return raw.trim();
+  }
+
   function toggleService(id: string) {
     setSelectedServices((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
@@ -40,7 +46,7 @@ export default function Home() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return setError("Enter your name");
+    // empty name defaults to Red Rebel — no validation error needed
     if (mode === "planned" && !deadline) return setError("Set a deadline for planned mode");
     if ((watchMode === "home" || watchMode === "both") && selectedServices.length === 0)
       return setError("Select at least one streaming service");
@@ -78,7 +84,7 @@ export default function Home() {
     );
     if (!session) { setLoading(false); return setError("Something went wrong. Try again."); }
 
-    const participant = await joinSession(session.id, name.trim());
+    const participant = await joinSession(session.id, resolveName(name));
     if (!participant) { setLoading(false); return setError("Something went wrong. Try again."); }
 
     setParticipantId(session.code, participant.id);
@@ -88,7 +94,7 @@ export default function Home() {
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
-    if (!joinName.trim()) return setError("Enter your name");
+    // empty name defaults to Red Rebel
     if (!joinCode.trim()) return setError("Enter the session code");
 
     setLoading(true);
@@ -99,7 +105,7 @@ export default function Home() {
     if (!session) { setLoading(false); return setError("Session not found. Check the code."); }
     if (session.status === "closed") { setLoading(false); return setError("This session has ended."); }
 
-    const participant = await joinSession(session.id, joinName.trim());
+    const participant = await joinSession(session.id, resolveName(joinName));
     if (!participant) { setLoading(false); return setError("Something went wrong. Try again."); }
 
     setParticipantId(session.code, participant.id);

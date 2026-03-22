@@ -48,7 +48,7 @@ export async function discoverFilmsByProviders(
   const perProvider = await Promise.all(
     providerIds.map((id) =>
       fetchPages(
-        `${BASE}/discover/movie?watch_region=AU&with_watch_providers=${id}&with_watch_monetization_types=flatrate&sort_by=popularity.desc&`,
+        `${BASE}/discover/movie?watch_region=AU&with_watch_providers=${id}&sort_by=popularity.desc&`,
         pagesPerProvider
       )
     )

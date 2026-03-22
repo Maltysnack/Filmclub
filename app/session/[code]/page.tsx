@@ -504,29 +504,26 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       <div className="flex items-center gap-2 px-5 pb-3 shrink-0">
         <Users size={12} style={{ color: "var(--text-muted)" }} />
         <div className="flex gap-1 flex-wrap">
-          {participants.map((p) => (
-            <span key={p.id} className="text-xs px-2 py-0.5 rounded-full"
-              style={{
-                background: p.id === participant?.id ? "var(--accent)" : "var(--surface)",
-                color: p.id === participant?.id ? "#0c0c0e" : "var(--text-muted)",
-              }}>
-              {p.name}
-            </span>
-          ))}
+          {participants.map((p) => {
+            const col = participantColor(p.name);
+            const isMe = p.id === participant?.id;
+            return (
+              <span key={p.id} className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{
+                  background: `${col}22`,
+                  color: col,
+                  border: `1px solid ${col}55`,
+                  outline: isMe ? `2px solid ${col}` : "none",
+                  outlineOffset: "1px",
+                }}>
+                {p.name}
+              </span>
+            );
+          })}
         </div>
       </div>
 
-      {/* Progress */}
-      <div className="px-5 mb-4 shrink-0">
-        <div className="h-0.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
-          <div className="h-full rounded-full transition-all duration-300"
-            style={{ background: "var(--accent)", width: queue.length > 0 ? `${(currentIndex / queue.length) * 100}%` : "0%" }} />
-        </div>
-        <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
-          {currentIndex} of {queue.length} film{queue.length !== 1 ? "s" : ""}
-          {selectedGenres.length > 0 && " (filtered)"}
-        </p>
-      </div>
+      <div className="mb-4 shrink-0" />
 
       {/* Cards + info panel — side by side when info is open */}
       <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}>
@@ -767,6 +764,15 @@ function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionSer
       )}
     </div>
   );
+}
+
+const PERSON_COLORS = ["#22c55e","#a855f7","#f97316","#06b6d4","#ec4899","#eab308","#6366f1","#14b8a6"];
+function participantColor(name: string): string {
+  if (name === "Red Rebel") return "#ef4444";
+  if (name === "Blue Bandit") return "#3b82f6";
+  let h = 0;
+  for (let i = 0; i < name.length; i++) { h = name.charCodeAt(i) + ((h << 5) - h); h |= 0; }
+  return PERSON_COLORS[Math.abs(h) % PERSON_COLORS.length];
 }
 
 function AllDoneScreen({ mode, watchMode, neverHadFilms, onResults }: {
