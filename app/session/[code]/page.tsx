@@ -325,6 +325,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     if (!session) return;
     setStarting(true);
     await startSession(session.id);
+    // Update local state immediately so handleSwipe checks fire correctly
+    setSession((s) => s ? { ...s, started: true } : s);
+
     if (session.mode === "live") {
       const poolWithMeta = await getSessionFilmsWithMeta(session.id);
       let found = false;
@@ -333,6 +336,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       }
       if (found) {
         await closeSession(session.id);
+        // Small delay to let upserts settle before fetching
+        await new Promise((r) => setTimeout(r, 300));
         const allMatches = await getMatches(session.id);
         if (allMatches.length > 0) { setMatchList(allMatches); setStarting(false); return; }
       }

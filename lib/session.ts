@@ -268,12 +268,10 @@ export async function checkForMatch(
   const pct = (likeCount / participantCount) * 100;
 
   if (pct >= threshold) {
-    // Record match
-    await supabase.from("matches").upsert({
-      session_id: sessionId,
-      film_id: filmId,
-      score: likeCount,
-    });
+    await supabase.from("matches").upsert(
+      { session_id: sessionId, film_id: filmId, score: likeCount },
+      { onConflict: "session_id,film_id" }
+    );
     return true;
   }
   return false;
