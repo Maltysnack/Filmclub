@@ -4,13 +4,13 @@
 // the API-fetched logoPath is stored by fetchWatchProvidersAU.
 export const AU_SERVICES = [
   { id: "netflix",   name: "Netflix",      abbrev: "N",   tmdbId: 8,   color: "#E50914", tmdbLogoPath: "/t2yyOv40HZeVlLjYsCsPHnWLk4W.jpg" },
-  { id: "stan",      name: "Stan",         abbrev: "S",   tmdbId: 21,  color: "#0069C1", tmdbLogoPath: null },
-  { id: "disney",    name: "Disney+",      abbrev: "D+",  tmdbId: 337, color: "#113CCF", tmdbLogoPath: "/7rwgEs15tFwyR9NPQ5tjkWB43Hh.jpg" },
+  { id: "stan",      name: "Stan",         abbrev: "S",   tmdbId: 21,  color: "#0069C1", tmdbLogoPath: "/sSfxJXq7s8oHf3XWd0FtqagPDsF.jpg" },
+  { id: "disney",    name: "Disney+",      abbrev: "D+",  tmdbId: 337, color: "#113CCF", tmdbLogoPath: "/97yvRBw1GzX7fXprcF80er19ot.jpg" },
   { id: "prime",     name: "Prime Video",  abbrev: "P",   tmdbId: 119, color: "#00A8E1", tmdbLogoPath: "/dQeAar5H991VYporEjUspolDarG.jpg" },
   { id: "apple",     name: "Apple TV+",    abbrev: "A",   tmdbId: 350, color: "#888888", tmdbLogoPath: "/6uhKBfmtzFqOcLousHwZuzcrScK.jpg" },
-  { id: "binge",     name: "Binge",        abbrev: "B",   tmdbId: 385, color: "#FF5C35", tmdbLogoPath: null },
+  { id: "binge",     name: "Binge",        abbrev: "B",   tmdbId: 385, color: "#FF5C35", tmdbLogoPath: "/7QX5OdsQZrXGNBKq9SPzoPV9OYQ.jpg" },
   { id: "paramount", name: "Paramount+",   abbrev: "P+",  tmdbId: 531, color: "#0064FF", tmdbLogoPath: "/xbhHHa1YgtpwhC8lb1NQ3ACVcLd.jpg" },
-  { id: "foxtel",    name: "Foxtel Now",   abbrev: "F",   tmdbId: 134, color: "#444444", tmdbLogoPath: null },
+  { id: "foxtel",    name: "Foxtel Now",   abbrev: "F",   tmdbId: 134, color: "#444444", tmdbLogoPath: "/fejdSG7TwNQ5E0p6u7A6LVs280R.jpg" },
 ] as const;
 
 export type ServiceId = (typeof AU_SERVICES)[number]["id"];
