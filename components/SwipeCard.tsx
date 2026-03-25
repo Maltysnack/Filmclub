@@ -8,6 +8,8 @@ import { getService } from "@/lib/streaming";
 import { posterUrl } from "@/lib/tmdb";
 import { Info, Heart, X } from "lucide-react";
 import DendyLogo from "./DendyLogo";
+import { Participant } from "@/types";
+import { participantColor } from "@/lib/names";
 
 interface SwipeCardProps {
   film: Film;
@@ -17,11 +19,14 @@ interface SwipeCardProps {
   isTop: boolean;
   dendyInfo?: DendyFilm;
   sessionServices?: string[];
+  votePhase?: 1 | 2 | 3;
+  voteInfo?: { count: number; participantIds: string[] };
+  participants?: Participant[];
 }
 
 const SWIPE_THRESHOLD = 80;
 
-export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dendyInfo, sessionServices = [] }: SwipeCardProps) {
+export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dendyInfo, sessionServices = [], votePhase = 1, voteInfo, participants = [] }: SwipeCardProps) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-18, 18]);
   const likeOpacity = useTransform(x, [20, 100], [0, 1]);
@@ -168,6 +173,34 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
               </div>
             );
           })()}
+          {/* Vote info — appears once phase threshold is reached */}
+          {votePhase >= 2 && voteInfo && voteInfo.count > 0 && (
+            <div className="flex items-center gap-1 mb-2">
+              {votePhase === 2 ? (
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                  style={{ background: "rgba(74,222,128,0.12)", color: "var(--like)" }}>
+                  <Heart size={9} fill="currentColor" />
+                  {voteInfo.count}
+                </span>
+              ) : (
+                <div className="flex items-center gap-1">
+                  {voteInfo.participantIds.map((id) => {
+                    const p = participants.find((pt) => pt.id === id);
+                    if (!p) return null;
+                    const color = participantColor(p.name);
+                    return (
+                      <span key={id} title={p.name}
+                        className="w-5 h-5 rounded-full flex items-center justify-center font-bold"
+                        style={{ background: `${color}33`, color, border: `1.5px solid ${color}66`, fontSize: "0.55rem" }}>
+                        {p.name[0].toUpperCase()}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-xl font-semibold leading-tight truncate" style={{ color: "var(--text)" }}>

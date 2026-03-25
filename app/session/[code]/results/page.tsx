@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Trophy, Lock, Clock, Plus, Layers, Info } from "lucide-react";
 import { getSession, getParticipantId, getFilmScores, closeSession, getParticipants } from "@/lib/session";
 import { posterUrl } from "@/lib/tmdb";
+import { participantColor } from "@/lib/names";
 import { Film, Session, Participant } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
@@ -276,14 +277,6 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
   );
 }
 
-const PERSON_COLORS = ["#22c55e","#a855f7","#f97316","#06b6d4","#ec4899","#eab308","#6366f1","#14b8a6"];
-function participantColor(name: string): string {
-  if (name === "Red Rebel") return "#ef4444";
-  if (name === "Blue Bandit") return "#3b82f6";
-  let h = 0;
-  for (let i = 0; i < name.length; i++) { h = name.charCodeAt(i) + ((h << 5) - h); h |= 0; }
-  return PERSON_COLORS[Math.abs(h) % PERSON_COLORS.length];
-}
 
 function LikedByNames({ ids, participants }: { ids: string[]; participants: Participant[] }) {
   if (!ids.length) return null;

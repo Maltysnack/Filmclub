@@ -8,6 +8,8 @@ import { posterUrl } from "@/lib/tmdb";
 import { getService } from "@/lib/streaming";
 import { Heart, Info } from "lucide-react";
 import DendyLogo from "./DendyLogo";
+import { Participant } from "@/types";
+import { participantColor } from "@/lib/names";
 
 // Visual gap between cards (px) — increase to taste
 const GAP = 16;
@@ -22,6 +24,10 @@ interface ScrollViewProps {
   onLike: (film: Film) => void;
   onUnlike: (film: Film) => void;
   onInfo: (film: Film) => void;
+  votePhase?: 1 | 2 | 3;
+  filmLikes?: Map<string, string[]>;
+  participants?: Participant[];
+  myParticipantId?: string;
 }
 
 function easeInOutCubic(t: number) {
@@ -30,6 +36,7 @@ function easeInOutCubic(t: number) {
 
 export default function ScrollView({
   films, likedIds, sessionServices, dendyMap, onLike, onUnlike, onInfo,
+  votePhase = 1, filmLikes, participants = [], myParticipantId,
 }: ScrollViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -157,6 +164,9 @@ export default function ScrollView({
               onLike={() => onLike(film)}
               onUnlike={() => onUnlike(film)}
               onInfo={() => onInfo(film)}
+              votePhase={votePhase}
+              likedByIds={(filmLikes?.get(film.id) ?? []).filter(id => id !== myParticipantId)}
+              participants={participants}
             />
           </div>
         </div>
@@ -167,6 +177,7 @@ export default function ScrollView({
 
 function FilmScrollCard({
   film, liked, sessionServices, dendyInfo, onLike, onUnlike, onInfo,
+  votePhase = 1, likedByIds = [], participants = [],
 }: {
   film: Film;
   liked: boolean;
@@ -175,6 +186,9 @@ function FilmScrollCard({
   onLike: () => void;
   onUnlike: () => void;
   onInfo: () => void;
+  votePhase?: 1 | 2 | 3;
+  likedByIds?: string[];
+  participants?: Participant[];
 }) {
   const lastTap = useRef(0);
   const [heartBurst, setHeartBurst] = useState(false);
@@ -286,6 +300,34 @@ function FilmScrollCard({
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Vote info — appears once phase threshold is reached */}
+        {votePhase >= 2 && likedByIds.length > 0 && (
+          <div className="flex items-center gap-1 mb-2">
+            {votePhase === 2 ? (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                style={{ background: "rgba(74,222,128,0.12)", color: "var(--like)" }}>
+                <Heart size={9} fill="currentColor" />
+                {likedByIds.length}
+              </span>
+            ) : (
+              <div className="flex items-center gap-1">
+                {likedByIds.map((id) => {
+                  const p = participants.find((pt) => pt.id === id);
+                  if (!p) return null;
+                  const color = participantColor(p.name);
+                  return (
+                    <span key={id} title={p.name}
+                      className="w-5 h-5 rounded-full flex items-center justify-center font-bold"
+                      style={{ background: `${color}33`, color, border: `1.5px solid ${color}66`, fontSize: "0.55rem" }}>
+                      {p.name[0].toUpperCase()}
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -54,13 +54,24 @@ export async function discoverFilmsByProviders(
     )
   );
 
-  // Deduplicate across providers, keeping insertion order
+  // Round-robin interleave across providers so no single service dominates.
+  // Netflix[0], Stan[0], Binge[0], Netflix[1], Stan[1], Binge[1], …
+  // then deduplicate (a film on both Netflix and Stan gets its first-seen slot).
   const seen = new Set<number>();
-  return perProvider.flat().filter((m) => {
-    if (seen.has(m.id)) return false;
-    seen.add(m.id);
-    return true;
-  });
+  const result: TMDBMovie[] = [];
+  const maxLen = Math.max(...perProvider.map((p) => p.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const providerFilms of perProvider) {
+      if (i < providerFilms.length) {
+        const m = providerFilms[i];
+        if (!seen.has(m.id)) {
+          seen.add(m.id);
+          result.push(m);
+        }
+      }
+    }
+  }
+  return result;
 }
 
 // Fetch the full list of AU streaming providers from TMDB.

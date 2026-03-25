@@ -197,14 +197,51 @@ export async function addFilmToSession(
   const film = await upsertFilm(tmdbId);
   if (!film) return false;
 
-  const { error } = await supabase
-    .from("session_films")
-    .upsert(
-      { session_id: sessionId, film_id: film.id, added_by: participantId },
-      { onConflict: "session_id,film_id", ignoreDuplicates: true }
-    );
+  if (participantId) {
+    // Participant explicitly adding — update added_by even if film was already seeded
+    const { error } = await supabase
+      .from("session_films")
+      .upsert(
+        { session_id: sessionId, film_id: film.id, added_by: participantId },
+        { onConflict: "session_id,film_id" }
+      );
+    return !error;
+  } else {
+    // Seeder — skip silently if already exists, never overwrite a participant's added_by
+    const { error } = await supabase
+      .from("session_films")
+      .upsert(
+        { session_id: sessionId, film_id: film.id, added_by: null },
+        { onConflict: "session_id,film_id", ignoreDuplicates: true }
+      );
+    return !error;
+  }
+}
 
-  return !error;
+export async function getSessionSwipeStats(sessionId: string): Promise<{
+  totalSwipes: number;
+  totalLikes: number;
+  filmLikes: Map<string, string[]>;
+}> {
+  const { data } = await supabase
+    .from("swipes")
+    .select("film_id, participant_id, liked")
+    .eq("session_id", sessionId);
+
+  const swipes = data ?? [];
+  const filmLikes = new Map<string, string[]>();
+  let totalLikes = 0;
+
+  for (const s of swipes as { film_id: string; participant_id: string; liked: boolean }[]) {
+    if (s.liked) {
+      totalLikes++;
+      const ids = filmLikes.get(s.film_id) ?? [];
+      ids.push(s.participant_id);
+      filmLikes.set(s.film_id, ids);
+    }
+  }
+
+  return { totalSwipes: swipes.length, totalLikes, filmLikes };
 }
 
 export async function getSessionFilms(sessionId: string): Promise<Film[]> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, use } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Logo from "@/components/Logo";
@@ -13,12 +13,13 @@ import DendyLogo from "@/components/DendyLogo";
 import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
   getMySwipes, getMyLikes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
-  startTiebreaker, resolveMatch, addFilmToSession,
+  startTiebreaker, resolveMatch, addFilmToSession, getSessionSwipeStats,
 } from "@/lib/session";
 import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getAUProviderList, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, AU_SERVICES, TMDB_GENRES } from "@/lib/streaming";
 import { supabase } from "@/lib/supabase";
+import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
 import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List } from "lucide-react";
 
@@ -50,6 +51,31 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so loadFilms (useCallback with [] deps) always sees the latest index
   const currentIndexRef = useRef(0);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  // Ref so swipes subscription always sees the latest participant without stale closure
+  const participantRef = useRef<Participant | null>(null);
+  useEffect(() => { participantRef.current = participant; }, [participant]);
+
+  // ── Phase-based vote visibility ───────────────────────────────────────────
+  // groupSwipeCount / groupLikeCount track ALL participants' swipes for this session.
+  // filmLikes maps filmId → participantIds who liked it (for phase 2/3 card display).
+  const [groupSwipeCount, setGroupSwipeCount] = useState(0);
+  const [groupLikeCount, setGroupLikeCount] = useState(0);
+  const [filmLikes, setFilmLikes] = useState<Map<string, string[]>>(new Map());
+
+  const SWIPE_THRESHOLD = 8; // average swipes per person before escalation begins
+  const EXPECTED_LIKE_RATE = 0.25;
+
+  const votePhase = useMemo((): 1 | 2 | 3 => {
+    if (groupSwipeCount === 0 || participants.length === 0) return 1;
+    const swipesPerPerson = groupSwipeCount / participants.length;
+    const actualLikeRate = groupLikeCount / groupSwipeCount;
+    const engagementDeficit = EXPECTED_LIKE_RATE - actualLikeRate;
+    const score = (swipesPerPerson / SWIPE_THRESHOLD) * (1 + engagementDeficit);
+    if (score >= 2) return 3;
+    if (score >= 1) return 2;
+    return 1;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupSwipeCount, groupLikeCount, participants.length]);
 
   // View mode — persisted to localStorage (scroll is the default)
   const [viewMode, setViewMode] = useState<"swipe" | "scroll">(() => {
@@ -320,6 +346,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setParticipants(allParticipants);
 
       await loadFilms(s, pid, true);
+
+      // Initialise phase-scoring counters and per-film like map from existing swipe history
+      const stats = await getSessionSwipeStats(s.id);
+      setGroupSwipeCount(stats.totalSwipes);
+      setGroupLikeCount(stats.totalLikes);
+      setFilmLikes(stats.filmLikes);
+
       setLoading(false);
 
       // Fire-and-forget: silently expand the home pool while the user swipes.
@@ -353,7 +386,40 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           }
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "swipes", filter: `session_id=eq.${session.id}` },
-        async () => {
+        async (payload) => {
+          const newSwipe = payload.new as { film_id: string; liked: boolean; participant_id: string };
+
+          // Update group phase-scoring counters
+          setGroupSwipeCount((c) => c + 1);
+          if (newSwipe.liked) {
+            setGroupLikeCount((c) => c + 1);
+            // Update per-film like map
+            setFilmLikes((prev) => {
+              const next = new Map(prev);
+              const ids = next.get(newSwipe.film_id) ?? [];
+              next.set(newSwipe.film_id, [...ids, newSwipe.participant_id]);
+              return next;
+            });
+
+            // Like propagation: someone else liked a film — surface it near top of our unseen queue
+            if (newSwipe.participant_id !== participantRef.current?.id) {
+              const ci = currentIndexRef.current;
+              setFullQueue((prev) => {
+                const filmIdx = prev.findIndex((f) => f.id === newSwipe.film_id);
+                // Not in queue, or already seen/currently showing — leave as is
+                if (filmIdx === -1 || filmIdx <= ci) return prev;
+                // Aim for position ci+1 to ci+3 (right behind current card)
+                const targetPos = Math.min(ci + 1 + Math.floor(Math.random() * 3), prev.length - 1);
+                if (filmIdx <= targetPos) return prev; // already near top
+                const next = [...prev];
+                const [film] = next.splice(filmIdx, 1);
+                next.splice(targetPos, 0, film);
+                return next;
+              });
+            }
+          }
+
+          // Existing match check
           const s = await getSession(code);
           if (s?.started && s?.mode === "live" && s.status === "closed") {
             const existing = await getMatches(session.id);
@@ -685,6 +751,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                   onLike={handleScrollLike}
                   onUnlike={handleScrollUnlike}
                   onInfo={(film) => setInfoFilm(film)}
+                  votePhase={votePhase}
+                  filmLikes={filmLikes}
+                  participants={participants}
+                  myParticipantId={participant?.id}
                 />
               )}
             </div>
@@ -733,7 +803,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                           onInfo={() => setInfoFilm(currentFilm)}
                           isTop={!(infoFilm && !isMobile)}
                           dendyInfo={dendyMap.get(currentFilm.id)}
-                          sessionServices={session?.streaming_services ?? []} />
+                          sessionServices={session?.streaming_services ?? []}
+                          votePhase={votePhase}
+                          voteInfo={{
+                            count: (filmLikes.get(currentFilm.id) ?? []).filter(id => id !== participant?.id).length,
+                            participantIds: (filmLikes.get(currentFilm.id) ?? []).filter(id => id !== participant?.id),
+                          }}
+                          participants={participants} />
                       </motion.div>
                     )}
                   </>
@@ -792,14 +868,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 }
 
 
-const PERSON_COLORS = ["#22c55e","#a855f7","#f97316","#06b6d4","#ec4899","#eab308","#6366f1","#14b8a6"];
-function participantColor(name: string): string {
-  if (name === "Red Rebel") return "#ef4444";
-  if (name === "Blue Bandit") return "#3b82f6";
-  let h = 0;
-  for (let i = 0; i < name.length; i++) { h = name.charCodeAt(i) + ((h << 5) - h); h |= 0; }
-  return PERSON_COLORS[Math.abs(h) % PERSON_COLORS.length];
-}
 
 function AllDoneScreen({ mode, watchMode, neverHadFilms, onResults }: {
   mode: string;
