@@ -161,7 +161,7 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
             target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
             style={{ background: "rgba(0,224,84,0.08)", border: "1px solid rgba(0,224,84,0.2)" }}>
-            <img src="/letterboxd-logo.svg" alt="Letterboxd" className="h-4 w-4" />
+            <img src="/letterboxd-logo.png" alt="Letterboxd" className="h-4 w-4" />
           </a>
         </div>
       )}

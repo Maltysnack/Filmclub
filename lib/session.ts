@@ -153,7 +153,8 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
     const needsRefresh =
       providers.length === 0 ||
       providers.every((p) => p.logoPath == null) ||
-      hasWrongIds;
+      hasWrongIds ||
+      !cached.imdb_id; // backfill imdb_id for films cached before this field existed
     if (needsRefresh) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
       const [fresh, imdbRating] = await Promise.all([
