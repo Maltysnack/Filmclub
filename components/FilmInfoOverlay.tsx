@@ -100,14 +100,14 @@ export default function FilmInfoOverlay({
             onClick={onClose}
           >
             <div
-              className="flex gap-0 w-full"
+              className="flex items-stretch gap-0 w-full"
               style={{ maxWidth: 920, height: "min(calc(100dvh - 120px), 520px)" }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Poster card */}
+              {/* Poster card — let flex stretch control height, no explicit height: 100% */}
               <div
                 className="relative rounded-2xl overflow-hidden shrink-0"
-                style={{ width: "calc(60% - 6px)", height: "100%", position: "relative", zIndex: 1 }}
+                style={{ width: "calc(60% - 6px)", position: "relative", zIndex: 1 }}
               >
                 <img
                   src={posterUrl(film.backdrop_path ?? film.poster_path, "w1280")}
@@ -131,7 +131,7 @@ export default function FilmInfoOverlay({
               {/* Info panel */}
               <div
                 className="overflow-hidden shrink-0 flex flex-col"
-                style={{ width: "calc(40% - 6px)", height: "100%", background: "var(--surface)", boxShadow: "-100px 0 0 var(--surface)", borderRadius: "0 16px 16px 0", position: "relative", zIndex: 0 }}
+                style={{ width: "calc(40% - 6px)", background: "var(--surface)", boxShadow: "-100px 0 0 var(--surface)", borderRadius: "0 16px 16px 0", position: "relative", zIndex: 0 }}
               >
                 <FilmInfoPanel
                   film={film}
