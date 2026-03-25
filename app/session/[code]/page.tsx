@@ -777,8 +777,18 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           <FilmInfoOverlay
             film={infoFilm}
             onClose={() => setInfoFilm(null)}
-            onLike={infoFilm ? () => { handleScrollLike(infoFilm); setInfoFilm(null); } : undefined}
-            onDislike={infoFilm ? () => { handleScrollUnlike(infoFilm); setInfoFilm(null); } : undefined}
+            onLike={infoFilm ? () => {
+              handleScrollLike(infoFilm);
+              const idx = queue.findIndex(f => f.id === infoFilm.id);
+              setInfoFilm(null);
+              if (idx !== -1) scrollViewRef.current?.scrollToIndex(idx + 1);
+            } : undefined}
+            onDislike={infoFilm ? () => {
+              handleScrollUnlike(infoFilm);
+              const idx = queue.findIndex(f => f.id === infoFilm.id);
+              setInfoFilm(null);
+              if (idx !== -1) scrollViewRef.current?.scrollToIndex(idx + 1);
+            } : undefined}
             sessionServices={session?.streaming_services ?? []}
             dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
           />
@@ -786,7 +796,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       ) : (
         /* ── Swipe mode ───────────────────────────────────────── */
         <>
-          <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}
+          <div className="flex gap-0 flex-1 px-5" style={{ minHeight: 0 }}
             onClick={(e) => {
               // Click on the backdrop area (outside the card/panel) closes the info panel
               if (infoFilm && e.target === e.currentTarget) setInfoFilm(null);
@@ -796,6 +806,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               style={{
                 width: (infoFilm && !isMobile) ? "calc(60% - 6px)" : "100%",
                 height: "calc(100dvh - 228px)",
+                position: "relative",
+                zIndex: 1,
               }}>
               <AnimatePresence>
                 {allDone || (queue.length === 0 && !loading) ? (
@@ -841,11 +853,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               <AnimatePresence>
                 {infoFilm && (
                   <motion.div
-                    className="rounded-[28px] overflow-hidden shrink-0 flex flex-col"
+                    className="overflow-hidden shrink-0 flex flex-col"
                     style={{
                       width: "calc(40% - 6px)",
                       height: "calc(100dvh - 228px)",
                       background: "var(--surface)",
+                      boxShadow: "-100px 0 0 var(--surface)",
+                      borderRadius: "0 28px 28px 0",
+                      zIndex: 0,
                     }}
                     initial={{ opacity: 0, x: 32 }}
                     animate={{ opacity: 1, x: 0 }}

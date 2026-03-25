@@ -360,12 +360,15 @@ function FilmScrollCard({
             <h2 className="text-xl font-semibold leading-tight truncate" style={{ color: "var(--text)" }}>
               {film.title}
             </h2>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               {film.release_year && (
                 <span className="text-sm" style={{ color: "var(--text-muted)" }}>{film.release_year}</span>
               )}
-              {(film.imdb_rating || film.rating) && (
-                <span className="text-sm" style={{ color: "var(--accent)" }}>★ {film.imdb_rating ?? film.rating}</span>
+              {film.imdb_rating && (
+                <span className="flex items-center gap-1 text-sm" style={{ color: "#F5C518" }}>
+                  <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
+                  {film.imdb_rating}
+                </span>
               )}
               {film.genres?.[0] && (
                 <span className="text-xs px-2 py-0.5 rounded-full"

@@ -99,16 +99,16 @@ export default function FilmInfoOverlay({
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
           >
             <div
-              className="flex gap-3 w-full"
+              className="flex gap-0 w-full"
               style={{ maxWidth: 920, height: "min(calc(100dvh - 120px), 520px)" }}
             >
               {/* Poster card */}
               <div
                 className="relative rounded-2xl overflow-hidden shrink-0"
-                style={{ width: "calc(60% - 6px)", height: "100%" }}
+                style={{ width: "calc(60% - 6px)", height: "100%", position: "relative", zIndex: 1 }}
               >
                 <img
-                  src={posterUrl(film.poster_path, "w500")}
+                  src={posterUrl(film.backdrop_path ?? film.poster_path, "w780")}
                   alt={film.title}
                   className="w-full h-full object-cover"
                 />
@@ -128,8 +128,8 @@ export default function FilmInfoOverlay({
 
               {/* Info panel */}
               <div
-                className="rounded-2xl overflow-hidden shrink-0 flex flex-col"
-                style={{ width: "calc(40% - 6px)", height: "100%", background: "var(--surface)" }}
+                className="overflow-hidden shrink-0 flex flex-col"
+                style={{ width: "calc(40% - 6px)", height: "100%", background: "var(--surface)", boxShadow: "-100px 0 0 var(--surface)", borderRadius: "0 16px 16px 0", position: "relative", zIndex: 0 }}
               >
                 <FilmInfoPanel
                   film={film}
