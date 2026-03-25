@@ -97,10 +97,12 @@ export default function FilmInfoOverlay({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            onClick={onClose}
           >
             <div
               className="flex gap-0 w-full"
               style={{ maxWidth: 920, height: "min(calc(100dvh - 120px), 520px)" }}
+              onClick={(e) => e.stopPropagation()}
             >
               {/* Poster card */}
               <div
