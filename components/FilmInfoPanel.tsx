@@ -49,7 +49,7 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
             <a href={`https://www.imdb.com/title/${film.imdb_id}/`} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs font-medium rounded px-1 py-0.5"
               style={{ background: "rgba(245,197,24,0.15)", color: "#F5C518" }}>
-              <img src="/imdb-logo.svg" alt="IMDb" className="h-3" />
+              <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
               {film.imdb_rating}
             </a>
           ) : (
@@ -154,7 +154,7 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
               target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
               style={{ background: "rgba(245,197,24,0.1)", border: "1px solid rgba(245,197,24,0.2)" }}>
-              <img src="/imdb-logo.svg" alt="IMDb" className="h-4" />
+              <img src="/imdb-logo.png" alt="IMDb" className="h-4" />
             </a>
           )}
           <a href={`https://letterboxd.com/tmdb/${film.tmdb_id}/`}
