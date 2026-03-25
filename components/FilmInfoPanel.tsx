@@ -44,17 +44,17 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
             {Math.floor(film.runtime / 60)}h {film.runtime % 60}m
           </span>
         )}
-        {/* IMDb rating — tappable link to IMDb page */}
-        {film.imdb_rating && (
+        {/* Rating — IMDb if available (tappable), fallback to TMDB */}
+        {(film.imdb_rating || film.rating) && (
           film.imdb_id ? (
             <a href={`https://www.imdb.com/title/${film.imdb_id}/`} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs font-medium rounded px-1 py-0.5"
               style={{ background: "rgba(245,197,24,0.15)", color: "#F5C518" }}>
               <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
-              {film.imdb_rating}
+              {film.imdb_rating ?? film.rating}
             </a>
           ) : (
-            <span className="text-xs font-medium" style={{ color: "#F5C518" }}>★ {film.imdb_rating}</span>
+            <span className="text-xs font-medium" style={{ color: "#F5C518" }}>★ {film.imdb_rating ?? film.rating}</span>
           )
         )}
         {film.genres?.slice(0, 2).map((g) => (

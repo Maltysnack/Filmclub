@@ -599,8 +599,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const sessionStarted = session?.started ?? false;
 
   return (
-    <div className="min-h-dvh" style={{ background: "var(--bg)" }}>
-    <div className="flex flex-col min-h-dvh mx-auto"
+    <div className="h-dvh overflow-hidden" style={{ background: "var(--bg)" }}>
+    <div className="flex flex-col h-dvh mx-auto overflow-hidden"
       style={{ maxWidth: infoFilm ? 920 : 480, transition: "max-width 0.3s cubic-bezier(0.4,0,0.2,1)" }}>
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
         <Logo size="sm" />
@@ -777,6 +777,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           <FilmInfoOverlay
             film={infoFilm}
             onClose={() => setInfoFilm(null)}
+            onLike={infoFilm ? () => { handleScrollLike(infoFilm); setInfoFilm(null); } : undefined}
+            onDislike={infoFilm ? () => { handleScrollUnlike(infoFilm); setInfoFilm(null); } : undefined}
             sessionServices={session?.streaming_services ?? []}
             dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
           />
@@ -784,7 +786,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       ) : (
         /* ── Swipe mode ───────────────────────────────────────── */
         <>
-          <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}>
+          <div className="flex gap-3 flex-1 px-5" style={{ minHeight: 0 }}
+            onClick={(e) => {
+              // Click on the backdrop area (outside the card/panel) closes the info panel
+              if (infoFilm && e.target === e.currentTarget) setInfoFilm(null);
+            }}>
             {/* Swipe card — scroll container (212px) minus GAP (16px) = same visual height */}
             <div className="relative shrink-0 transition-all duration-300"
               style={{
