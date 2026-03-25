@@ -105,7 +105,7 @@ export default function FilmInfoOverlay({
               {/* Poster card */}
               <div
                 className="relative rounded-2xl overflow-hidden shrink-0"
-                style={{ width: "calc(50% - 6px)", height: "100%" }}
+                style={{ width: "calc(60% - 6px)", height: "100%" }}
               >
                 <img
                   src={posterUrl(film.poster_path, "w500")}
@@ -129,7 +129,7 @@ export default function FilmInfoOverlay({
               {/* Info panel */}
               <div
                 className="rounded-2xl overflow-hidden shrink-0 flex flex-col"
-                style={{ width: "calc(50% - 6px)", height: "100%", background: "var(--surface)" }}
+                style={{ width: "calc(40% - 6px)", height: "100%", background: "var(--surface)" }}
               >
                 <FilmInfoPanel
                   film={film}

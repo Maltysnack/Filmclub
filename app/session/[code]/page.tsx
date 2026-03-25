@@ -794,7 +794,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             {/* Swipe card — scroll container (212px) minus GAP (16px) = same visual height */}
             <div className="relative shrink-0 transition-all duration-300"
               style={{
-                width: (infoFilm && !isMobile) ? "calc(50% - 6px)" : "100%",
+                width: (infoFilm && !isMobile) ? "calc(60% - 6px)" : "100%",
                 height: "calc(100dvh - 228px)",
               }}>
               <AnimatePresence>
@@ -843,7 +843,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                   <motion.div
                     className="rounded-[28px] overflow-hidden shrink-0 flex flex-col"
                     style={{
-                      width: "calc(50% - 6px)",
+                      width: "calc(40% - 6px)",
                       height: "calc(100dvh - 228px)",
                       background: "var(--surface)",
                     }}
