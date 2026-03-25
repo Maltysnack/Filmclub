@@ -47,6 +47,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so handleSwipe always sees the latest session without stale closure
   const sessionRef = useRef<Session | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  // Ref so loadFilms (useCallback with [] deps) always sees the latest index
+  const currentIndexRef = useRef(0);
+  useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
 
   // View mode — persisted to localStorage (scroll is the default)
   const [viewMode, setViewMode] = useState<"swipe" | "scroll">(() => {
@@ -251,18 +254,47 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
     // ── Update queue ─────────────────────────────────────────────────────────
     // isInitial=true  → first load: replace queue entirely and reset position.
-    // isInitial=false → background update: only append genuinely new films so the
-    //   user's current swipe position is preserved (no jarring reset/flash).
+    // isInitial=false → background update: splice new films into the unseen
+    //   portion of the queue so the user's position is preserved but films
+    //   arrive in a natural mixed order rather than service-grouped at the tail.
     if (isInitial) {
       setFullQueue(ordered);
       setCurrentIndex(0);
       setAllDone(ordered.length === 0);
     } else {
+      // Capture the index outside the functional update (refs are always current)
+      const ci = currentIndexRef.current;
+      const userAddedFilmIds = new Set(userAdded.map(({ film }) => film.id));
+
       setFullQueue((prev) => {
         const existingIds = new Set(prev.map((f) => f.id));
         const fresh = ordered.filter((f) => !existingIds.has(f.id));
-        if (fresh.length > 0) setAllDone(false);
-        return fresh.length > 0 ? [...prev, ...fresh] : prev;
+        if (fresh.length === 0) return prev;
+
+        setAllDone(false);
+
+        const freshUserAdded = fresh.filter((f) => userAddedFilmIds.has(f.id));
+        const freshAuto = fresh.filter((f) => !userAddedFilmIds.has(f.id));
+
+        // Split queue into already-seen and unseen portions
+        const seen = prev.slice(0, ci);
+        const unseen = [...prev.slice(ci)];
+
+        // Auto-seeded films: scatter randomly throughout the unseen portion
+        for (const film of freshAuto) {
+          const pos = Math.floor(Math.random() * (unseen.length + 1));
+          unseen.splice(pos, 0, film);
+        }
+
+        // User-added films: surface near positions 3–8 of the unseen portion
+        // so they appear soon without immediately interrupting the current card
+        const userInsertBase = Math.min(3, unseen.length);
+        for (const film of freshUserAdded) {
+          const pos = Math.min(userInsertBase + Math.floor(Math.random() * 6), unseen.length);
+          unseen.splice(pos, 0, film);
+        }
+
+        return [...seen, ...unseen];
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
