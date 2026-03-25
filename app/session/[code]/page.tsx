@@ -598,10 +598,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const nextFilm = queue[currentIndex + 1];
   const sessionStarted = session?.started ?? false;
 
-  // Preload backdrop for current and next film so the info panel opens instantly
-  const preloadBackdrops = [currentFilm, nextFilm].filter(Boolean).map((f) =>
-    f!.backdrop_path ? posterUrl(f!.backdrop_path, "w1280") : null
-  ).filter(Boolean) as string[];
+  // Preload backdrops for the next 6 films from the current position in either mode.
+  // Swipe mode uses currentIndex; scroll mode uses scrollIndexRef.
+  // 6 films ≈ ~1MB of background requests — enough buffer without being wasteful.
+  const preloadStart = viewMode === "scroll" ? scrollIndexRef.current : currentIndex;
+  const preloadBackdrops = queue
+    .slice(preloadStart, preloadStart + 6)
+    .map((f) => f.backdrop_path ? posterUrl(f.backdrop_path, "w1280") : null)
+    .filter(Boolean) as string[];
 
   return (
     <div className="h-dvh overflow-hidden" style={{ background: "var(--bg)" }}>
