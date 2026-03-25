@@ -321,10 +321,10 @@ function FilmScrollCard({
                   if (!p) return null;
                   const color = participantColor(p.name);
                   return (
-                    <span key={id} title={p.name}
-                      className="w-5 h-5 rounded-full flex items-center justify-center font-bold"
-                      style={{ background: `${color}33`, color, border: `1.5px solid ${color}66`, fontSize: "0.55rem" }}>
-                      {p.name[0].toUpperCase()}
+                    <span key={id}
+                      className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}>
+                      {p.name}
                     </span>
                   );
                 })}
