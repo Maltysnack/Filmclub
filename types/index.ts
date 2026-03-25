@@ -46,6 +46,8 @@ export interface Film {
   genres: { id: number; name: string }[];
   film_cast: { name: string; character: string; profile_path: string | null }[];
   rating: number | null;
+  imdb_id: string | null;
+  imdb_rating: string | null;
   watch_providers_au: { serviceId: string; name: string; logoPath?: string | null; tmdbProviderId?: number | null }[];
 }
 
@@ -87,6 +89,7 @@ export interface TMDBMovie {
 
 export interface TMDBMovieDetail extends TMDBMovie {
   runtime: number;
+  imdb_id: string | null;
   genres: { id: number; name: string }[];
   credits?: {
     cast: { name: string; character: string; profile_path: string | null }[];

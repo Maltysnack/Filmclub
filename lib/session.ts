@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { Session, Participant, Film, Match, WatchMode } from "@/types";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
+import { fetchOmdbRating } from "./omdb";
 import { fetchWatchProvidersAU, getService } from "./streaming";
 
 // ── Session code generation ───────────────────────────────────────────────────
@@ -155,13 +156,23 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
       hasWrongIds;
     if (needsRefresh) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-      const fresh = await fetchWatchProvidersAU(tmdbId, apiKey);
-      // Always update the DB (even if fresh is empty — marks the film as "checked")
-      await supabase
-        .from("films")
-        .update({ watch_providers_au: fresh })
-        .eq("id", cached.id);
-      return { ...cached, watch_providers_au: fresh };
+      const [fresh, imdbRating] = await Promise.all([
+        fetchWatchProvidersAU(tmdbId, apiKey),
+        // Also backfill imdb_rating if we have an imdb_id but no rating yet
+        (!cached.imdb_rating && cached.imdb_id) ? fetchOmdbRating(cached.imdb_id) : Promise.resolve(null),
+      ]);
+      const updates: Record<string, unknown> = { watch_providers_au: fresh };
+      if (imdbRating) updates.imdb_rating = imdbRating;
+      await supabase.from("films").update(updates).eq("id", cached.id);
+      return { ...cached, watch_providers_au: fresh, imdb_rating: imdbRating ?? cached.imdb_rating };
+    }
+    // Backfill imdb_rating for cached films that have imdb_id but no rating yet
+    if (!cached.imdb_rating && cached.imdb_id) {
+      const imdbRating = await fetchOmdbRating(cached.imdb_id);
+      if (imdbRating) {
+        await supabase.from("films").update({ imdb_rating: imdbRating }).eq("id", cached.id);
+        return { ...cached, imdb_rating: imdbRating };
+      }
     }
     return cached;
   }
@@ -171,14 +182,18 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
   if (!detail) return null;
 
   const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-  const [filmData, watchProviders] = await Promise.all([
+  const [filmData, watchProviders, imdbRating] = await Promise.all([
     Promise.resolve(tmdbToFilm(detail)),
     fetchWatchProvidersAU(tmdbId, apiKey),
+    detail.imdb_id ? fetchOmdbRating(detail.imdb_id) : Promise.resolve(null),
   ]);
 
   const { data, error } = await supabase
     .from("films")
-    .upsert({ ...filmData, watch_providers_au: watchProviders }, { onConflict: "tmdb_id" })
+    .upsert(
+      { ...filmData, watch_providers_au: watchProviders, imdb_rating: imdbRating },
+      { onConflict: "tmdb_id" }
+    )
     .select()
     .single();
 

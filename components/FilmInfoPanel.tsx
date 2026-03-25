@@ -43,8 +43,18 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
             {Math.floor(film.runtime / 60)}h {film.runtime % 60}m
           </span>
         )}
-        {film.rating && (
-          <span className="text-xs font-medium" style={{ color: "var(--accent)" }}>★ {film.rating}</span>
+        {/* IMDb rating — tappable link to IMDb page */}
+        {film.imdb_rating && (
+          film.imdb_id ? (
+            <a href={`https://www.imdb.com/title/${film.imdb_id}/`} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs font-medium rounded px-1 py-0.5"
+              style={{ background: "rgba(245,197,24,0.15)", color: "#F5C518" }}>
+              <img src="/imdb-logo.svg" alt="IMDb" className="h-3" />
+              {film.imdb_rating}
+            </a>
+          ) : (
+            <span className="text-xs font-medium" style={{ color: "#F5C518" }}>★ {film.imdb_rating}</span>
+          )
         )}
         {film.genres?.slice(0, 2).map((g) => (
           <span key={g.id} className="text-xs px-1.5 py-0.5 rounded-full"
@@ -135,6 +145,26 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
           </div>
         )}
       </div>
+
+      {/* External links — IMDb and Letterboxd */}
+      {(film.imdb_id || film.tmdb_id) && (
+        <div className="shrink-0 flex items-center gap-2 px-3 pb-2 pt-1">
+          {film.imdb_id && (
+            <a href={`https://www.imdb.com/title/${film.imdb_id}/`}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
+              style={{ background: "rgba(245,197,24,0.1)", border: "1px solid rgba(245,197,24,0.2)" }}>
+              <img src="/imdb-logo.svg" alt="IMDb" className="h-4" />
+            </a>
+          )}
+          <a href={`https://letterboxd.com/tmdb/${film.tmdb_id}/`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
+            style={{ background: "rgba(0,224,84,0.08)", border: "1px solid rgba(0,224,84,0.2)" }}>
+            <img src="/letterboxd-logo.svg" alt="Letterboxd" className="h-4 w-4" />
+          </a>
+        </div>
+      )}
 
       {/* Action buttons */}
       {(onLike || onDislike) && (
