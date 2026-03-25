@@ -56,7 +56,7 @@ export default function FilmInfoOverlay({
             {/* Poster — top 45% */}
             <div className="relative shrink-0 overflow-hidden" style={{ height: "45dvh" }}>
               <img
-                src={posterUrl(film.backdrop_path ?? film.poster_path, "w780")}
+                src={posterUrl(film.backdrop_path ?? film.poster_path, "w1280")}
                 alt={film.title}
                 className="w-full h-full object-cover"
               />
@@ -108,7 +108,7 @@ export default function FilmInfoOverlay({
                 style={{ width: "calc(60% - 6px)", height: "100%", position: "relative", zIndex: 1 }}
               >
                 <img
-                  src={posterUrl(film.backdrop_path ?? film.poster_path, "w780")}
+                  src={posterUrl(film.backdrop_path ?? film.poster_path, "w1280")}
                   alt={film.title}
                   className="w-full h-full object-cover"
                 />

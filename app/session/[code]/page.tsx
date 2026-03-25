@@ -598,8 +598,17 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const nextFilm = queue[currentIndex + 1];
   const sessionStarted = session?.started ?? false;
 
+  // Preload backdrop for current and next film so the info panel opens instantly
+  const preloadBackdrops = [currentFilm, nextFilm].filter(Boolean).map((f) =>
+    f!.backdrop_path ? posterUrl(f!.backdrop_path, "w1280") : null
+  ).filter(Boolean) as string[];
+
   return (
     <div className="h-dvh overflow-hidden" style={{ background: "var(--bg)" }}>
+    {/* Hidden preload images — browser fetches backdrop silently while user views card */}
+    {preloadBackdrops.map((url) => (
+      <img key={url} src={url} alt="" aria-hidden className="hidden" />
+    ))}
     <div className="flex flex-col h-dvh mx-auto overflow-hidden"
       style={{ maxWidth: infoFilm ? 920 : 480, transition: "max-width 0.3s cubic-bezier(0.4,0,0.2,1)" }}>
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
