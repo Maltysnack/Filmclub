@@ -18,7 +18,8 @@ interface FilmInfoPanelProps {
 export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionServices }: FilmInfoPanelProps) {
   const providers: { serviceId: string; logoPath?: string | null }[] = film.watch_providers_au ?? [];
   const availableProviders = providers.filter((p) => sessionServices.includes(p.serviceId));
-  const showWhere = dendyInfo || availableProviders.length > 0;
+  const hasExternalLinks = !!(film.imdb_id || film.tmdb_id);
+  const showWhere = dendyInfo || availableProviders.length > 0 || hasExternalLinks;
 
   return (
     <div className="flex flex-col h-full">
@@ -86,28 +87,40 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
                 </div>
               </div>
             )}
-            {availableProviders.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+            {/* Streaming logos (left) + IMDb/Letterboxd links (right) */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {availableProviders.map((p) => {
                   const svc = getService(p.serviceId);
                   if (!svc) return null;
                   const lp = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
                   return lp ? (
-                    <div key={p.serviceId} className="flex items-center gap-1.5">
-                      <img src={`https://image.tmdb.org/t/p/w45${lp}`} alt={svc.name}
-                        title={svc.name}
-                        className="w-7 h-7 rounded-lg object-cover" />
-                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>{svc.name}</span>
-                    </div>
+                    <img key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${lp}`}
+                      alt={svc.name} title={svc.name}
+                      className="w-7 h-7 rounded-lg object-cover" />
                   ) : (
                     <span key={p.serviceId} className="text-xs px-2 py-0.5 rounded font-bold"
                       style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}50` }}>
-                      {svc.abbrev} {svc.name}
+                      {svc.abbrev}
                     </span>
                   );
                 })}
               </div>
-            )}
+              <div className="flex items-center gap-2 shrink-0">
+                {film.imdb_id && (
+                  <a href={`https://www.imdb.com/title/${film.imdb_id}/`}
+                    target="_blank" rel="noopener noreferrer">
+                    <img src="/imdb-logo.png" alt="IMDb" className="h-4" />
+                  </a>
+                )}
+                {film.tmdb_id && (
+                  <a href={`https://letterboxd.com/tmdb/${film.tmdb_id}/`}
+                    target="_blank" rel="noopener noreferrer">
+                    <img src="/letterboxd-logo.png" alt="Letterboxd" className="h-5 w-5 rounded" />
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -146,25 +159,6 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
         )}
       </div>
 
-      {/* External links — IMDb and Letterboxd */}
-      {(film.imdb_id || film.tmdb_id) && (
-        <div className="shrink-0 flex items-center gap-2 px-3 pb-2 pt-1">
-          {film.imdb_id && (
-            <a href={`https://www.imdb.com/title/${film.imdb_id}/`}
-              target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
-              style={{ background: "rgba(245,197,24,0.1)", border: "1px solid rgba(245,197,24,0.2)" }}>
-              <img src="/imdb-logo.png" alt="IMDb" className="h-4" />
-            </a>
-          )}
-          <a href={`https://letterboxd.com/tmdb/${film.tmdb_id}/`}
-            target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs"
-            style={{ background: "rgba(0,224,84,0.08)", border: "1px solid rgba(0,224,84,0.2)" }}>
-            <img src="/letterboxd-logo.png" alt="Letterboxd" className="h-4 w-4" />
-          </a>
-        </div>
-      )}
 
       {/* Action buttons */}
       {(onLike || onDislike) && (

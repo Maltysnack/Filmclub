@@ -212,9 +212,9 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
                     {film.release_year}
                   </span>
                 )}
-                {film.rating && (
+                {(film.imdb_rating || film.rating) && (
                   <span className="text-sm" style={{ color: "var(--accent)" }}>
-                    ★ {film.rating}
+                    ★ {film.imdb_rating ?? film.rating}
                   </span>
                 )}
                 {film.genres?.[0] && (

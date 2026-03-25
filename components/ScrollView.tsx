@@ -364,8 +364,8 @@ function FilmScrollCard({
               {film.release_year && (
                 <span className="text-sm" style={{ color: "var(--text-muted)" }}>{film.release_year}</span>
               )}
-              {film.rating && (
-                <span className="text-sm" style={{ color: "var(--accent)" }}>★ {film.rating}</span>
+              {(film.imdb_rating || film.rating) && (
+                <span className="text-sm" style={{ color: "var(--accent)" }}>★ {film.imdb_rating ?? film.rating}</span>
               )}
               {film.genres?.[0] && (
                 <span className="text-xs px-2 py-0.5 rounded-full"
