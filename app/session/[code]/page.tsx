@@ -789,14 +789,22 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             onLike={infoFilm ? () => {
               handleScrollLike(infoFilm);
               const idx = queue.findIndex(f => f.id === infoFilm.id);
-              setInfoFilm(null);
-              if (idx !== -1) scrollViewRef.current?.scrollToIndex(idx + 1);
+              if (idx !== -1 && idx + 1 < queue.length) {
+                scrollViewRef.current?.scrollToIndex(idx + 1);
+                setInfoFilm(queue[idx + 1]);
+              } else {
+                setInfoFilm(null);
+              }
             } : undefined}
             onDislike={infoFilm ? () => {
               handleScrollUnlike(infoFilm);
               const idx = queue.findIndex(f => f.id === infoFilm.id);
-              setInfoFilm(null);
-              if (idx !== -1) scrollViewRef.current?.scrollToIndex(idx + 1);
+              if (idx !== -1 && idx + 1 < queue.length) {
+                scrollViewRef.current?.scrollToIndex(idx + 1);
+                setInfoFilm(queue[idx + 1]);
+              } else {
+                setInfoFilm(null);
+              }
             } : undefined}
             sessionServices={session?.streaming_services ?? []}
             dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
