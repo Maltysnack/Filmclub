@@ -8,7 +8,7 @@ import SwipeCard from "@/components/SwipeCard";
 import FilmModal from "@/components/FilmModal";
 import FilmInfoPanel from "@/components/FilmInfoPanel";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
-import ScrollView from "@/components/ScrollView";
+import ScrollView, { ScrollViewHandle } from "@/components/ScrollView";
 import DendyLogo from "@/components/DendyLogo";
 import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
@@ -51,6 +51,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so loadFilms (useCallback with [] deps) always sees the latest index
   const currentIndexRef = useRef(0);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  // Ref to imperatively scroll ScrollView when switching from swipe → scroll
+  const scrollViewRef = useRef<ScrollViewHandle>(null);
+  // Tracks the last known scroll mode index so swipe can resume at the same position
+  const scrollIndexRef = useRef(0);
   // Ref so swipes subscription always sees the latest participant without stale closure
   const participantRef = useRef<Participant | null>(null);
   useEffect(() => { participantRef.current = participant; }, [participant]);
@@ -86,6 +90,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setViewMode((m) => {
       const next = m === "swipe" ? "scroll" : "swipe";
       localStorage.setItem("filmclub-view-mode", next);
+      if (next === "scroll") {
+        // Swipe → scroll: jump scroll to current swipe position
+        setTimeout(() => scrollViewRef.current?.scrollToIndex(currentIndexRef.current), 50);
+      } else {
+        // Scroll → swipe: resume swipe at last known scroll index
+        setCurrentIndex(scrollIndexRef.current);
+      }
       return next;
     });
   }
@@ -744,6 +755,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                   onResults={() => router.push(`/session/${code}/results`)} />
               ) : (
                 <ScrollView
+                  ref={scrollViewRef}
                   films={queue}
                   likedIds={likedInScroll}
                   sessionServices={session?.streaming_services ?? []}
@@ -755,6 +767,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                   filmLikes={filmLikes}
                   participants={participants}
                   myParticipantId={participant?.id}
+                  onIndexChange={(i) => { scrollIndexRef.current = i; }}
                 />
               )}
             </div>
@@ -1016,11 +1029,27 @@ function WatchOptions({ film, dendy, session, compact = false }: {
   session: Session;
   compact?: boolean;
 }) {
-  const providers: { serviceId: string }[] = (film as Film & { watch_providers_au?: { serviceId: string }[] }).watch_providers_au ?? [];
+  type Provider = { serviceId: string; logoPath?: string | null };
+  const providers: Provider[] = (film.watch_providers_au ?? []) as Provider[];
   const sessionServices = session.streaming_services ?? [];
   const availableProviders = providers.filter((p) => sessionServices.includes(p.serviceId));
 
   if (!dendy && !availableProviders.length) return null;
+
+  function ServiceLogo({ p }: { p: Provider }) {
+    const svc = getService(p.serviceId);
+    if (!svc) return null;
+    const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath?: string | null }).tmdbLogoPath;
+    return logo ? (
+      <img src={`https://image.tmdb.org/t/p/w45${logo}`} alt={svc.name} title={svc.name}
+        className="w-7 h-7 rounded object-cover" />
+    ) : (
+      <span className="text-xs px-1.5 py-0.5 rounded font-bold"
+        style={{ background: `${svc.color}22`, color: svc.color, border: `1px solid ${svc.color}44` }}>
+        {svc.abbrev}
+      </span>
+    );
+  }
 
   if (compact) {
     return (
@@ -1031,15 +1060,7 @@ function WatchOptions({ film, dendy, session, compact = false }: {
             🎬 Dendy
           </span>
         )}
-        {availableProviders.slice(0, 2).map((p) => {
-          const svc = getService(p.serviceId);
-          return svc ? (
-            <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded font-bold"
-              style={{ background: `${svc.color}22`, color: svc.color }}>
-              {svc.abbrev}
-            </span>
-          ) : null;
-        })}
+        {availableProviders.slice(0, 3).map((p) => <ServiceLogo key={p.serviceId} p={p} />)}
       </div>
     );
   }
@@ -1067,17 +1088,8 @@ function WatchOptions({ film, dendy, session, compact = false }: {
       )}
       {availableProviders.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>Also on:</p>
-          {availableProviders.map((p) => {
-            const svc = getService(p.serviceId);
-            return svc ? (
-              <span key={p.serviceId} className="text-xs px-2.5 py-1 rounded-lg font-bold"
-                style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}50` }}>
-                {svc.abbrev}
-                <span className="font-normal ml-1 opacity-80">{svc.name}</span>
-              </span>
-            ) : null;
-          })}
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>Available on</p>
+          {availableProviders.map((p) => <ServiceLogo key={p.serviceId} p={p} />)}
         </div>
       )}
     </div>

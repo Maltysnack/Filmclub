@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Film } from "@/types";
 import { DendyFilm } from "@/lib/dendy";
@@ -28,16 +28,21 @@ interface ScrollViewProps {
   filmLikes?: Map<string, string[]>;
   participants?: Participant[];
   myParticipantId?: string;
+  onIndexChange?: (index: number) => void;
+}
+
+export interface ScrollViewHandle {
+  scrollToIndex: (i: number) => void;
 }
 
 function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-export default function ScrollView({
+const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(function ScrollView({
   films, likedIds, sessionServices, dendyMap, onLike, onUnlike, onInfo,
-  votePhase = 1, filmLikes, participants = [], myParticipantId,
-}: ScrollViewProps) {
+  votePhase = 1, filmLikes, participants = [], myParticipantId, onIndexChange,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,7 +97,22 @@ export default function ScrollView({
     const index = Math.round(el.scrollTop / slotHeight);
     isSnapping.current = true;
     animateScroll(index * slotHeight);
-  }, [slotHeight, animateScroll]);
+    onIndexChange?.(index);
+  }, [slotHeight, animateScroll, onIndexChange]);
+
+  // Expose scrollToIndex so the parent can sync position when switching modes
+  useImperativeHandle(ref, () => ({
+    scrollToIndex(i: number) {
+      const el = containerRef.current;
+      if (!el) return;
+      // Use instant scroll if slotHeight is ready, else defer one frame
+      if (slotHeight > 0) {
+        el.scrollTop = i * slotHeight;
+      } else {
+        requestAnimationFrame(() => { el.scrollTop = i * slotHeight; });
+      }
+    },
+  }), [slotHeight]);
 
   // While finger is down: cancel any pending snap
   const handleTouchStart = useCallback(() => {
@@ -173,7 +193,9 @@ export default function ScrollView({
       ))}
     </div>
   );
-}
+});
+
+export default ScrollView;
 
 function FilmScrollCard({
   film, liked, sessionServices, dendyInfo, onLike, onUnlike, onInfo,
