@@ -4,11 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import { motion, useAnimation } from "framer-motion";
 import { Match } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
+import { supabase } from "@/lib/supabase";
 
 interface SpinWheelProps {
   films: Match[];
   winnerId: string;
   onComplete: () => void;
+  /** Called when 50%+ of participants vote to respin. Receives the film to exclude. */
+  onRespin?: (excludeFilmId: string) => void;
+  participantId?: string;
+  totalParticipants?: number;
+  sessionId?: string;
 }
 
 function hashStr(s: string): number {
@@ -24,10 +30,21 @@ function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProps) {
+const RESPIN_SECONDS = 8;
+
+export default function SpinWheel({
+  films, winnerId, onComplete, onRespin,
+  participantId, totalParticipants = 1, sessionId,
+}: SpinWheelProps) {
   const controls = useAnimation();
   const [finished, setFinished] = useState(false);
-  const doneRef = useRef(false);
+  const resolvedRef = useRef(false);
+
+  // Respin vote state
+  const [respinVoters, setRespinVoters] = useState<Set<string>>(new Set());
+  const [respinCountdown, setRespinCountdown] = useState(RESPIN_SECONDS);
+  const [hasVoted, setHasVoted] = useState(false);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const sorted = [...films].sort((a, b) =>
     (a.film?.title ?? "").localeCompare(b.film?.title ?? "")
@@ -38,160 +55,224 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   const winnerIndex = sorted.findIndex((m) => m.film_id === winnerId);
   const winnerCenterAngle = winnerIndex * segAngle + segAngle / 2;
   const offsetToTop = (360 - winnerCenterAngle + 360) % 360;
-
   const fullSpins = 3 + (hashStr(winnerId) % 2);
   const totalRotation = fullSpins * 360 + offsetToTop;
   const overshootDeg = 20;
-
   const winnerFilm = sorted[winnerIndex]?.film;
 
+  // Wheel geometry
   const SVG = 300;
-  const cx = SVG / 2;       // 150 — wheel hub x
-  const cy = SVG / 2;       // 150 — wheel hub y
+  const cx = SVG / 2;
+  const cy = SVG / 2;
   const orbitR = 95;
-
   const maxArcWidth = 2 * orbitR * Math.sin(Math.PI / n) * 0.78;
   const posterW = Math.min(68, maxArcWidth);
   const posterH = posterW * 1.5;
   const cornerR = posterW * 0.1;
-
-  // The top poster's centre in SVG space:
-  //   x = cx = 150  (horizontally centred)
-  //   y = cy - orbitR = 55  (above the hub)
-  const topPosterY = cy - orbitR; // 55
-
-  // Target: the top poster always appears ~140px wide on screen.
+  // Top poster centre in SVG space — pinned to screen centre
+  const topPosterY = cy - orbitR;
+  // Scale so the top poster always appears at ~140px on screen
   const targetPosterPx = 140;
   const scale = Math.max(1, targetPosterPx / posterW);
-
-  // On-screen poster height is always targetPosterPx * 1.5 (= 210px) when scale > 1,
-  // because posterH_screen = posterW_svgu * 1.5 * scale = (targetPosterPx/scale) * 1.5 * scale.
+  // On-screen poster height (constant when scale > 1)
   const screenPosterH = Math.max(posterH, targetPosterPx * 1.5);
 
+  const canRespin = !!onRespin && !!participantId && !!sessionId && films.length > 1;
+  const respinThreshold = Math.ceil(totalParticipants / 2);
+  const respinPassed = respinVoters.size >= respinThreshold;
+
+  // ── Start animation ────────────────────────────────────────────────────────
   useEffect(() => {
-    controls
-      .start({
-        rotate: [0, totalRotation + overshootDeg, totalRotation],
-        transition: {
-          duration: 12,
-          times: [0, 0.88, 1.0],
-          ease: [
-            [0.3, 0.0, 0.8, 1.0],
-            [0.0, 0.0, 0.4, 1.0],
-          ],
-        },
-      })
-      .then(() => {
-        setFinished(true);
-        if (!doneRef.current) {
-          doneRef.current = true;
-          setTimeout(onComplete, 1200);
-        }
-      });
+    controls.start({
+      rotate: [0, totalRotation + overshootDeg, totalRotation],
+      transition: {
+        duration: 18,                    // 50% slower than previous 12s
+        times: [0, 0.88, 1.0],
+        ease: [
+          [0.3, 0.0, 0.8, 1.0],         // spin phase
+          [0.0, 0.0, 0.6, 1.0],         // settle phase — also 50% slower (x2=0.6 vs 0.4)
+        ],
+      },
+    }).then(() => {
+      setFinished(true);
+      if (!canRespin && !resolvedRef.current) {
+        resolvedRef.current = true;
+        setTimeout(onComplete, 1200);
+      }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Respin broadcast channel ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!finished || !canRespin) return;
+
+    const ch = supabase
+      .channel(`respin:${sessionId}:${winnerId}`)
+      .on("broadcast", { event: "vote" }, ({ payload }) => {
+        setRespinVoters((prev) => new Set([...prev, payload.participantId as string]));
+      })
+      .subscribe();
+    channelRef.current = ch;
+
+    const timer = setInterval(() => {
+      setRespinCountdown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => {
+      supabase.removeChannel(ch);
+      clearInterval(timer);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
+
+  // ── Resolve respin outcome ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!finished || !canRespin || resolvedRef.current) return;
+    if (respinPassed) {
+      resolvedRef.current = true;
+      onRespin!(winnerId);
+    } else if (respinCountdown === 0) {
+      resolvedRef.current = true;
+      onComplete();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [respinVoters.size, respinCountdown, finished]);
+
+  const handleVoteRespin = async () => {
+    if (hasVoted || !channelRef.current || !participantId) return;
+    setHasVoted(true);
+    // Apply own vote immediately for instant feedback
+    setRespinVoters((prev) => new Set([...prev, participantId]));
+    await channelRef.current.send({
+      type: "broadcast",
+      event: "vote",
+      payload: { participantId },
+    });
+  };
+
   return (
-    // overflow:hidden on the outermost fixed layer is what clips the wheel
+    // overflow:hidden clips the wheel outside the viewport
     <div className="fixed inset-0 z-50" style={{ background: "rgba(0,0,0,0.92)", overflow: "hidden" }}>
+      {/* Constrain to phone width — matches the rest of the app */}
+      <div className="relative h-full mx-auto" style={{ maxWidth: 480 }}>
 
-      {/* Status text — top of screen */}
-      <p
-        className="absolute top-10 left-0 right-0 text-center text-sm"
-        style={{ color: "var(--text-muted)" }}
-      >
-        {finished ? "" : "Spinning…"}
-      </p>
+        {/* Status text */}
+        <p className="absolute top-10 left-0 right-0 text-center text-sm"
+          style={{ color: "var(--text-muted)" }}>
+          {finished ? "" : "Spinning…"}
+        </p>
 
-      {/* Pointer triangle — pinned just above screen centre */}
-      <div style={{
-        position: "absolute",
-        left: "50%",
-        top: "50%",
-        transform: `translate(-50%, -${Math.round(screenPosterH / 2) + 22}px)`,
-        zIndex: 2,
-        width: 0, height: 0,
-        borderLeft: "10px solid transparent",
-        borderRight: "10px solid transparent",
-        borderBottom: "18px solid white",
-      }} />
+        {/* Pointer triangle — pinned just above the centred hot-seat poster */}
+        <div style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: `translate(-50%, -${Math.round(screenPosterH / 2) + 22}px)`,
+          zIndex: 2,
+          width: 0, height: 0,
+          borderLeft: "10px solid transparent",
+          borderRight: "10px solid transparent",
+          borderBottom: "18px solid white",
+        }} />
 
-      {/*
-        Wheel wrapper:
-        - positioned so SVG point (cx, topPosterY) = (150, 55) lands at screen centre
-          via: left = calc(50% - 150px), top = calc(50% - 55px)
-        - scaled around that same point via transformOrigin: "150px 55px"
-        Result: the top poster is always dead-centre on screen at any scale.
-      */}
-      <div style={{
-        position: "absolute",
-        left: `calc(50% - ${cx}px)`,
-        top: `calc(50% - ${topPosterY}px)`,
-        width: SVG,
-        transformOrigin: `${cx}px ${topPosterY}px`,
-        transform: `scale(${scale})`,
-      }}>
-        <motion.div animate={controls} style={{ transformOrigin: "center", width: SVG, height: SVG }}>
-          <svg width={SVG} height={SVG} viewBox={`0 0 ${SVG} ${SVG}`}>
-            <circle cx={cx} cy={cy} r={orbitR + posterH / 2 + 4}
-              fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+        {/*
+          Wheel wrapper:
+          • positioned so SVG point (cx, topPosterY) maps to screen centre
+          • scaled from that same point — top poster stays dead-centre at any n
+        */}
+        <div style={{
+          position: "absolute",
+          left: `calc(50% - ${cx}px)`,
+          top: `calc(50% - ${topPosterY}px)`,
+          width: SVG,
+          transformOrigin: `${cx}px ${topPosterY}px`,
+          transform: `scale(${scale})`,
+        }}>
+          <motion.div animate={controls} style={{ transformOrigin: "center", width: SVG, height: SVG }}>
+            <svg width={SVG} height={SVG} viewBox={`0 0 ${SVG} ${SVG}`}>
+              <circle cx={cx} cy={cy} r={orbitR + posterH / 2 + 4}
+                fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
 
-            {sorted.map((match, i) => {
-              const midAngle = i * segAngle + segAngle / 2;
-              const pos = polarToCartesian(cx, cy, orbitR, midAngle);
-              const src = match.film?.poster_path
-                ? posterUrl(match.film.poster_path, "w342")
-                : null;
-              const isWinner = match.film_id === winnerId;
+              {sorted.map((match, i) => {
+                const midAngle = i * segAngle + segAngle / 2;
+                const pos = polarToCartesian(cx, cy, orbitR, midAngle);
+                const src = match.film?.poster_path
+                  ? posterUrl(match.film.poster_path, "w342")
+                  : null;
+                const isWinner = match.film_id === winnerId;
 
-              return (
-                <g key={match.film_id} transform={`rotate(${midAngle}, ${pos.x}, ${pos.y})`}>
-                  <defs>
-                    <clipPath id={`card-clip-${i}`}>
-                      <rect
+                return (
+                  <g key={match.film_id} transform={`rotate(${midAngle}, ${pos.x}, ${pos.y})`}>
+                    <defs>
+                      <clipPath id={`card-clip-${i}`}>
+                        <rect x={pos.x - posterW / 2} y={pos.y - posterH / 2}
+                          width={posterW} height={posterH} rx={cornerR} ry={cornerR} />
+                      </clipPath>
+                    </defs>
+                    <rect
+                      x={pos.x - posterW / 2} y={pos.y - posterH / 2}
+                      width={posterW} height={posterH} rx={cornerR} ry={cornerR}
+                      fill="#1a1a1a"
+                      stroke={finished && isWinner ? "#ffffff" : "rgba(255,255,255,0.15)"}
+                      strokeWidth={finished && isWinner ? 2 : 1}
+                    />
+                    {src && (
+                      <image
+                        href={src}
                         x={pos.x - posterW / 2} y={pos.y - posterH / 2}
                         width={posterW} height={posterH}
-                        rx={cornerR} ry={cornerR}
+                        preserveAspectRatio="xMidYMid slice"
+                        clipPath={`url(#card-clip-${i})`}
                       />
-                    </clipPath>
-                  </defs>
+                    )}
+                  </g>
+                );
+              })}
 
-                  <rect
-                    x={pos.x - posterW / 2} y={pos.y - posterH / 2}
-                    width={posterW} height={posterH}
-                    rx={cornerR} ry={cornerR}
-                    fill="#1a1a1a"
-                    stroke={finished && isWinner ? "#ffffff" : "rgba(255,255,255,0.15)"}
-                    strokeWidth={finished && isWinner ? 2 : 1}
-                  />
+              <circle cx={cx} cy={cy} r={14} fill="#0c0c0e" stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
+            </svg>
+          </motion.div>
+        </div>
 
-                  {src && (
-                    <image
-                      href={src}
-                      x={pos.x - posterW / 2} y={pos.y - posterH / 2}
-                      width={posterW} height={posterH}
-                      preserveAspectRatio="xMidYMid slice"
-                      clipPath={`url(#card-clip-${i})`}
-                    />
-                  )}
-                </g>
-              );
-            })}
+        {/* Winner title — just below the centred poster */}
+        {finished && winnerFilm && (
+          <p className="absolute left-0 right-0 text-xl font-bold text-center px-8"
+            style={{
+              color: "var(--text)",
+              top: `calc(50% + ${Math.round(screenPosterH / 2) + 16}px)`,
+            }}>
+            {winnerFilm.title}
+          </p>
+        )}
 
-            <circle cx={cx} cy={cy} r={14} fill="#0c0c0e" stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
-          </svg>
-        </motion.div>
+        {/* Respin vote panel */}
+        {finished && canRespin && !resolvedRef.current && (
+          <div className="absolute bottom-10 left-5 right-5">
+            <div className="rounded-2xl p-4 text-center" style={{ background: "var(--surface)" }}>
+              <p className="text-sm font-semibold mb-1" style={{ color: "var(--text)" }}>
+                Respin?
+              </p>
+              <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+                {respinVoters.size} / {respinThreshold} votes needed · {respinCountdown}s
+              </p>
+              {!hasVoted ? (
+                <button
+                  onClick={handleVoteRespin}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold"
+                  style={{ background: "var(--surface-2, #2a2a2a)", color: "var(--text)" }}
+                >
+                  🔄 Vote to respin
+                </button>
+              ) : (
+                <p className="text-xs py-2" style={{ color: "var(--accent)" }}>
+                  ✓ You voted to respin
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Winner title — bottom of screen */}
-      {finished && winnerFilm && (
-        <p
-          className="absolute left-0 right-0 text-xl font-bold text-center px-8"
-          style={{ color: "var(--text)", bottom: "12vh" }}
-        >
-          {winnerFilm.title}
-        </p>
-      )}
     </div>
   );
 }

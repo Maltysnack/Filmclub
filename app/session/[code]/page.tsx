@@ -38,6 +38,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
   const [matchList, setMatchList] = useState<Match[]>([]);
+  // Wheel state — lifted here so SpinWheel can overlay MatchScreen without flash
+  const [wheelFilms, setWheelFilms] = useState<Match[] | null>(null);
+  const [wheelWinnerId, setWheelWinnerId] = useState<string | null>(null);
+  const wheelChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [allDone, setAllDone] = useState(false);
   const [loading, setLoading] = useState(true);
   const [minLoadDone, setMinLoadDone] = useState(false);
@@ -492,6 +496,41 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     return () => { supabase.removeChannel(channel); };
   }, [session, participant, loadFilms, code]);
 
+  // ── Wheel broadcast channel — lets all participants see the spin ───────────
+  useEffect(() => {
+    if (!session) return;
+    const ch = supabase
+      .channel(`wheel:${session.id}`)
+      .on("broadcast", { event: "spin" }, ({ payload }) => {
+        setWheelFilms(payload.films as Match[]);
+        setWheelWinnerId(payload.winnerId as string);
+      })
+      .subscribe();
+    wheelChannelRef.current = ch;
+    return () => { supabase.removeChannel(ch); wheelChannelRef.current = null; };
+  }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Deterministic winner selection for respin — same result on all devices
+  function hashSimple(s: string): number {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
+    return Math.abs(h);
+  }
+
+  function handleRespin(excludeFilmId: string) {
+    const remaining = (wheelFilms ?? []).filter((m) => m.film_id !== excludeFilmId);
+    if (remaining.length === 0) return;
+    const sorted = [...remaining].sort((a, b) =>
+      (a.film?.title ?? "").localeCompare(b.film?.title ?? "")
+    );
+    const newWinnerId = remaining.length === 1
+      ? remaining[0].film_id
+      : sorted[hashSimple(excludeFilmId) % sorted.length].film_id;
+    // All devices run the same deterministic calculation — no broadcast needed
+    setWheelFilms(remaining);
+    setWheelWinnerId(newWinnerId);
+  }
+
   async function handleSwipe(liked: boolean) {
     if (!session || !participant || currentIndex >= queue.length) return;
     const s = sessionRef.current ?? session; // always fresh — avoids stale closure
@@ -607,10 +646,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             session={session!}
             dendyMap={dendyMap}
             isHost={isHost}
-
-            onRandomise={async (winnerFilmId: string) => {
-              await resolveMatch(session!.id, winnerFilmId);
-              // Real-time subscription will fire on all devices and show the winner
+            onRandomise={(winnerFilmId: string) => {
+              // Set local state immediately and broadcast to all participants
+              setWheelFilms(matchList);
+              setWheelWinnerId(winnerFilmId);
+              wheelChannelRef.current?.send({
+                type: "broadcast", event: "spin",
+                payload: { winnerId: winnerFilmId, films: matchList },
+              });
             }}
             onVoteAgain={async () => {
               const filmIds = matchList.map((m) => m.film_id);
@@ -622,6 +665,27 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             }}
           />
         </div>
+
+        {/* SpinWheel — at page level to avoid flash when transitioning to match screen */}
+        {wheelFilms && wheelWinnerId && (
+          <SpinWheel
+            key={wheelWinnerId}
+            films={wheelFilms}
+            winnerId={wheelWinnerId}
+            participantId={participant?.id}
+            totalParticipants={participants.length}
+            sessionId={session?.id}
+            onComplete={async () => {
+              // Resolve match in DB (host only — real-time fires on all devices)
+              if (isHost) await resolveMatch(session!.id, wheelWinnerId);
+              // Update matchList locally before hiding wheel — eliminates flash
+              setMatchList((prev) => prev.filter((m) => m.film_id === wheelWinnerId));
+              setWheelFilms(null);
+              setWheelWinnerId(null);
+            }}
+            onRespin={handleRespin}
+          />
+        )}
       </div>
     );
   }
@@ -959,12 +1023,10 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
   session: Session;
   dendyMap: Map<string, DendyFilm>;
   isHost: boolean;
-  onRandomise?: (winnerFilmId: string) => Promise<void>;
+  onRandomise?: (winnerFilmId: string) => void;
   onVoteAgain?: () => void;
 }) {
   const router = useRouter();
-  const [spinning, setSpinning] = useState(false);
-  const [pendingWinnerId, setPendingWinnerId] = useState<string | null>(null);
   if (matches.length === 0 || !matches[0]?.film) return null;
   const isTied = matches.length > 1;
 
@@ -1049,8 +1111,7 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
           {isTied && isHost && onRandomise && (
             <button onClick={() => {
               const winner = matches[Math.floor(Math.random() * matches.length)];
-              setPendingWinnerId(winner.film_id);
-              setSpinning(true);
+              onRandomise(winner.film_id);
             }} className="flex-1 py-3 rounded-xl text-sm font-semibold"
               style={{ background: "var(--accent)", color: "#0c0c0e" }}>
               Randomise
@@ -1070,16 +1131,6 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
         </div>
       </div>
 
-      {spinning && pendingWinnerId && onRandomise && (
-        <SpinWheel
-          films={matches}
-          winnerId={pendingWinnerId}
-          onComplete={() => {
-            setSpinning(false);
-            onRandomise(pendingWinnerId);
-          }}
-        />
-      )}
     </div>
   );
 }
