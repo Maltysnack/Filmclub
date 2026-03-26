@@ -153,9 +153,9 @@ export default function SpinWheel({
 
   return (
     // overflow:hidden clips the wheel outside the viewport
-    <div className="fixed inset-0 z-50" style={{ background: "rgba(0,0,0,0.92)", overflow: "hidden" }}>
-      {/* Constrain to phone width — matches the rest of the app */}
-      <div className="relative h-full mx-auto" style={{ maxWidth: 480 }}>
+    <div className="fixed inset-0 z-50" style={{ background: "rgba(0,0,0,0.92)" }}>
+      {/* Constrain to phone width — overflow:hidden here clips the wheel to this box */}
+      <div className="relative h-full mx-auto" style={{ maxWidth: 480, overflow: "hidden" }}>
 
         {/* Status text */}
         <p className="absolute top-10 left-0 right-0 text-center text-sm"
