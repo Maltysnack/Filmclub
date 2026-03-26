@@ -23,6 +23,19 @@ import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
 import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List } from "lucide-react";
 
+const LOAD_MESSAGES = [
+  "Preparing the film reel…",
+  "Bribing the critics…",
+  "Arguing with the studio execs…",
+  "Rewinding the VHS…",
+  "Buttering the popcorn…",
+  "Negotiating with Spielberg…",
+  "Dimming the lights…",
+  "Shushing the talkers…",
+  "Fast-forwarding through the ads…",
+  "Finding a good seat in the dark…",
+];
+
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
   const router = useRouter();
@@ -37,6 +50,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [matchList, setMatchList] = useState<Match[]>([]);
   const [allDone, setAllDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [minLoadDone, setMinLoadDone] = useState(false);
+  const [loadMsgIndex, setLoadMsgIndex] = useState(0);
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showGenreFilter, setShowGenreFilter] = useState(false);
@@ -58,6 +73,19 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so swipes subscription always sees the latest participant without stale closure
   const participantRef = useRef<Participant | null>(null);
   useEffect(() => { participantRef.current = participant; }, [participant]);
+
+  // ── Minimum loading screen (3s) with cycling flavour text ─────────────────
+  useEffect(() => {
+    const timer = setTimeout(() => setMinLoadDone(true), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!loading && minLoadDone) return; // already past loading
+    const interval = setInterval(() => {
+      setLoadMsgIndex((i) => (i + 1) % LOAD_MESSAGES.length);
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [loading, minLoadDone]);
 
   // ── Phase-based vote visibility ───────────────────────────────────────────
   // groupSwipeCount / groupLikeCount track ALL participants' swipes for this session.
@@ -90,13 +118,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setViewMode((m) => {
       const next = m === "swipe" ? "scroll" : "swipe";
       localStorage.setItem("filmclub-view-mode", next);
-      if (next === "scroll") {
-        // Swipe → scroll: jump scroll to current swipe position
-        setTimeout(() => scrollViewRef.current?.scrollToIndex(currentIndexRef.current), 50);
-      } else {
+      if (next === "swipe") {
         // Scroll → swipe: resume swipe at last known scroll index
         setCurrentIndex(scrollIndexRef.current);
       }
+      // Swipe → scroll: initialIndex prop handles the position on mount
       return next;
     });
   }
@@ -535,10 +561,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setTimeout(() => setCopied(false), 1500);
   }
 
-  if (loading) {
-    const loadMsg = session?.watch_mode === "cinema"
-      ? "Checking what's on at Dendy…"
-      : "Finding films for you…";
+  if (loading || !minLoadDone) {
     return (
       <div className="min-h-dvh flex items-center justify-center" style={{ background: "var(--bg)" }}>
         <div className="text-center space-y-5 mx-auto px-6" style={{ maxWidth: 480 }}>
@@ -551,7 +574,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               <div className="absolute inset-0 flex items-center justify-center text-2xl">🎬</div>
             </div>
           </div>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{loadMsg}</p>
+          <p className="text-sm transition-all duration-500" style={{ color: "var(--text-muted)" }}>
+            {LOAD_MESSAGES[loadMsgIndex]}
+          </p>
         </div>
       </div>
     );
@@ -772,6 +797,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                   participants={participants}
                   myParticipantId={participant?.id}
                   onIndexChange={(i) => { scrollIndexRef.current = i; }}
+                  initialIndex={currentIndexRef.current}
                 />
               )}
             </div>

@@ -29,6 +29,7 @@ interface ScrollViewProps {
   participants?: Participant[];
   myParticipantId?: string;
   onIndexChange?: (index: number) => void;
+  initialIndex?: number;
 }
 
 export interface ScrollViewHandle {
@@ -42,12 +43,14 @@ function easeInOutCubic(t: number) {
 const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(function ScrollView({
   films, likedIds, sessionServices, dendyMap, onLike, onUnlike, onInfo,
   votePhase = 1, filmLikes, participants = [], myParticipantId, onIndexChange,
+  initialIndex = 0,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSnapping = useRef(false);
   const [containerHeight, setContainerHeight] = useState(0);
+  const initialIndexApplied = useRef(false);
 
   // Track container height so cards can be sized correctly
   useEffect(() => {
@@ -90,6 +93,15 @@ const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(function Scroll
 
   // Slot height = card + gap (fills full container height)
   const slotHeight = containerHeight > 0 ? containerHeight : 0;
+
+  // Jump to initialIndex the first time slotHeight becomes valid (no animation)
+  useEffect(() => {
+    if (slotHeight > 0 && !initialIndexApplied.current && initialIndex > 0) {
+      initialIndexApplied.current = true;
+      const el = containerRef.current;
+      if (el) el.scrollTop = initialIndex * slotHeight;
+    }
+  }, [slotHeight, initialIndex]);
 
   const snapToNearest = useCallback(() => {
     const el = containerRef.current;
