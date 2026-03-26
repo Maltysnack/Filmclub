@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimation } from "framer-motion";
 import { Match } from "@/types";
+import { posterUrl } from "@/lib/tmdb";
 
 interface SpinWheelProps {
   films: Match[];
@@ -40,12 +41,9 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   const [finished, setFinished] = useState(false);
   const doneRef = useRef(false);
 
-  // Sort films alphabetically by title for deterministic order
-  const sorted = [...films].sort((a, b) => {
-    const titleA = a.film?.title ?? "";
-    const titleB = b.film?.title ?? "";
-    return titleA.localeCompare(titleB);
-  });
+  const sorted = [...films].sort((a, b) =>
+    (a.film?.title ?? "").localeCompare(b.film?.title ?? "")
+  );
 
   const n = sorted.length;
   const segAngle = 360 / n;
@@ -53,20 +51,26 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   const winnerCenter = winnerIndex * segAngle + segAngle / 2;
   const offsetToTop = (360 - winnerCenter + 360) % 360;
   const totalRotation = (6 + (hashStr(winnerId) % 5)) * 360 + offsetToTop;
-
   const winnerFilm = sorted[winnerIndex]?.film;
 
   useEffect(() => {
     controls
       .start({
         rotate: totalRotation,
-        transition: { duration: 4.5, ease: [0.12, 0.8, 0.1, 1.0] },
+        transition: {
+          duration: 7,
+          // Very slow start, builds to moderate speed, then long gentle wind-down.
+          // x1=0.5 → handle halfway across means very little initial progress.
+          // x2=0.85 → second handle far right means deceleration is spread over
+          // the last ~40% of the animation — hard to perceive exactly when it stops.
+          ease: [0.5, 0.0, 0.85, 1.0],
+        },
       })
       .then(() => {
         setFinished(true);
         if (!doneRef.current) {
           doneRef.current = true;
-          setTimeout(onComplete, 1000);
+          setTimeout(onComplete, 1200);
         }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,26 +79,22 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.88)" }}
+      style={{ background: "rgba(0,0,0,0.92)" }}
     >
-      {/* Title */}
       <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
         {finished ? "" : "Spinning…"}
       </p>
 
       {/* Pointer triangle */}
-      <div
-        style={{
-          width: 0,
-          height: 0,
-          borderLeft: "12px solid transparent",
-          borderRight: "12px solid transparent",
-          borderBottom: "22px solid white",
-          marginBottom: -2,
-          zIndex: 1,
-          position: "relative",
-        }}
-      />
+      <div style={{
+        width: 0, height: 0,
+        borderLeft: "12px solid transparent",
+        borderRight: "12px solid transparent",
+        borderBottom: "22px solid white",
+        marginBottom: -2,
+        position: "relative",
+        zIndex: 1,
+      }} />
 
       {/* Wheel */}
       <motion.div
@@ -102,47 +102,56 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
         style={{ transformOrigin: "center", width: 300, height: 300 }}
       >
         <svg width={300} height={300} viewBox="0 0 300 300">
+          <defs>
+            {sorted.map((_, i) => {
+              const startAngle = i * segAngle;
+              const endAngle = (i + 1) * segAngle;
+              return (
+                <clipPath key={i} id={`sw-clip-${i}`}>
+                  <path d={describeArc(150, 150, 135, startAngle, endAngle)} />
+                </clipPath>
+              );
+            })}
+          </defs>
+
           {sorted.map((match, i) => {
             const startAngle = i * segAngle;
             const endAngle = (i + 1) * segAngle;
-            const midAngle = startAngle + segAngle / 2;
-            const textPos = polarToCartesian(150, 150, 135 * 0.65, midAngle);
-            const title = (match.film?.title ?? "").slice(0, 10);
             const color = COLORS[i % COLORS.length];
+            const src = match.film?.poster_path
+              ? posterUrl(match.film.poster_path, "w342")
+              : null;
 
             return (
               <g key={match.film_id}>
-                <path
-                  d={describeArc(150, 150, 135, startAngle, endAngle)}
-                  fill={color}
-                  stroke="#0c0c0e"
-                  strokeWidth={1}
-                />
-                <text
-                  x={textPos.x}
-                  y={textPos.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={8}
-                  fontWeight="bold"
-                  fill="white"
-                  transform={`rotate(${midAngle}, ${textPos.x}, ${textPos.y})`}
-                >
-                  {title}
-                </text>
+                {/* Coloured fallback (shows while image loads or if no poster) */}
+                <path d={describeArc(150, 150, 135, startAngle, endAngle)}
+                  fill={color} />
+
+                {/* Poster image clipped to this segment */}
+                {src && (
+                  <image
+                    href={src}
+                    x={0} y={0} width={300} height={300}
+                    preserveAspectRatio="xMidYMid slice"
+                    clipPath={`url(#sw-clip-${i})`}
+                  />
+                )}
+
+                {/* Segment border */}
+                <path d={describeArc(150, 150, 135, startAngle, endAngle)}
+                  fill="none" stroke="#0c0c0e" strokeWidth={1.5} />
               </g>
             );
           })}
+
+          {/* Centre cap */}
           <circle cx={150} cy={150} r={18} fill="#0c0c0e" />
         </svg>
       </motion.div>
 
-      {/* Winner title shown after animation */}
       {finished && winnerFilm && (
-        <p
-          className="text-xl font-bold mt-6 text-center px-8"
-          style={{ color: "var(--text)" }}
-        >
+        <p className="text-xl font-bold mt-6 text-center px-8" style={{ color: "var(--text)" }}>
           {winnerFilm.title}
         </p>
       )}
