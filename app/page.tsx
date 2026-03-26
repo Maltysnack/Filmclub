@@ -114,9 +114,7 @@ export default function Home() {
   }
 
   function normaliseCode(raw: string): string {
-    const stripped = raw.trim().toUpperCase().replace(/-/g, "");
-    if (stripped.length > 4) return `${stripped.slice(0, 4)}-${stripped.slice(4)}`;
-    return stripped;
+    return raw.trim().toUpperCase().replace(/-/g, "");
   }
 
   function toggleService(id: string) {
