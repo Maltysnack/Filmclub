@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { ArrowLeft, Search, Plus, Check, Heart, Trophy, Info, Layers, Lock, Clock } from "lucide-react";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
 import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
@@ -272,6 +272,39 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   );
 }
 
+function HeartButton({ liked, onClick }: { liked: boolean; onClick: () => void }) {
+  const controls = useAnimation();
+
+  async function handleClick() {
+    if (!liked) {
+      await controls.start({
+        scale: [1, 1.4, 1],
+        transition: { duration: 0.35, ease: "easeOut" },
+      });
+    }
+    onClick();
+  }
+
+  return (
+    <motion.button
+      animate={controls}
+      onClick={handleClick}
+      className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center"
+      style={
+        liked
+          ? { background: "var(--like)", color: "#0c0c0e" }
+          : {
+              border: "1.5px solid rgba(74,222,128,0.45)",
+              background: "rgba(12,12,14,0.6)",
+              color: "var(--like)",
+            }
+      }
+    >
+      <Heart size={14} fill={liked ? "currentColor" : "none"} />
+    </motion.button>
+  );
+}
+
 function FilmGrid({
   films, alreadyInPool, likedByMe, sessionServices, providerMap, onAdd, onLike, onInfo,
 }: {
@@ -304,7 +337,7 @@ function FilmGrid({
             layout
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: unavailable ? 0.45 : 1, scale: 1 }}
-            className="relative rounded-xl overflow-hidden group"
+            className="relative rounded-xl overflow-hidden"
             style={{ aspectRatio: "2/3", background: "var(--surface)" }}
           >
             <img
@@ -343,23 +376,8 @@ function FilmGrid({
               )}
             </div>
 
-            {/* Center hover — like / add button */}
-            <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-              style={{ background: "rgba(12,12,14,0.55)" }}
-            >
-              <button
-                onClick={() => onLike(movie)}
-                className="w-10 h-10 rounded-full flex items-center justify-center transition-transform active:scale-90"
-                style={{
-                  background: liked ? "var(--like)" : "rgba(28,28,32,0.85)",
-                  border: liked ? "none" : "1.5px solid var(--like)",
-                  color: liked ? "#0c0c0e" : "var(--like)",
-                }}
-              >
-                <Heart size={16} fill={liked ? "currentColor" : "none"} />
-              </button>
-            </div>
+            {/* Persistent heart button — bottom-right */}
+            <HeartButton liked={liked} onClick={() => onLike(movie)} />
 
             {/* Top-right — info button, with liked/in-pool dot indicator */}
             <div className="absolute top-2 right-2">

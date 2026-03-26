@@ -22,6 +22,7 @@ import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
 import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List } from "lucide-react";
+import SpinWheel from "@/components/SpinWheel";
 
 const LOAD_MESSAGE = "Arguing with the studio execs…";
 
@@ -929,6 +930,8 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
   onVoteAgain?: () => void;
 }) {
   const router = useRouter();
+  const [spinning, setSpinning] = useState(false);
+  const [pendingWinnerId, setPendingWinnerId] = useState<string | null>(null);
   const topMatch = matches[0];
   const topFilm = topMatch?.film;
   if (!topFilm) return null;
@@ -1002,7 +1005,8 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
               <button
                 onClick={() => {
                   const winner = matches[Math.floor(Math.random() * matches.length)];
-                  onRandomise(winner.film_id);
+                  setPendingWinnerId(winner.film_id);
+                  setSpinning(true);
                 }}
                 className="flex-1 py-3 rounded-xl text-sm font-semibold"
                 style={{ background: "var(--accent)", color: "#0c0c0e" }}>
@@ -1025,6 +1029,16 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
           </div>
         )}
       </div>
+      {spinning && pendingWinnerId && onRandomise && (
+        <SpinWheel
+          films={matches}
+          winnerId={pendingWinnerId}
+          onComplete={() => {
+            setSpinning(false);
+            onRandomise(pendingWinnerId);
+          }}
+        />
+      )}
     </div>
   );
 }
