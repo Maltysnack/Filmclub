@@ -57,7 +57,7 @@ export default function SpinWheel({
   const offsetToTop = (360 - winnerCenterAngle + 360) % 360;
   const fullSpins = 3 + (hashStr(winnerId) % 2);
   const totalRotation = fullSpins * 360 + offsetToTop;
-  const overshootDeg = 20;
+  const overshootDeg = 4;
   const winnerFilm = sorted[winnerIndex]?.film;
 
   // Wheel geometry
