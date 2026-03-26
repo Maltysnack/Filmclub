@@ -93,8 +93,8 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.92)" }}
+      className="fixed inset-0 z-50 flex flex-col items-center"
+      style={{ background: "rgba(0,0,0,0.92)", paddingTop: "15vh" }}
     >
       <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
         {finished ? "" : "Spinning…"}
@@ -111,9 +111,8 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
         zIndex: 1,
       }} />
 
-      {/* Clipping window — full screen width so posters stay visible further
-          around the arc. Fixed height clips the bottom as scale grows. */}
-      <div style={{ width: "100%", height: containerHeight, overflow: "hidden" }}>
+      {/* Clipping window — full width, grows to fill remaining screen height */}
+      <div style={{ width: "100%", flex: 1, overflow: "hidden" }}>
         {/* Scale wrapper — centred horizontally, anchored top-centre */}
         <div style={{ width: SVG, margin: "0 auto", transform: `scale(${scale})`, transformOrigin: "50% 0%" }}>
           {/* Rotation — framer-motion spins around the wheel's own centre */}
