@@ -968,8 +968,9 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
   if (matches.length === 0 || !matches[0]?.film) return null;
   const isTied = matches.length > 1;
 
-  // Card width based on count so all tied films are equal size
-  const cardWidthClass = matches.length === 1 ? "w-44" : matches.length === 2 ? "w-36" : "w-28";
+  // Card width based on count so all tied films are equal size.
+  // Single match fills the middle of the screen; ties share the space equally.
+  const cardWidthClass = matches.length === 1 ? "w-72" : matches.length === 2 ? "w-36" : "w-28";
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
