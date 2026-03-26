@@ -60,9 +60,11 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   // At small n (≤~6) scale ≈ 1 (full wheel visible).
   // At large n the wheel is magnified and only the top arc shows through
   // the fixed-height clipping container.
-  const targetPosterPx = 64;
-  // Min 1 (never shrink), max 3.5 (don't zoom so far that context is lost)
-  const scale = Math.min(3.5, Math.max(1, targetPosterPx / posterW));
+  // Always scale so the top poster appears at ~140px wide on screen.
+  // No upper cap — at high film counts the wheel zooms in as much as needed.
+  // Min 1 so the wheel never shrinks below its natural size at low counts.
+  const targetPosterPx = 140;
+  const scale = Math.max(1, targetPosterPx / posterW);
 
   // Container height: enough to show the winner poster clearly plus a bit
   // of context, regardless of scale. posterH in screen-px = posterH * scale.
