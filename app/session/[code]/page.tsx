@@ -23,18 +23,7 @@ import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
 import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List } from "lucide-react";
 
-const LOAD_MESSAGES = [
-  "Preparing the film reel…",
-  "Bribing the critics…",
-  "Arguing with the studio execs…",
-  "Rewinding the VHS…",
-  "Buttering the popcorn…",
-  "Negotiating with Spielberg…",
-  "Dimming the lights…",
-  "Shushing the talkers…",
-  "Fast-forwarding through the ads…",
-  "Finding a good seat in the dark…",
-];
+const LOAD_MESSAGE = "Arguing with the studio execs…";
 
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -51,7 +40,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [allDone, setAllDone] = useState(false);
   const [loading, setLoading] = useState(true);
   const [minLoadDone, setMinLoadDone] = useState(false);
-  const [loadMsgIndex, setLoadMsgIndex] = useState(0);
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showGenreFilter, setShowGenreFilter] = useState(false);
@@ -74,18 +62,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const participantRef = useRef<Participant | null>(null);
   useEffect(() => { participantRef.current = participant; }, [participant]);
 
-  // ── Minimum loading screen (3s) with cycling flavour text ─────────────────
+  // ── Minimum loading screen (3s) ───────────────────────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => setMinLoadDone(true), 3000);
     return () => clearTimeout(timer);
   }, []);
-  useEffect(() => {
-    if (!loading && minLoadDone) return; // already past loading
-    const interval = setInterval(() => {
-      setLoadMsgIndex((i) => (i + 1) % LOAD_MESSAGES.length);
-    }, 1200);
-    return () => clearInterval(interval);
-  }, [loading, minLoadDone]);
 
   // ── Phase-based vote visibility ───────────────────────────────────────────
   // groupSwipeCount / groupLikeCount track ALL participants' swipes for this session.
@@ -334,15 +315,18 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         const seen = prev.slice(0, ci);
         const unseen = [...prev.slice(ci)];
 
-        // Auto-seeded films: scatter randomly throughout the unseen portion
+        // Auto-seeded films: scatter randomly throughout the unseen portion.
+        // Always insert at position ≥ 1 so the current card (unseen[0]) is never displaced.
         for (const film of freshAuto) {
-          const pos = Math.floor(Math.random() * (unseen.length + 1));
+          const pos = unseen.length <= 1
+            ? unseen.length
+            : 1 + Math.floor(Math.random() * unseen.length);
           unseen.splice(pos, 0, film);
         }
 
-        // User-added films: surface near positions 3–8 of the unseen portion
-        // so they appear soon without immediately interrupting the current card
-        const userInsertBase = Math.min(3, unseen.length);
+        // User-added films: surface near positions 3–8 of the unseen portion,
+        // but never before position 1 (don't displace the current card).
+        const userInsertBase = Math.max(1, Math.min(3, unseen.length));
         for (const film of freshUserAdded) {
           const pos = Math.min(userInsertBase + Math.floor(Math.random() * 6), unseen.length);
           unseen.splice(pos, 0, film);
@@ -574,9 +558,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               <div className="absolute inset-0 flex items-center justify-center text-2xl">🎬</div>
             </div>
           </div>
-          <p className="text-sm transition-all duration-500" style={{ color: "var(--text-muted)" }}>
-            {LOAD_MESSAGES[loadMsgIndex]}
-          </p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{LOAD_MESSAGE}</p>
         </div>
       </div>
     );
