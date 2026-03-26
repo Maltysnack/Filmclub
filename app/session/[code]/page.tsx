@@ -12,8 +12,8 @@ import ScrollView, { ScrollViewHandle } from "@/components/ScrollView";
 import DendyLogo from "@/components/DendyLogo";
 import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
-  getMySwipes, getMyLikes, recordSwipe, checkForMatch, getMatches, closeSession, startSession,
-  startTiebreaker, resolveMatch, addFilmToSession, getSessionSwipeStats,
+  getMySwipes, getMyLikes, recordSwipe, checkForMatch, checkAllMatches, getMatches,
+  closeSession, startSession, startTiebreaker, resolveMatch, addFilmToSession, getSessionSwipeStats,
 } from "@/lib/session";
 import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getAUProviderList, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
@@ -63,7 +63,27 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const participantRef = useRef<Participant | null>(null);
   useEffect(() => { participantRef.current = participant; }, [participant]);
 
-  // ── Minimum loading screen (3s) ───────────────────────────────────────────
+  // ── Clear snapshot when session ends so stale data isn't restored ─────────
+  useEffect(() => {
+    if (matchList.length > 0) {
+      sessionStorage.removeItem(`filmclub-queue-${code}`);
+      sessionStorage.removeItem(`filmclub-index-${code}`);
+    }
+  }, [matchList, code]);
+
+  // ── Persist queue + index to sessionStorage so returning from + / results is instant ──
+  useEffect(() => {
+    if (fullQueue.length > 0 && !loading) {
+      sessionStorage.setItem(`filmclub-queue-${code}`, JSON.stringify(fullQueue));
+    }
+  }, [fullQueue, loading, code]);
+  useEffect(() => {
+    if (!loading) {
+      sessionStorage.setItem(`filmclub-index-${code}`, String(currentIndex));
+    }
+  }, [currentIndex, loading, code]);
+
+  // ── Minimum loading screen (3s) — only on genuine first visit ─────────────
   useEffect(() => {
     const timer = setTimeout(() => setMinLoadDone(true), 3000);
     return () => clearTimeout(timer);
@@ -358,6 +378,24 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setParticipant(allParticipants.find((p) => p.id === pid) ?? null);
       setParticipants(allParticipants);
 
+      // ── Snapshot restore: instant return from + / results pages ───────────
+      const savedQueue = sessionStorage.getItem(`filmclub-queue-${code}`);
+      const savedIndex = sessionStorage.getItem(`filmclub-index-${code}`);
+      if (savedQueue && savedIndex) {
+        setFullQueue(JSON.parse(savedQueue) as Film[]);
+        setCurrentIndex(parseInt(savedIndex, 10));
+        // Restore phase-scoring state in parallel with silent background refresh
+        const stats = await getSessionSwipeStats(s.id);
+        setGroupSwipeCount(stats.totalSwipes);
+        setGroupLikeCount(stats.totalLikes);
+        setFilmLikes(stats.filmLikes);
+        setLoading(false);
+        setMinLoadDone(true); // skip 3s timer — not a first visit
+        loadFilms(s, pid);   // silent background refresh for new films
+        return;
+      }
+
+      // ── First visit: full init with loading screen ─────────────────────────
       await loadFilms(s, pid, true);
 
       // Initialise phase-scoring counters and per-film like map from existing swipe history
@@ -501,14 +539,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setSession((s) => s ? { ...s, started: true } : s);
 
     if (session.mode === "live") {
-      const poolWithMeta = await getSessionFilmsWithMeta(session.id);
-      let found = false;
-      for (const { film } of poolWithMeta) {
-        if (await checkForMatch(session.id, film.id, session.threshold)) found = true;
-      }
-      if (found) {
+      const matched = await checkAllMatches(session.id, session.threshold);
+      if (matched.length > 0) {
         await closeSession(session.id);
-        // Small delay to let upserts settle before fetching
         await new Promise((r) => setTimeout(r, 300));
         const allMatches = await getMatches(session.id);
         if (allMatches.length > 0) { setMatchList(allMatches); setStarting(false); return; }

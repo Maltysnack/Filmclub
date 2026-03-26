@@ -361,6 +361,36 @@ export async function checkForMatch(
   return false;
 }
 
+// Checks ALL films for matches in 2 DB calls instead of 2×N sequential calls.
+// Upserts any matches found and returns matched film IDs.
+export async function checkAllMatches(sessionId: string, threshold: number): Promise<string[]> {
+  const [{ count: participantCount }, { data: swipes }] = await Promise.all([
+    supabase.from("participants").select("*", { count: "exact", head: true }).eq("session_id", sessionId),
+    supabase.from("swipes").select("film_id, participant_id").eq("session_id", sessionId).eq("liked", true),
+  ]);
+  if (!participantCount || participantCount < 1) return [];
+
+  const likeCounts = new Map<string, Set<string>>();
+  for (const s of (swipes ?? [])) {
+    if (!likeCounts.has(s.film_id)) likeCounts.set(s.film_id, new Set());
+    likeCounts.get(s.film_id)!.add(s.participant_id);
+  }
+
+  const matched: string[] = [];
+  for (const [filmId, likers] of likeCounts.entries()) {
+    if ((likers.size / participantCount) * 100 >= threshold) matched.push(filmId);
+  }
+  if (matched.length === 0) return [];
+
+  await Promise.all(matched.map((filmId) =>
+    supabase.from("matches").upsert(
+      { session_id: sessionId, film_id: filmId, score: likeCounts.get(filmId)!.size },
+      { onConflict: "session_id,film_id" }
+    )
+  ));
+  return matched;
+}
+
 export async function resolveMatch(sessionId: string, winnerFilmId: string) {
   // Delete all non-winner matches then close — all devices pick up the single winner
   await supabase.from("matches").delete()
@@ -381,25 +411,24 @@ export async function getMatches(sessionId: string): Promise<Match[]> {
 // ── Scoring for planned mode ──────────────────────────────────────────────────
 
 export async function getFilmScores(sessionId: string): Promise<{ film: Film; score: number; total: number; likedByIds: string[] }[]> {
-  const [films, { data: allSwipes }, { count: total }] = await Promise.all([
-    getSessionFilms(sessionId),
-    supabase
-      .from("swipes")
-      .select("film_id, liked, participant_id")
-      .eq("session_id", sessionId),
-    supabase
-      .from("participants")
-      .select("*", { count: "exact", head: true })
-      .eq("session_id", sessionId),
+  const [{ data: allSwipes }, { count: total }] = await Promise.all([
+    supabase.from("swipes").select("film_id, liked, participant_id").eq("session_id", sessionId),
+    supabase.from("participants").select("*", { count: "exact", head: true }).eq("session_id", sessionId),
   ]);
 
   const swipes = allSwipes ?? [];
   const participantCount = total ?? 1;
 
+  // Only fetch films that have at least one like — avoids loading the full 100+ film pool
+  const likedFilmIds = [...new Set(swipes.filter((s) => s.liked).map((s) => s.film_id as string))];
+  if (likedFilmIds.length === 0) return [];
+
+  const { data: filmRows } = await supabase.from("films").select("*").in("id", likedFilmIds);
+  const films = (filmRows ?? []) as Film[];
+
   return films
     .map((film) => {
-      const filmSwipes = swipes.filter((s: { film_id: string; liked: boolean; participant_id: string }) => s.film_id === film.id);
-      const likeSwipes = filmSwipes.filter((s: { liked: boolean }) => s.liked);
+      const likeSwipes = swipes.filter((s) => s.film_id === film.id && s.liked);
       return {
         film,
         score: likeSwipes.length,
