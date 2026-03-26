@@ -193,7 +193,7 @@ export default function Home() {
   const showCinema   = watchMode === "cinema" || watchMode === "both";
 
   return (
-    <main className="min-h-dvh flex flex-col items-center justify-center px-5 py-12"
+    <main className="h-dvh overflow-y-auto flex flex-col items-center justify-center px-5 py-8"
       style={{ background: "var(--bg)" }}>
       <div className="mb-10 text-center">
         <div className="flex justify-center mb-3">
