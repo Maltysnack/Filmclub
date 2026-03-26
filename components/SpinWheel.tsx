@@ -194,8 +194,6 @@ export default function SpinWheel({
         }}>
           <motion.div animate={controls} style={{ transformOrigin: "center", width: SVG, height: SVG }}>
             <svg width={SVG} height={SVG} viewBox={`0 0 ${SVG} ${SVG}`}>
-              <circle cx={cx} cy={cy} r={orbitR + posterH / 2 + 4}
-                fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
 
               {sorted.map((match, i) => {
                 const midAngle = i * segAngle + segAngle / 2;
@@ -233,7 +231,21 @@ export default function SpinWheel({
                 );
               })}
 
-              <circle cx={cx} cy={cy} r={14} fill="#0c0c0e" stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
+              {/* Hub — camera icon from the Filmclub logo */}
+              <circle cx={cx} cy={cy} r={20} fill="#0c0c0e" />
+              <g transform={`translate(${cx - 24 * 0.6}, ${cy - 24 * 0.6}) scale(0.6)`}>
+                <rect x="4" y="14" width="40" height="26" rx="3" fill="#1c1c20" stroke="#e8b86d" strokeWidth="1.5" />
+                <rect x="14" y="8" width="16" height="7" rx="2" fill="#1c1c20" stroke="#e8b86d" strokeWidth="1.5" />
+                <circle cx="22" cy="27" r="9" fill="#0c0c0e" stroke="#e8b86d" strokeWidth="1.5" />
+                <circle cx="22" cy="27" r="5.5" fill="#141416" stroke="#e8b86d" strokeWidth="1" />
+                <circle cx="20" cy="25" r="1.5" fill="#e8b86d" opacity="0.4" />
+                <line x1="34" y1="18" x2="34" y2="36" stroke="#e8b86d" strokeWidth="1" opacity="0.5" />
+                <line x1="37" y1="18" x2="37" y2="36" stroke="#e8b86d" strokeWidth="1" opacity="0.5" />
+                <line x1="40" y1="18" x2="40" y2="36" stroke="#e8b86d" strokeWidth="1" opacity="0.5" />
+                <circle cx="38" cy="12" r="3" fill="#e8b86d" opacity="0.8" />
+                <path d="M4 38 Q8 44 14 42 Q18 40 22 43 Q26 46 30 42 Q36 38 44 40"
+                  stroke="#e8b86d" strokeWidth="1.2" strokeLinecap="round" fill="none" opacity="0.55" />
+              </g>
             </svg>
           </motion.div>
         </div>
