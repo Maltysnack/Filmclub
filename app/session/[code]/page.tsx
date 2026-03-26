@@ -1062,7 +1062,7 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
             </p>
           )}
           {!isTied && (
-            <button onClick={() => router.push("/")} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+            <button onClick={() => router.push("/")} className="px-10 py-3 rounded-xl text-sm font-semibold mx-auto"
               style={{ background: "var(--accent)", color: "#0c0c0e" }}>
               Done
             </button>
