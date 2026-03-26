@@ -5,6 +5,7 @@ import { motion, useAnimation } from "framer-motion";
 import { Match } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
 import { supabase } from "@/lib/supabase";
+import Logo from "@/components/Logo";
 
 interface SpinWheelProps {
   films: Match[];
@@ -157,11 +158,13 @@ export default function SpinWheel({
       {/* Constrain to phone width — overflow:hidden here clips the wheel to this box */}
       <div className="relative h-full mx-auto" style={{ maxWidth: 480, overflow: "hidden" }}>
 
-        {/* Status text */}
-        <p className="absolute top-10 left-0 right-0 text-center text-sm"
-          style={{ color: "var(--text-muted)" }}>
-          {finished ? "" : "Spinning…"}
-        </p>
+        {/* Header — logo + status */}
+        <div className="absolute top-0 left-0 right-0 flex flex-col items-center pt-10 gap-2">
+          <Logo size="sm" showText />
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {finished ? "" : "Spinning…"}
+          </p>
+        </div>
 
         {/* Pointer triangle — pinned just above the centred hot-seat poster */}
         <div style={{
@@ -248,26 +251,31 @@ export default function SpinWheel({
 
         {/* Respin vote panel */}
         {finished && canRespin && !resolvedRef.current && (
-          <div className="absolute bottom-10 left-5 right-5">
-            <div className="rounded-2xl p-4 text-center" style={{ background: "var(--surface)" }}>
-              <p className="text-sm font-semibold mb-1" style={{ color: "var(--text)" }}>
-                Respin?
-              </p>
-              <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-                {respinVoters.size} / {respinThreshold} votes needed · {respinCountdown}s
+          <div className="absolute bottom-8 left-5 right-5">
+            <div className="rounded-2xl p-5" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+                  Respin?
+                </p>
+                <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+                  {respinCountdown}s
+                </span>
+              </div>
+              <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+                {respinVoters.size} of {respinThreshold} votes needed to respin
               </p>
               {!hasVoted ? (
                 <button
                   onClick={handleVoteRespin}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold"
-                  style={{ background: "var(--surface-2, #2a2a2a)", color: "var(--text)" }}
+                  style={{ background: "var(--accent)", color: "#0c0c0e" }}
                 >
-                  🔄 Vote to respin
+                  Vote to respin
                 </button>
               ) : (
-                <p className="text-xs py-2" style={{ color: "var(--accent)" }}>
-                  ✓ You voted to respin
-                </p>
+                <div className="w-full py-2.5 rounded-xl text-sm text-center" style={{ background: "var(--surface-2)", color: "var(--accent)" }}>
+                  ✓ Voted
+                </div>
               )}
             </div>
           </div>
