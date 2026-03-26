@@ -111,10 +111,11 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
         zIndex: 1,
       }} />
 
-      {/* Clipping window — fixed height, clips sides and bottom as scale grows */}
-      <div style={{ width: SVG, height: containerHeight, overflow: "hidden" }}>
-        {/* Scale wrapper — anchored top-centre so wheel grows downward */}
-        <div style={{ transform: `scale(${scale})`, transformOrigin: "50% 0%" }}>
+      {/* Clipping window — full screen width so posters stay visible further
+          around the arc. Fixed height clips the bottom as scale grows. */}
+      <div style={{ width: "100%", height: containerHeight, overflow: "hidden" }}>
+        {/* Scale wrapper — centred horizontally, anchored top-centre */}
+        <div style={{ width: SVG, margin: "0 auto", transform: `scale(${scale})`, transformOrigin: "50% 0%" }}>
           {/* Rotation — framer-motion spins around the wheel's own centre */}
           <motion.div animate={controls} style={{ transformOrigin: "center", width: SVG, height: SVG }}>
             <svg width={SVG} height={SVG} viewBox={`0 0 ${SVG} ${SVG}`}>
