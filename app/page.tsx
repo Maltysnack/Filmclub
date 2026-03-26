@@ -287,58 +287,69 @@ export default function Home() {
             <div className="space-y-2">
               <label className="block text-xs font-medium uppercase tracking-wider"
                 style={{ color: "var(--text-muted)" }}>Streaming services</label>
-              <button type="button" onClick={() => setStreamingOpen(v => !v)}
-                className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors"
-                style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-                <span className="flex items-center gap-1.5">
-                  {selectedServices.length === 0
-                    ? <span className="text-sm" style={{ color: "var(--text-muted)" }}>None selected</span>
-                    : selectedServices.map(id => {
-                        const svc = AU_SERVICES.find(s => s.id === id);
-                        if (!svc) return null;
-                        return (
-                          <span key={id}
-                            className="relative inline-flex items-center justify-center w-6 h-6 rounded text-[8px] font-bold shrink-0"
-                            style={{ background: svc.color, color: "#fff" }}>
-                            {svc.abbrev}
-                            {svc.tmdbLogoPath && (
-                              <img
-                                src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
-                                alt={svc.name}
-                                className="absolute inset-0 w-6 h-6 rounded"
-                                style={{ objectFit: "cover" }}
-                                onError={e => { e.currentTarget.style.display = "none"; }} />
-                            )}
-                          </span>
-                        );
-                      })
-                  }
-                </span>
-                <ChevronDown size={15} style={{
-                  color: "var(--text-muted)",
-                  transform: streamingOpen ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform 0.2s",
-                }} />
-              </button>
-              {streamingOpen && (
-                <div className="flex flex-wrap gap-2 px-1">
-                  {AU_SERVICES.map((svc) => {
-                    const on = selectedServices.includes(svc.id);
-                    return (
-                      <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
-                        className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
-                        style={{
-                          background: on ? svc.color : "var(--surface)",
-                          borderColor: on ? svc.color : "var(--border)",
-                          color: on ? "#fff" : "var(--text-muted)",
-                          opacity: on ? 1 : 0.8,
-                        }}>
-                        {svc.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="relative">
+                <button type="button" onClick={() => setStreamingOpen(v => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors"
+                  style={{
+                    background: "var(--surface)",
+                    border: `1px solid ${streamingOpen ? "var(--accent)" : "var(--border)"}`,
+                  }}>
+                  <span className="flex items-center gap-1.5">
+                    {selectedServices.length === 0
+                      ? <span className="text-sm" style={{ color: "var(--text-muted)" }}>None selected</span>
+                      : selectedServices.map(id => {
+                          const svc = AU_SERVICES.find(s => s.id === id);
+                          if (!svc) return null;
+                          return (
+                            <span key={id}
+                              className="relative inline-flex items-center justify-center w-6 h-6 rounded text-[8px] font-bold shrink-0"
+                              style={{ background: svc.color, color: "#fff" }}>
+                              {svc.abbrev}
+                              {svc.tmdbLogoPath && (
+                                <img
+                                  src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
+                                  alt={svc.name}
+                                  className="absolute inset-0 w-6 h-6 rounded"
+                                  style={{ objectFit: "cover" }}
+                                  onError={e => { e.currentTarget.style.display = "none"; }} />
+                              )}
+                            </span>
+                          );
+                        })
+                    }
+                  </span>
+                  <ChevronDown size={15} style={{
+                    color: "var(--text-muted)",
+                    transform: streamingOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s",
+                  }} />
+                </button>
+                {/* Floating popover — overlays layout so nothing shifts */}
+                {streamingOpen && (
+                  <div className="absolute left-0 right-0 z-50 mt-1 p-3 rounded-xl flex flex-wrap gap-2"
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                    }}>
+                    {AU_SERVICES.map((svc) => {
+                      const on = selectedServices.includes(svc.id);
+                      return (
+                        <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
+                          className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
+                          style={{
+                            background: on ? svc.color : "var(--surface)",
+                            borderColor: on ? svc.color : "var(--border)",
+                            color: on ? "#fff" : "var(--text-muted)",
+                            opacity: on ? 1 : 0.8,
+                          }}>
+                          {svc.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

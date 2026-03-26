@@ -75,7 +75,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
             className="absolute inset-0"
             style={{
               background:
-                "linear-gradient(to top, rgba(12,12,14,0.95) 0%, rgba(12,12,14,0.3) 40%, transparent 70%)",
+                "linear-gradient(to top, rgba(12,12,14,0.97) 0%, rgba(12,12,14,0.85) 20%, rgba(12,12,14,0.3) 45%, transparent 70%)",
             }}
           />
         </div>
@@ -120,7 +120,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
         </motion.div>
 
         {/* Film info at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-5">
+        <div className="absolute bottom-0 left-0 right-0 p-5 pb-24">
           {/* Where-to-watch badges — streaming logos left, Dendy right */}
           {(() => {
             const providers = film.watch_providers_au ?? [];
@@ -243,7 +243,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
       <AnimatePresence>
         {isTop && !isDragging && (
           <motion.div
-            className="absolute -bottom-16 left-0 right-0 flex justify-center gap-6 pointer-events-none"
+            className="absolute bottom-4 left-0 right-0 flex justify-center gap-6 pointer-events-none"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
