@@ -965,103 +965,110 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
   const router = useRouter();
   const [spinning, setSpinning] = useState(false);
   const [pendingWinnerId, setPendingWinnerId] = useState<string | null>(null);
-  const topMatch = matches[0];
-  const topFilm = topMatch?.film;
-  if (!topFilm) return null;
-  const hasMultiple = matches.length > 1;
-  const isTied = hasMultiple;
-  const topDendy = dendyMap.get(topFilm.id);
+  if (matches.length === 0 || !matches[0]?.film) return null;
+  const isTied = matches.length > 1;
+
+  // Card width based on count so all tied films are equal size
+  const cardWidthClass = matches.length === 1 ? "w-44" : matches.length === 2 ? "w-36" : "w-28";
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
+      {/* Blurred backdrop from first film */}
       <div className="fixed inset-0 opacity-10 pointer-events-none overflow-hidden">
-        <img src={posterUrl(topFilm.poster_path, "w500")} alt=""
+        <img src={posterUrl(matches[0].film!.poster_path, "w500")} alt=""
           className="w-full h-full object-cover" style={{ filter: "blur(20px)" }} />
       </div>
-      <div className="relative z-10 flex flex-col items-center px-5 pt-12 pb-8 flex-1 overflow-y-auto">
+
+      {/* Scrollable content — padded bottom so sticky bar doesn't overlap */}
+      <div className="relative z-10 flex flex-col items-center px-5 pt-12 pb-32 flex-1 overflow-y-auto">
         <div className="text-4xl mb-3">🎬</div>
         <h1 className="text-xl font-medium mb-1" style={{ color: "var(--accent)" }}>
-          {hasMultiple ? "It's a tie!" : "You've got a match"}
+          {isTied ? "It's a tie!" : "You've got a match"}
         </h1>
         <p className="text-xs mb-8 text-center" style={{ color: "var(--text-muted)" }}>
-          {hasMultiple ? `${matches.length} films everyone agreed on` : "Everyone agreed on tonight's film"}
+          {isTied ? `${matches.length} films everyone agreed on` : "Everyone agreed on tonight's film"}
         </p>
 
-        <div className="w-44 rounded-2xl overflow-hidden shadow-2xl mb-4" style={{ aspectRatio: "2/3" }}>
-          <img src={posterUrl(topFilm.poster_path, "w342")} alt={topFilm.title}
-            className="w-full h-full object-cover" />
-        </div>
-        <h2 className="text-2xl font-bold mb-1 text-center" style={{ color: "var(--text)" }}>{topFilm.title}</h2>
-        <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-          {topFilm.release_year}{topFilm.rating ? ` · ★ ${topFilm.rating}` : ""}
-        </p>
-
-        {/* Where to watch */}
-        <WatchOptions film={topFilm} dendy={topDendy} session={session} />
-
-        {/* Tied films list — shown when there's a tie and no winner picked yet */}
-        {isTied && (
-          <div className="w-full mb-2 mt-2">
-            <div className="space-y-2">
-              {matches.map((m) => m.film && (
-                <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl"
-                  style={{ background: "var(--surface)" }}>
-                  <div className="w-10 rounded-lg overflow-hidden shrink-0" style={{ aspectRatio: "2/3" }}>
-                    <img src={posterUrl(m.film.poster_path, "w342")} alt={m.film.title}
-                      className="w-full h-full object-cover" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate" style={{ color: "var(--text)" }}>{m.film.title}</p>
-                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      {m.film.release_year}{m.film.rating ? ` · ★ ${m.film.rating}` : ""}
-                    </p>
-                    <WatchOptions film={m.film} dendy={dendyMap.get(m.film.id)} session={session} compact />
-                  </div>
+        {/* Equal-size film cards — all tied films shown together */}
+        <div className={`flex gap-3 justify-center ${matches.length >= 3 ? "flex-wrap" : ""}`}>
+          {matches.map((m) => {
+            if (!m.film) return null;
+            const providers = (m.film.watch_providers_au ?? []) as { serviceId: string; logoPath?: string | null }[];
+            const sessionServices = session.streaming_services ?? [];
+            const available = providers.filter((p) => sessionServices.includes(p.serviceId));
+            return (
+              <div key={m.id} className={`${cardWidthClass} flex flex-col gap-2`}>
+                {/* Poster card */}
+                <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "2/3" }}>
+                  <img src={posterUrl(m.film.poster_path, "w342")} alt={m.film.title}
+                    className="w-full h-full object-cover" />
+                  <div className="absolute inset-0"
+                    style={{ background: "linear-gradient(to top, rgba(12,12,14,0.85) 0%, transparent 50%)" }} />
+                  {/* Streaming logos bottom-left */}
+                  {available.length > 0 && (
+                    <div className="absolute bottom-2 left-2 flex gap-1 flex-wrap">
+                      {available.slice(0, 3).map((p) => {
+                        const svc = getService(p.serviceId);
+                        if (!svc) return null;
+                        const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath?: string | null }).tmdbLogoPath;
+                        return logo ? (
+                          <img key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${logo}`}
+                            alt={svc.name} title={svc.name} className="w-5 h-5 rounded object-cover" />
+                        ) : (
+                          <span key={p.serviceId} className="text-[9px] px-1 py-0.5 rounded font-bold"
+                            style={{ background: svc.color, color: "#fff" }}>{svc.abbrev}</span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-
-
-        {/* Tiebreaker actions — host only */}
-        {isTied && isHost && (
-          <div className="flex gap-3 w-full max-w-xs mt-4">
-            {onVoteAgain && (
-              <button onClick={onVoteAgain} className="flex-1 py-3 rounded-xl text-sm font-semibold border"
-                style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
-                Vote again
-              </button>
-            )}
-            {onRandomise && (
-              <button
-                onClick={() => {
-                  const winner = matches[Math.floor(Math.random() * matches.length)];
-                  setPendingWinnerId(winner.film_id);
-                  setSpinning(true);
-                }}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold"
-                style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-                Randomise
-              </button>
-            )}
-          </div>
-        )}
-
-        {isTied && !isHost && (
-          <p className="text-xs mt-4 text-center" style={{ color: "var(--text-muted)" }}>
-            Waiting for the host to decide…
-          </p>
-        )}
-
-        {!isTied && (
-          <div className="flex gap-3 w-full max-w-xs mt-auto pt-4">
-            <button onClick={() => router.push("/")} className="flex-1 py-3 rounded-xl text-sm font-semibold"
-              style={{ background: "var(--accent)", color: "#0c0c0e" }}>Done</button>
-          </div>
-        )}
+                {/* Title + year below card */}
+                <div className="text-center">
+                  <p className="text-sm font-semibold leading-tight" style={{ color: "var(--text)" }}>{m.film.title}</p>
+                  {m.film.release_year && (
+                    <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{m.film.release_year}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Sticky action bar — always visible */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 px-5 pb-6 pt-3"
+        style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
+        <div className="mx-auto flex gap-3" style={{ maxWidth: 480 }}>
+          {isTied && isHost && onVoteAgain && (
+            <button onClick={onVoteAgain} className="flex-1 py-3 rounded-xl text-sm font-semibold border"
+              style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+              Vote again
+            </button>
+          )}
+          {isTied && isHost && onRandomise && (
+            <button onClick={() => {
+              const winner = matches[Math.floor(Math.random() * matches.length)];
+              setPendingWinnerId(winner.film_id);
+              setSpinning(true);
+            }} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+              Randomise
+            </button>
+          )}
+          {isTied && !isHost && (
+            <p className="flex-1 text-xs text-center py-3" style={{ color: "var(--text-muted)" }}>
+              Waiting for the host to decide…
+            </p>
+          )}
+          {!isTied && (
+            <button onClick={() => router.push("/")} className="flex-1 py-3 rounded-xl text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+              Done
+            </button>
+          )}
+        </div>
+      </div>
+
       {spinning && pendingWinnerId && onRandomise && (
         <SpinWheel
           films={matches}
