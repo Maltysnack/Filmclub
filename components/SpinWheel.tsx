@@ -55,7 +55,7 @@ export default function SpinWheel({
   const winnerIndex = sorted.findIndex((m) => m.film_id === winnerId);
   const winnerCenterAngle = winnerIndex * segAngle + segAngle / 2;
   const offsetToTop = (360 - winnerCenterAngle + 360) % 360;
-  const fullSpins = 3 + (hashStr(winnerId) % 2);
+  const fullSpins = n > 12 ? 2 : 3 + (hashStr(winnerId) % 2);
   const totalRotation = fullSpins * 360 + offsetToTop;
   const overshootDeg = 4;
   const winnerFilm = sorted[winnerIndex]?.film;
