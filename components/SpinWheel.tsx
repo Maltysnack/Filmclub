@@ -39,10 +39,8 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   const winnerCenterAngle = winnerIndex * segAngle + segAngle / 2;
   const offsetToTop = (360 - winnerCenterAngle + 360) % 360;
 
-  // 3–4 full spins — slow heavy wheel doesn't need many rotations
   const fullSpins = 3 + (hashStr(winnerId) % 2);
   const totalRotation = fullSpins * 360 + offsetToTop;
-  // Overshoot: carry 20° past the winner then settle back
   const overshootDeg = 20;
 
   const winnerFilm = sorted[winnerIndex]?.film;
@@ -56,18 +54,28 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   const posterH = posterW * 1.5;
   const cornerR = posterW * 0.1;
 
+  // Scale the wheel up continuously as n grows so the top poster always
+  // appears at a readable size. Anchored at top-centre so the wheel grows
+  // downward/outward — the hot seat stays pinned under the pointer.
+  // At small n (≤~6) scale ≈ 1 (full wheel visible).
+  // At large n the wheel is magnified and only the top arc shows through
+  // the fixed-height clipping container.
+  const targetPosterPx = 64;
+  const scale = Math.max(1, targetPosterPx / posterW);
+
+  // Container height: enough to show the winner poster clearly plus a bit
+  // of context, regardless of scale. posterH in screen-px = posterH * scale.
+  const containerHeight = Math.round(posterH * scale * 1.8 + 16);
+
   useEffect(() => {
     controls
       .start({
-        // Three keyframes: start → overshoot → settle
         rotate: [0, totalRotation + overshootDeg, totalRotation],
         transition: {
           duration: 12,
           times: [0, 0.88, 1.0],
           ease: [
-            // Phase 1: slow gentle build-up, steady spin, gradual approach to overshoot
             [0.3, 0.0, 0.8, 1.0],
-            // Phase 2: smooth settle from overshoot back to rest
             [0.0, 0.0, 0.4, 1.0],
           ],
         },
@@ -91,7 +99,7 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
         {finished ? "" : "Spinning…"}
       </p>
 
-      {/* Pointer triangle pointing down toward the wheel */}
+      {/* Pointer — sits above the clipping window, always visible */}
       <div style={{
         width: 0, height: 0,
         borderLeft: "10px solid transparent",
@@ -102,75 +110,67 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
         zIndex: 1,
       }} />
 
-      <motion.div animate={controls} style={{ transformOrigin: "center", width: SVG, height: SVG }}>
-        <svg width={SVG} height={SVG} viewBox={`0 0 ${SVG} ${SVG}`}>
-          {/* Faint guide ring */}
-          <circle cx={cx} cy={cy} r={orbitR + posterH / 2 + 4}
-            fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+      {/* Clipping window — fixed height, clips sides and bottom as scale grows */}
+      <div style={{ width: SVG, height: containerHeight, overflow: "hidden" }}>
+        {/* Scale wrapper — anchored top-centre so wheel grows downward */}
+        <div style={{ transform: `scale(${scale})`, transformOrigin: "50% 0%" }}>
+          {/* Rotation — framer-motion spins around the wheel's own centre */}
+          <motion.div animate={controls} style={{ transformOrigin: "center", width: SVG, height: SVG }}>
+            <svg width={SVG} height={SVG} viewBox={`0 0 ${SVG} ${SVG}`}>
+              {/* Guide ring */}
+              <circle cx={cx} cy={cy} r={orbitR + posterH / 2 + 4}
+                fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
 
-          {sorted.map((match, i) => {
-            const midAngle = i * segAngle + segAngle / 2;
-            const pos = polarToCartesian(cx, cy, orbitR, midAngle);
-            const src = match.film?.poster_path
-              ? posterUrl(match.film.poster_path, "w342")
-              : null;
-            const isWinner = match.film_id === winnerId;
+              {sorted.map((match, i) => {
+                const midAngle = i * segAngle + segAngle / 2;
+                const pos = polarToCartesian(cx, cy, orbitR, midAngle);
+                const src = match.film?.poster_path
+                  ? posterUrl(match.film.poster_path, "w342")
+                  : null;
+                const isWinner = match.film_id === winnerId;
 
-            return (
-              <g
-                key={match.film_id}
-                // Rotate each card so its vertical axis points to the wheel centre.
-                // Bottom of poster faces inward; top faces outward.
-                // At midAngle=0 (top): no rotation → upright.
-                // At midAngle=180 (bottom): 180° → upside-down.
-                transform={`rotate(${midAngle}, ${pos.x}, ${pos.y})`}
-              >
-                <defs>
-                  <clipPath id={`card-clip-${i}`}>
+                return (
+                  <g
+                    key={match.film_id}
+                    transform={`rotate(${midAngle}, ${pos.x}, ${pos.y})`}
+                  >
+                    <defs>
+                      <clipPath id={`card-clip-${i}`}>
+                        <rect
+                          x={pos.x - posterW / 2} y={pos.y - posterH / 2}
+                          width={posterW} height={posterH}
+                          rx={cornerR} ry={cornerR}
+                        />
+                      </clipPath>
+                    </defs>
+
                     <rect
-                      x={pos.x - posterW / 2}
-                      y={pos.y - posterH / 2}
-                      width={posterW}
-                      height={posterH}
-                      rx={cornerR}
-                      ry={cornerR}
+                      x={pos.x - posterW / 2} y={pos.y - posterH / 2}
+                      width={posterW} height={posterH}
+                      rx={cornerR} ry={cornerR}
+                      fill="#1a1a1a"
+                      stroke={finished && isWinner ? "#ffffff" : "rgba(255,255,255,0.15)"}
+                      strokeWidth={finished && isWinner ? 2 : 1}
                     />
-                  </clipPath>
-                </defs>
 
-                {/* Card background */}
-                <rect
-                  x={pos.x - posterW / 2}
-                  y={pos.y - posterH / 2}
-                  width={posterW}
-                  height={posterH}
-                  rx={cornerR}
-                  ry={cornerR}
-                  fill="#1a1a1a"
-                  stroke={finished && isWinner ? "#ffffff" : "rgba(255,255,255,0.15)"}
-                  strokeWidth={finished && isWinner ? 2 : 1}
-                />
+                    {src && (
+                      <image
+                        href={src}
+                        x={pos.x - posterW / 2} y={pos.y - posterH / 2}
+                        width={posterW} height={posterH}
+                        preserveAspectRatio="xMidYMid slice"
+                        clipPath={`url(#card-clip-${i})`}
+                      />
+                    )}
+                  </g>
+                );
+              })}
 
-                {/* Poster image */}
-                {src && (
-                  <image
-                    href={src}
-                    x={pos.x - posterW / 2}
-                    y={pos.y - posterH / 2}
-                    width={posterW}
-                    height={posterH}
-                    preserveAspectRatio="xMidYMid slice"
-                    clipPath={`url(#card-clip-${i})`}
-                  />
-                )}
-              </g>
-            );
-          })}
-
-          {/* Centre cap */}
-          <circle cx={cx} cy={cy} r={14} fill="#0c0c0e" stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
-        </svg>
-      </motion.div>
+              <circle cx={cx} cy={cy} r={14} fill="#0c0c0e" stroke="rgba(255,255,255,0.1)" strokeWidth={1} />
+            </svg>
+          </motion.div>
+        </div>
+      </div>
 
       {finished && winnerFilm && (
         <p className="text-xl font-bold mt-6 text-center px-8" style={{ color: "var(--text)" }}>
