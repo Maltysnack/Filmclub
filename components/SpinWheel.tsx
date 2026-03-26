@@ -29,7 +29,6 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   const [finished, setFinished] = useState(false);
   const doneRef = useRef(false);
 
-  // Deterministic sort so every device has the same wheel layout
   const sorted = [...films].sort((a, b) =>
     (a.film?.title ?? "").localeCompare(b.film?.title ?? "")
   );
@@ -39,26 +38,38 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
   const winnerIndex = sorted.findIndex((m) => m.film_id === winnerId);
   const winnerCenterAngle = winnerIndex * segAngle + segAngle / 2;
   const offsetToTop = (360 - winnerCenterAngle + 360) % 360;
-  const totalRotation = (6 + (hashStr(winnerId) % 5)) * 360 + offsetToTop;
+
+  // 3–4 full spins — slow heavy wheel doesn't need many rotations
+  const fullSpins = 3 + (hashStr(winnerId) % 2);
+  const totalRotation = fullSpins * 360 + offsetToTop;
+  // Overshoot: carry 20° past the winner then settle back
+  const overshootDeg = 20;
+
   const winnerFilm = sorted[winnerIndex]?.film;
 
-  // Poster sizing: fill as much of each segment as possible without overlap
   const SVG = 300;
   const cx = SVG / 2;
   const cy = SVG / 2;
-  const orbitR = 95; // distance from wheel centre to poster centre
+  const orbitR = 95;
   const maxArcWidth = 2 * orbitR * Math.sin(Math.PI / n) * 0.78;
   const posterW = Math.min(68, maxArcWidth);
-  const posterH = posterW * 1.5; // 2:3 portrait ratio
+  const posterH = posterW * 1.5;
   const cornerR = posterW * 0.1;
 
   useEffect(() => {
     controls
       .start({
-        rotate: totalRotation,
+        // Three keyframes: start → overshoot → settle
+        rotate: [0, totalRotation + overshootDeg, totalRotation],
         transition: {
-          duration: 10,
-          ease: [0.7, 0.0, 0.95, 1.0],
+          duration: 12,
+          times: [0, 0.88, 1.0],
+          ease: [
+            // Phase 1: slow gentle build-up, steady spin, gradual approach to overshoot
+            [0.3, 0.0, 0.8, 1.0],
+            // Phase 2: smooth settle from overshoot back to rest
+            [0.0, 0.0, 0.4, 1.0],
+          ],
         },
       })
       .then(() => {
@@ -80,7 +91,7 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
         {finished ? "" : "Spinning…"}
       </p>
 
-      {/* Pointer triangle */}
+      {/* Pointer triangle pointing down toward the wheel */}
       <div style={{
         width: 0, height: 0,
         borderLeft: "10px solid transparent",
@@ -91,7 +102,6 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
         zIndex: 1,
       }} />
 
-      {/* Wheel — the entire SVG rotates; posters orbit the centre */}
       <motion.div animate={controls} style={{ transformOrigin: "center", width: SVG, height: SVG }}>
         <svg width={SVG} height={SVG} viewBox={`0 0 ${SVG} ${SVG}`}>
           {/* Faint guide ring */}
@@ -107,7 +117,27 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
             const isWinner = match.film_id === winnerId;
 
             return (
-              <g key={match.film_id}>
+              <g
+                key={match.film_id}
+                // Rotate each card so its vertical axis points to the wheel centre.
+                // Bottom of poster faces inward; top faces outward.
+                // At midAngle=0 (top): no rotation → upright.
+                // At midAngle=180 (bottom): 180° → upside-down.
+                transform={`rotate(${midAngle}, ${pos.x}, ${pos.y})`}
+              >
+                <defs>
+                  <clipPath id={`card-clip-${i}`}>
+                    <rect
+                      x={pos.x - posterW / 2}
+                      y={pos.y - posterH / 2}
+                      width={posterW}
+                      height={posterH}
+                      rx={cornerR}
+                      ry={cornerR}
+                    />
+                  </clipPath>
+                </defs>
+
                 {/* Card background */}
                 <rect
                   x={pos.x - posterW / 2}
@@ -133,20 +163,6 @@ export default function SpinWheel({ films, winnerId, onComplete }: SpinWheelProp
                     clipPath={`url(#card-clip-${i})`}
                   />
                 )}
-
-                {/* ClipPath matching the rounded rect */}
-                <defs>
-                  <clipPath id={`card-clip-${i}`}>
-                    <rect
-                      x={pos.x - posterW / 2}
-                      y={pos.y - posterH / 2}
-                      width={posterW}
-                      height={posterH}
-                      rx={cornerR}
-                      ry={cornerR}
-                    />
-                  </clipPath>
-                </defs>
               </g>
             );
           })}
