@@ -2,7 +2,6 @@ import * as cheerio from "cheerio";
 import { supabase } from "./supabase";
 
 const DENDY_BASE = "https://newtown.dendy.com.au";
-const CACHE_DAYS = 3;
 
 export interface DendyFilm {
   slug: string;
@@ -205,24 +204,6 @@ export async function getDendySessions(
   fromTime?: string, // "18:00"
   toTime?: string    // "20:00"
 ): Promise<DendyFilm[]> {
-  // Check if cache is fresh enough
-  const { data: existing } = await supabase
-    .from("dendy_sessions")
-    .select("scraped_at")
-    .eq("session_date", date)
-    .limit(1)
-    .single();
-
-  const needsScrape =
-    !existing ||
-    new Date(existing.scraped_at) <
-      new Date(Date.now() - CACHE_DAYS * 24 * 60 * 60 * 1000);
-
-  if (needsScrape) {
-    const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-    await scrapeDendy(apiKey);
-  }
-
   const { data } = await supabase
     .from("dendy_sessions")
     .select("*")

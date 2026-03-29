@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, Trophy, Lock, Clock, Plus, Layers, Info } from "lucide-react";
-import { getSession, getParticipantId, getFilmScores, closeSession, getParticipants } from "@/lib/session";
+import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, recordSwipe, removeParticipant } from "@/lib/session";
+import { getCurrentRound } from "@/lib/shortlist";
+import { supabase } from "@/lib/supabase";
 import { posterUrl } from "@/lib/tmdb";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
+import ShortlistOverlay from "@/components/ShortlistOverlay";
 
 interface FilmScore {
   film: Film;
@@ -28,11 +31,11 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
-  const [isCreator] = useState(() => {
-    // We treat whoever has the participant ID as potentially the creator
-    // (first participant — check by order would require more state, so we allow anyone to close)
-    return true;
-  });
+  const [showShortlist, setShowShortlist] = useState(false);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const resultSlCh = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const isHost = getIsHost(code);
+  const myParticipantId = getParticipantId(code) ?? "";
 
   useEffect(() => {
     async function init() {
@@ -55,9 +58,32 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
       setScores(filtered);
       setParticipants(allParticipants);
       setLoading(false);
+
+      // Auto-open shortlist overlay if a round is already active
+      const activeRound = await getCurrentRound(s.id);
+      if (activeRound && activeRound.phase !== "complete") setShowShortlist(true);
     }
     init();
   }, [code, router]);
+
+  // Auto-open overlay: check for already-active round on mount, and listen for new ones
+  useEffect(() => {
+    if (!session) return;
+    // Someone might arrive here after the round was already created — check immediately
+    getCurrentRound(session.id).then(r => {
+      if (r && r.phase !== "complete") setShowShortlist(true);
+    });
+    const ch = supabase
+      .channel(`results-sl:${session.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "shortlist_rounds",
+        filter: `session_id=eq.${session.id}`,
+      }, () => setShowShortlist(true))
+      .on("broadcast", { event: "shortlist_open" }, () => setShowShortlist(true))
+      .subscribe();
+    resultSlCh.current = ch;
+    return () => { resultSlCh.current = null; supabase.removeChannel(ch); };
+  }, [session?.id]);
 
   async function handleClose() {
     if (!session) return;
@@ -69,11 +95,27 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
 
   const deadlineDate = session?.deadline ? new Date(session.deadline) : null;
   const isPast = deadlineDate ? deadlineDate < new Date() : false;
+  function gridCols(n: number): number {
+    if (n <= 2) return n || 1;
+    if (n === 4) return 2;
+    if (n > 20) return 4;
+    return 3;
+  }
+  function alsoLikedCols(n: number): number {
+    if (n <= 3) return n || 1;
+    if (n <= 8) return 4;
+    return 5;
+  }
+
   const topFilm = scores[0];
+  const topScore = topFilm?.score ?? 0;
+  const tiedFilms = scores.filter(s => s.score === topScore);
+  const isTiedTop = tiedFilms.length > 1;
+  const remainingFilms = isTiedTop ? scores.filter(s => s.score < topScore) : scores.slice(1);
 
   return (
     <div className="min-h-dvh" style={{ background: "var(--bg)" }}>
-    <div className="flex flex-col min-h-dvh mx-auto" style={{ maxWidth: 480 }}>
+    <div className="flex flex-col h-dvh mx-auto" style={{ maxWidth: 480 }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-5 pt-5 pb-4 shrink-0">
         <button
@@ -123,7 +165,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
       )}
 
       {!loading && (
-        <div className="flex-1 overflow-y-auto px-5 pb-8">
+        <div className="flex-1 overflow-y-auto px-5 pb-8" style={{ paddingBottom: isHost && scores.length >= 2 && session?.status !== "closed" ? "5rem" : undefined }}>
           {/* Deadline */}
           {session?.mode === "planned" && deadlineDate && (
             <div
@@ -141,14 +183,17 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
           <div className="flex items-center gap-2 mb-5 flex-wrap">
             {participants.map((p) => {
               const color = participantColor(p.name);
+              const canRemove = isHost && p.id !== myParticipantId;
               return (
-                <span
-                  key={p.id}
+                <button key={p.id}
+                  onClick={() => canRemove && setConfirmRemoveId(p.id)}
                   className="text-xs px-2.5 py-1 rounded-full font-medium"
-                  style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}
-                >
+                  style={{
+                    background: `${color}22`, color, border: `1px solid ${color}55`,
+                    cursor: canRemove ? "pointer" : "default",
+                  }}>
                   {p.name}
-                </span>
+                </button>
               );
             })}
           </div>
@@ -162,8 +207,8 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
             </div>
           ) : (
             <>
-              {/* Top pick — big */}
-              {topFilm && (
+              {/* Top pick — single clear winner */}
+              {!isTiedTop && topFilm && (
                 <div className="mb-5">
                   <p className="text-xs font-medium uppercase tracking-wider mb-3"
                     style={{ color: "var(--accent)" }}>
@@ -199,71 +244,128 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                 </div>
               )}
 
-              {/* Rest of the list */}
-              {scores.slice(1).length > 0 && (
+              {/* Top picks — tied films grid */}
+              {isTiedTop && (
+                <div className="mb-5">
+                  <p className="text-xs font-medium uppercase tracking-wider mb-3"
+                    style={{ color: "var(--accent)" }}>
+                    Top picks
+                  </p>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${gridCols(tiedFilms.length)}, minmax(0, 1fr))` }}>
+                    {tiedFilms.map(({ film }) => (
+                      <button key={film.id} onClick={() => setInfoFilm(film)}
+                        className="relative rounded-xl overflow-hidden text-left"
+                        style={{ aspectRatio: "2/3", background: "var(--surface)" }}>
+                        {film.poster_path ? (
+                          <img src={posterUrl(film.poster_path, "w342")} alt={film.title}
+                            className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center p-2 text-xs text-center"
+                            style={{ color: "var(--text-muted)" }}>{film.title}</div>
+                        )}
+                        <div className="absolute inset-0"
+                          style={{ background: "linear-gradient(to top, rgba(12,12,14,0.85) 0%, transparent 50%)" }} />
+                        <p className="absolute bottom-2 left-2 right-2 text-xs font-medium leading-tight"
+                          style={{ color: "var(--text)" }}>{film.title}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Also liked */}
+              {remainingFilms.length > 0 && (
                 <>
                   <p className="text-xs font-medium uppercase tracking-wider mb-3"
                     style={{ color: "var(--text-muted)" }}>
                     Also liked
                   </p>
-                  <div className="space-y-2">
-                    {scores.slice(1).map(({ film, score, total, likedByIds }, i) => (
-                      <motion.div
+                  <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${alsoLikedCols(remainingFilms.length)}, minmax(0, 1fr))` }}>
+                    {remainingFilms.map(({ film }, i) => (
+                      <motion.button
                         key={film.id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                        className="w-full flex items-center gap-3 p-3 rounded-xl"
-                        style={{ background: "var(--surface)" }}
+                        transition={{ delay: i * 0.03 }}
+                        onClick={() => setInfoFilm(film)}
+                        className="relative rounded-lg overflow-hidden text-left"
+                        style={{ aspectRatio: "2/3", background: "var(--surface)" }}
                       >
-                        <div className="w-10 rounded-lg overflow-hidden shrink-0"
-                          style={{ aspectRatio: "2/3" }}>
-                          <img
-                            src={posterUrl(film.poster_path, "w500")}
-                            alt={film.title}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate" style={{ color: "var(--text)" }}>
-                            {film.title}
-                          </p>
-                          <p className="text-xs mb-1.5" style={{ color: "var(--text-muted)" }}>
-                            {film.release_year}
-                          </p>
-                          <ScoreBar score={score} total={total} />
-                          <LikedByNames ids={likedByIds} participants={participants} />
-                        </div>
-                        <button
-                          onClick={() => setInfoFilm(film)}
-                          className="shrink-0 p-1.5 rounded-full ml-1"
-                          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
-                        >
-                          <Info size={14} />
-                        </button>
-                      </motion.div>
+                        {film.poster_path ? (
+                          <img src={posterUrl(film.poster_path, "w342")} alt={film.title}
+                            className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center p-1 text-center"
+                            style={{ fontSize: 10, color: "var(--text-muted)" }}>{film.title}</div>
+                        )}
+                        <div className="absolute inset-0"
+                          style={{ background: "linear-gradient(to top, rgba(12,12,14,0.85) 0%, transparent 50%)" }} />
+                        <p className="absolute bottom-1.5 left-1.5 right-1.5 leading-tight"
+                          style={{ fontSize: 9, color: "var(--text)" }}>{film.title}</p>
+                      </motion.button>
                     ))}
                   </div>
                 </>
               )}
 
-              {/* Close session button for planned mode */}
-              {session?.mode === "planned" && session.status === "active" && (
-                <button
-                  onClick={handleClose}
-                  disabled={closing}
-                  className="w-full mt-6 py-3.5 rounded-xl text-sm font-semibold border transition-opacity"
-                  style={{
-                    borderColor: "var(--accent)",
-                    color: "var(--accent)",
-                    opacity: closing ? 0.6 : 1,
-                  }}
-                >
-                  {closing ? "Closing…" : "Lock in results"}
-                </button>
-              )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Remove participant confirmation */}
+      {confirmRemoveId && session && (() => {
+        const target = participants.find(p => p.id === confirmRemoveId);
+        if (!target) return null;
+        const col = participantColor(target.name);
+        return (
+          <div className="fixed bottom-0 left-0 right-0 z-40 px-5 pb-8 pt-4"
+            style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
+            <div className="mx-auto max-w-sm p-4 rounded-2xl" style={{ background: "var(--surface)" }}>
+              <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>
+                Remove <span style={{ color: col }}>{target.name}</span>?
+              </p>
+              <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+                Their shortlist votes will be voided.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmRemoveId(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    const id = confirmRemoveId;
+                    setConfirmRemoveId(null);
+                    await removeParticipant(session.id, id);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                  style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Shortlist button — pinned, host only, ≥2 liked films */}
+      {!loading && isHost && scores.length >= 2 && session?.status !== "closed" && (
+        <div className="shrink-0 px-5 pb-6 pt-3 flex justify-center"
+          style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
+          <button
+            onClick={() => {
+              resultSlCh.current?.send({
+                type: "broadcast", event: "shortlist_open", payload: {},
+              });
+              setShowShortlist(true);
+            }}
+            className="py-3.5 rounded-xl text-sm font-semibold"
+            style={{ background: "var(--accent)", color: "#0c0c0e", width: "80%" }}
+          >
+            Shortlist
+          </button>
         </div>
       )}
 
@@ -271,7 +373,25 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         film={infoFilm}
         onClose={() => setInfoFilm(null)}
         sessionServices={session?.streaming_services ?? []}
+        onLike={infoFilm && !scores.find(s => s.film.id === infoFilm.id)?.likedByIds.includes(myParticipantId) && session ? async () => {
+          await recordSwipe(session.id, myParticipantId, infoFilm.id, true);
+        } : undefined}
       />
+
+      {showShortlist && session && (
+        <ShortlistOverlay
+          films={scores.map(s => s.film)}
+          pinnedFilmIds={tiedFilms.map(s => s.film.id)}
+          sessionId={session.id}
+          participantId={myParticipantId}
+          isHost={isHost}
+          totalParticipants={participants.length}
+          onComplete={async (winnerId) => {
+            if (isHost) await closeSession(session.id);
+            router.push("/");
+          }}
+        />
+      )}
     </div>
     </div>
   );

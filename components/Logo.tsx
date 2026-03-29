@@ -66,10 +66,10 @@ export default function Logo({ size = "md", showText = true }: LogoProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-base font-semibold mb-1" style={{ color: "var(--text)" }}>
-              Leave session?
+              Leave club?
             </p>
             <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>
-              Your progress will be saved. Rejoin anytime with the session code.
+              Your progress will be saved. Rejoin anytime with the club code.
             </p>
             <div className="flex gap-3">
               <button

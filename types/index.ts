@@ -1,11 +1,14 @@
 export type SessionMode = "planned" | "live";
 export type SessionStatus = "active" | "closed";
 export type WatchMode = "home" | "cinema" | "both";
+export type SessionType = "browse" | "shortlist";
+export type ShortlistPhase = "nominate" | "veto" | "vote" | "complete";
 
 export interface Session {
   id: string;
   code: string;
   mode: SessionMode;
+  session_type: SessionType;
   deadline: string | null;
   threshold: number;
   status: SessionStatus;
@@ -16,6 +19,34 @@ export interface Session {
   cinema_time_from: string | null;  // "18:00"
   cinema_time_to: string | null;    // "20:00"
   tiebreaker_film_ids: string[] | null;
+  created_at: string;
+}
+
+export interface ShortlistRound {
+  id: string;
+  session_id: string;
+  round_number: number;
+  film_ids: string[];
+  phase: ShortlistPhase;
+  winner_id: string | null;
+  created_at: string;
+}
+
+export interface ShortlistVeto {
+  id: string;
+  session_id: string;
+  round_number: number;
+  participant_id: string;
+  film_id: string;
+  created_at: string;
+}
+
+export interface ShortlistVote {
+  id: string;
+  session_id: string;
+  round_number: number;
+  participant_id: string;
+  film_ids: string[];
   created_at: string;
 }
 

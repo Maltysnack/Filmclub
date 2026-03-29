@@ -13,16 +13,19 @@ import DendyLogo from "@/components/DendyLogo";
 import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
   getMySwipes, getMyLikes, recordSwipe, checkForMatch, checkAllMatches, getMatches,
-  closeSession, startSession, startTiebreaker, resolveMatch, addFilmToSession, getSessionSwipeStats,
+  closeSession, startSession, resolveMatch, addFilmToSession, getSessionSwipeStats,
+  removeParticipant,
 } from "@/lib/session";
 import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getAUProviderList, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, AU_SERVICES, TMDB_GENRES } from "@/lib/streaming";
+import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List } from "lucide-react";
+import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List, Clock } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
+import ShortlistOverlay from "@/components/ShortlistOverlay";
 
 const LOAD_MESSAGE = "Arguing with the studio execs…";
 
@@ -33,8 +36,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [session, setSession] = useState<Session | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [isHost, setIsHostState] = useState(false);
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
+  const [showShortlist, setShowShortlist] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
   const [matchList, setMatchList] = useState<Match[]>([]);
@@ -56,6 +61,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so handleSwipe always sees the latest session without stale closure
   const sessionRef = useRef<Session | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  // Ref so shortlist subscription sees latest matchList without stale closure
+  const matchListRef = useRef<Match[]>([]);
+  useEffect(() => { matchListRef.current = matchList; }, [matchList]);
   // Ref so loadFilms (useCallback with [] deps) always sees the latest index
   const currentIndexRef = useRef(0);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
@@ -74,6 +82,30 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       sessionStorage.removeItem(`filmclub-index-${code}`);
     }
   }, [matchList, code]);
+
+  // ── Auto-open shortlist overlay for all participants when host starts it ───
+  useEffect(() => {
+    if (!session) return;
+    // Check if a round is already active (e.g. rejoining mid-shortlist)
+    getCurrentRound(session.id).then(r => {
+      if (r && r.phase !== "complete") {
+        if (matchListRef.current.length > 0) setShowShortlist(true);
+        else router.push(`/session/${code}/results`);
+      }
+    });
+    const sub = supabase
+      .channel(`session-sl:${session.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "shortlist_rounds",
+        filter: `session_id=eq.${session.id}`,
+      }, () => {
+        if (matchListRef.current.length > 0) setShowShortlist(true);
+        else router.push(`/session/${code}/results`);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(sub); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
 
   // ── Persist queue + index to sessionStorage so returning from + / results is instant ──
   useEffect(() => {
@@ -376,6 +408,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       if (s.status === "closed") {
         const existing = await getMatches(s.id);
         if (existing.length > 0) { setMatchList(existing); setLoading(false); return; }
+        else { router.push("/"); return; }
       }
 
       const allParticipants = await getParticipants(s.id);
@@ -432,6 +465,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           if (updated.status === "closed") {
             const existing = await getMatches(session.id);
             if (existing.length > 0) setMatchList(existing);
+            else router.push("/");
           } else if (updated.tiebreaker_film_ids?.length && participant) {
             // Tiebreaker started — reload queue with only tied films
             setMatchList([]);
@@ -655,14 +689,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                 payload: { winnerId: winnerFilmId, films: matchList },
               });
             }}
-            onVoteAgain={async () => {
-              const filmIds = matchList.map((m) => m.film_id);
-              await startTiebreaker(session!.id, filmIds);
-              setMatchList([]);
-              setAllDone(false);
-              setCurrentIndex(0);
-              await loadFilms({ ...session!, tiebreaker_film_ids: filmIds, status: "active", started: true }, participant!.id, true);
-            }}
+            onShortlist={() => setShowShortlist(true)}
           />
         </div>
 
@@ -684,6 +711,21 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               setWheelWinnerId(null);
             }}
             onRespin={handleRespin}
+          />
+        )}
+
+        {showShortlist && session && (
+          <ShortlistOverlay
+            films={matchList.map(m => m.film!)}
+            sessionId={session.id}
+            participantId={participant?.id ?? ""}
+            isHost={isHost}
+            totalParticipants={participants.length}
+            onComplete={async (winnerId) => {
+              if (isHost) await resolveMatch(session.id, winnerId);
+              setMatchList(prev => prev.filter(m => m.film_id === winnerId));
+              setShowShortlist(false);
+            }}
           />
         )}
       </div>
@@ -801,26 +843,26 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>Copied</span>
             )}
           </button>
-          {isHost && !sessionStarted && (
-            <button onClick={handleStart} disabled={starting}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0"
-              style={{ background: "var(--like)", color: "#0c0c0e", opacity: starting ? 0.6 : 1 }}>
-              <Play size={12} fill="currentColor" />
-              {starting ? "Starting…" : "Start session"}
-            </button>
-          )}
-          {sessionStarted && (
-            <span className="text-xs px-2.5 py-1 rounded-full shrink-0"
-              style={{ background: "rgba(74,222,128,0.12)", color: "var(--like)" }}>
-              Live
-            </span>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {isHost && !sessionStarted ? (
+              <button onClick={handleStart} disabled={starting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ background: "var(--like)", color: "#0c0c0e", opacity: starting ? 0.6 : 1 }}>
+                <Play size={12} fill="currentColor" />
+                {starting ? "Starting…" : "Start"}
+              </button>
+            ) : (
+              <span className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0"
+                style={{
+                  background: sessionStarted ? "rgba(74,222,128,0.12)" : "var(--surface-2)",
+                  color: sessionStarted ? "var(--like)" : "var(--text-muted)",
+                }}>
+                {sessionStarted ? <CheckCircle size={11} /> : <Clock size={11} />}
+                {sessionStarted ? "Live" : "Waiting"}
+              </span>
+            )}
+          </div>
         </div>
-        {!sessionStarted && !isHost && (
-          <p className="text-xs text-center mt-2" style={{ color: "var(--text-muted)" }}>
-            Waiting for the host to start — swipe away in the meantime
-          </p>
-        )}
       </div>
 
       {/* Participants */}
@@ -830,21 +872,61 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           {participants.map((p) => {
             const col = participantColor(p.name);
             const isMe = p.id === participant?.id;
+            const canRemove = isHost && !isMe;
             return (
-              <span key={p.id} className="text-xs px-2 py-0.5 rounded-full font-medium"
+              <button key={p.id}
+                onClick={() => canRemove && setConfirmRemoveId(p.id)}
+                className="text-xs px-2 py-0.5 rounded-full font-medium"
                 style={{
                   background: `${col}22`,
                   color: col,
                   border: `1px solid ${col}55`,
                   outline: isMe ? `2px solid ${col}` : "none",
                   outlineOffset: "1px",
+                  cursor: canRemove ? "pointer" : "default",
                 }}>
                 {p.name}
-              </span>
+              </button>
             );
           })}
         </div>
       </div>
+
+      {/* Remove participant confirmation */}
+      {confirmRemoveId && session && (() => {
+        const target = participants.find(p => p.id === confirmRemoveId);
+        if (!target) return null;
+        const col = participantColor(target.name);
+        return (
+          <div className="fixed bottom-0 left-0 right-0 z-40 px-5 pb-8 pt-4"
+            style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
+            <div className="mx-auto max-w-sm p-4 rounded-2xl" style={{ background: "var(--surface)" }}>
+              <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>
+                Remove <span style={{ color: col }}>{target.name}</span>?
+              </p>
+              <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+                Their shortlist votes will be voided.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmRemoveId(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setConfirmRemoveId(null);
+                    await removeParticipant(session.id, confirmRemoveId);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                  style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="mb-4 shrink-0" />
 
@@ -861,7 +943,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                   mode={session?.mode ?? "live"}
                   watchMode={session?.watch_mode ?? "home"}
                   neverHadFilms={queue.length === 0}
-                  onResults={() => router.push(`/session/${code}/results`)} />
+                  onResults={() => router.push(`/session/${code}/results`)}
+                  onSearch={() => router.push(`/session/${code}/add`)}
+                  onBrowseMore={async () => { if (session && participant) { await loadFilms(session, participant.id); setAllDone(false); } }} />
               ) : (
                 <ScrollView
                   ref={scrollViewRef}
@@ -924,7 +1008,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                     mode={session?.mode ?? "live"}
                     watchMode={session?.watch_mode ?? "home"}
                     neverHadFilms={queue.length === 0}
-                    onResults={() => router.push(`/session/${code}/results`)} />
+                    onResults={() => router.push(`/session/${code}/results`)}
+                    onSearch={() => router.push(`/session/${code}/add`)}
+                    onBrowseMore={async () => { if (session && participant) { await loadFilms(session, participant.id); setAllDone(false); } }} />
                 ) : (
                   <>
                     {nextFilm && (
@@ -986,45 +1072,73 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
 
 
-function AllDoneScreen({ mode, watchMode, neverHadFilms, onResults }: {
+function AllDoneScreen({ mode, watchMode, neverHadFilms, onResults, onSearch, onBrowseMore }: {
   mode: string;
   watchMode: string;
   neverHadFilms: boolean;
   onResults: () => void;
+  onSearch: () => void;
+  onBrowseMore: () => void;
 }) {
   const isCinemaOnly = watchMode === "cinema";
   const noSessionsToday = isCinemaOnly && neverHadFilms;
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-      <div className="text-4xl mb-4">{noSessionsToday ? "🎭" : "✅"}</div>
+      <div className="mb-5">
+        {noSessionsToday ? (
+          <span className="text-4xl">🎭</span>
+        ) : (
+          <svg width="56" height="56" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="4" y="14" width="40" height="26" rx="3" fill="#1c1c20" stroke="#e8b86d" strokeWidth="1.5" />
+            <rect x="14" y="8" width="16" height="7" rx="2" fill="#1c1c20" stroke="#e8b86d" strokeWidth="1.5" />
+            <circle cx="22" cy="27" r="9" fill="#0c0c0e" stroke="#e8b86d" strokeWidth="1.5" />
+            <circle cx="22" cy="27" r="5.5" fill="#141416" stroke="#e8b86d" strokeWidth="1" />
+            <circle cx="20" cy="25" r="1.5" fill="#e8b86d" opacity="0.4" />
+            <line x1="34" y1="18" x2="34" y2="36" stroke="#e8b86d" strokeWidth="1" opacity="0.5" />
+            <line x1="37" y1="18" x2="37" y2="36" stroke="#e8b86d" strokeWidth="1" opacity="0.5" />
+            <line x1="40" y1="18" x2="40" y2="36" stroke="#e8b86d" strokeWidth="1" opacity="0.5" />
+            <circle cx="38" cy="12" r="3" fill="#e8b86d" opacity="0.8" />
+            <path d="M4 38 Q8 44 14 42 Q18 40 22 43 Q26 46 30 42 Q36 38 44 40"
+              stroke="#e8b86d" strokeWidth="1.2" strokeLinecap="round" fill="none" opacity="0.55" />
+          </svg>
+        )}
+      </div>
       <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--text)" }}>
         {noSessionsToday ? "Nothing on tonight" : "You're all caught up"}
       </h2>
       <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
         {noSessionsToday
           ? "No sessions found at Dendy Newtown for today's time window. Try again later or switch to a streaming session."
-          : mode === "planned"
-            ? "Results will be revealed at the deadline."
-            : "Waiting for the rest of the group."}
+          : "Waiting for the rest of the group."}
       </p>
       {!noSessionsToday && (
-        <button onClick={onResults} className="px-6 py-3 rounded-xl text-sm font-semibold"
-          style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-          {mode === "planned" ? "See current scores" : "See what everyone liked"}
-        </button>
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          <button onClick={onSearch} className="w-full px-6 py-3 rounded-xl text-sm font-semibold"
+            style={{ background: "var(--surface)", color: "var(--text)" }}>
+            Search
+          </button>
+          <button onClick={onBrowseMore} className="w-full px-6 py-3 rounded-xl text-sm font-semibold"
+            style={{ background: "var(--surface)", color: "var(--text)" }}>
+            Browse more
+          </button>
+          <button onClick={onResults} className="w-full px-6 py-3 rounded-xl text-sm font-semibold"
+            style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+            Results
+          </button>
+        </div>
       )}
     </div>
   );
 }
 
-function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAgain }: {
+function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortlist }: {
   matches: Match[];
   session: Session;
   dendyMap: Map<string, DendyFilm>;
   isHost: boolean;
   onRandomise?: (winnerFilmId: string) => void;
-  onVoteAgain?: () => void;
+  onShortlist?: () => void;
 }) {
   const router = useRouter();
   if (matches.length === 0 || !matches[0]?.film) return null;
@@ -1102,10 +1216,10 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onVoteAg
       <div className="fixed bottom-0 left-0 right-0 z-20 px-5 pb-6 pt-3"
         style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
         <div className="mx-auto flex gap-3" style={{ maxWidth: 480 }}>
-          {isTied && isHost && onVoteAgain && (
-            <button onClick={onVoteAgain} className="flex-1 py-3 rounded-xl text-sm font-semibold border"
+          {isTied && isHost && onShortlist && (
+            <button onClick={onShortlist} className="flex-1 py-3 rounded-xl text-sm font-semibold border"
               style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
-              Vote again
+              Shortlist
             </button>
           )}
           {isTied && isHost && onRandomise && (

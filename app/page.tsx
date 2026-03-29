@@ -6,13 +6,12 @@ import Logo from "@/components/Logo";
 import DendyLogo from "@/components/DendyLogo";
 import { createSession, joinSession, getSession, getParticipants, setParticipantId, setIsHost } from "@/lib/session";
 import { AU_SERVICES } from "@/lib/streaming";
-import { Calendar, Zap, ChevronRight, ChevronDown, Users, Home as HomeIcon, Clapperboard } from "lucide-react";
+import { ChevronRight, ChevronDown, Users, Home as HomeIcon, Clapperboard } from "lucide-react";
 import type { WatchMode } from "@/types";
 
 type Tab = "create" | "join";
-type SessionMode = "planned" | "live";
 
-// ── date / time helpers ───────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 function dateStrFromOffset(offset: number): string {
   const d = new Date();
@@ -20,14 +19,12 @@ function dateStrFromOffset(offset: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-
 function ordinal(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-/** Format "HH:MM" → 12hr am/pm */
 function fmtTime(time: string): string {
   const [hStr, mStr] = time.split(":");
   const h = parseInt(hStr), m = parseInt(mStr);
@@ -36,16 +33,6 @@ function fmtTime(time: string): string {
   return m === 0 ? `${dh}${period}` : `${dh}:${String(m).padStart(2, "0")}${period}`;
 }
 
-/** "Tuesday 25th March 9pm" */
-function formatDatetime(dateStr: string, time: string): string {
-  if (!dateStr || !time) return "";
-  const d = new Date(dateStr + "T12:00:00");
-  const weekday = d.toLocaleDateString("en-AU", { weekday: "long" });
-  const month   = d.toLocaleDateString("en-AU", { month: "long" });
-  return `${weekday} ${ordinal(d.getDate())} ${month} ${fmtTime(time)}`;
-}
-
-/** "Tuesday 25th March 6pm – 8pm" */
 function formatCinema(dateStr: string, from: string, to: string): string {
   if (!dateStr || !from || !to) return "";
   const d = new Date(dateStr + "T12:00:00");
@@ -64,18 +51,13 @@ export default function Home() {
 
   // Create form
   const [name, setName] = useState("");
-  const [mode, setMode] = useState<SessionMode>("live");
   const [threshold] = useState(100);
   const [watchMode, setWatchMode] = useState<WatchMode>("home");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [streamingOpen, setStreamingOpen] = useState(false);
 
-  // Deadline — default: tomorrow at 21:00
-  const [deadlineDateStr, setDeadlineDateStr] = useState(() => dateStrFromOffset(1));
-  const [deadlineTime, setDeadlineTime] = useState("21:00");
-
-  // Cinema — default: tomorrow 18:00 → 20:00
-  const [cinemaDateStr, setCinemaDateStr] = useState(() => dateStrFromOffset(1));
+  // Cinema session window — default: today 18:00 → 20:00
+  const [cinemaDateStr, setCinemaDateStr] = useState(() => dateStrFromOffset(0));
   const [cinemaFromTime, setCinemaFromTime] = useState("18:00");
   const [cinemaToTime, setCinemaToTime] = useState("20:00");
 
@@ -94,9 +76,39 @@ export default function Home() {
   const [joinName, setJoinName] = useState("");
 
   const MYSTERY_NAMES = [
-    "James Bond", "Mr. X", "Mrs. X", "Ethan Hunt",
-    "Keyser Söze", "John Doe", "Batman",
+    "James Bond",       "Mr. X",            "Mrs. X",           "Ethan Hunt",
+    "Keyser Söze",      "John Doe",         "Batman",           "Indiana Jones",
+    "Ellen Ripley",     "Tyler Durden",     "Patrick Bateman",  "Amy Dunne",
+    "Anton Chigurh",    "Hans Landa",       "The Joker",        "John Wick",
+    "Jason Bourne",     "Jack Torrance",    "Norman Bates",     "Hannibal Lecter",
+    "The Dude",         "Jules Winnfield",  "Vincent Vega",     "Mia Wallace",
+    "Winston Wolfe",    "Roy Batty",        "Snake Plissken",   "Max Rockatansky",
+    "The Bride",        "Villanelle",       "Tom Ripley",       "Travis Bickle",
+    "Tony Montana",     "Gordon Gekko",     "Walter White",     "Tony Soprano",
+    "Don Draper",       "Frank Underwood",  "Sherlock Holmes",  "Prof. Moriarty",
+    "Hercule Poirot",   "Sam Spade",        "Philip Marlowe",   "Lt. Columbo",
+    "Dirty Harry",      "Jack Reacher",     "The Wolf",         "Raoul Duke",
+    "Holly Golightly",  "Clarice Starling", "Marge Gunderson",  "Sarah Connor",
+    "John Connor",      "Nurse Ratched",    "Alex DeLarge",     "HAL 9000",
+    "Maximus",          "Leon",             "O-Ren Ishii",      "Beatrix Kiddo",
+    "Winston Smith",    "Forrest Gump",     "Edward Scissorhands", "Rorschach",
+    "Sweeney Todd",     "Annie Wilkes",     "Ted Lasso",        "Roy Kent",
+    "Fleabag",          "Eve Polastri",     "The Mandalorian",  "Sam Lowry",
+    "Dr. Strangelove",  "Captain Nemo",     "Frank Booth",      "Atticus Finch",
+    "McMurphy",         "V",                "The Man in Black", "Jack Skellington",
+    "Edward Blake",     "Pinhead",          "Sam Malone",       "Philip J. Fry",
+    "Sterling Archer",  "Ron Swanson",      "Omar Little",      "Ghostface",
+    "Frank Martin",     "Mathilda",         "Elle Driver",      "Bill",
+    "Dr. Phibes",       "Big Brother",      "O'Brien",          "Agent 47",
+    "The Phantom",      "Shadow",           "Ghost",            "Cipher",
   ];
+
+  function handleJoinCodeChange(e: React.ChangeEvent<HTMLInputElement>) {
+    // Strip hyphens + non-alphanumeric, uppercase, cap at 6 chars
+    const clean = e.target.value.replace(/-/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    // Auto-insert hyphen after 4th character once the user has typed past it
+    setJoinCode(clean.length > 4 ? clean.slice(0, 4) + "-" + clean.slice(4) : clean);
+  }
 
   function pickMysteryName(takenNames: string[]): string {
     const available = MYSTERY_NAMES.filter((n) => !takenNames.includes(n));
@@ -131,30 +143,15 @@ export default function Home() {
     setLoading(true);
     setError(null);
 
-    const deadlineISO = new Date(`${deadlineDateStr}T${deadlineTime}:00`).toISOString();
-
-    const now = new Date();
-    const resolvedCinemaDate = watchMode !== "home"
-      ? (mode === "live" ? now.toISOString().slice(0, 10) : cinemaDateStr)
-      : null;
-    const resolvedCinemaFrom = watchMode !== "home"
-      ? (mode === "live"
-          ? `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
-          : cinemaFromTime)
-      : null;
-    const resolvedCinemaTo = watchMode !== "home" && mode === "planned"
-      ? cinemaToTime
-      : null;
-
     const session = await createSession(
-      mode,
-      mode === "planned" ? deadlineISO : null,
+      "live",
+      null,
       threshold,
       watchMode,
       watchMode !== "cinema" ? selectedServices : [],
-      resolvedCinemaDate,
-      resolvedCinemaFrom,
-      resolvedCinemaTo,
+      watchMode !== "home" ? cinemaDateStr : null,
+      watchMode !== "home" ? cinemaFromTime : null,
+      watchMode !== "home" ? cinemaToTime : null,
     );
     if (!session) { setLoading(false); return setError("Something went wrong. Try again."); }
 
@@ -168,15 +165,15 @@ export default function Home() {
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
-    if (!joinCode.trim()) return setError("Enter the session code");
+    if (!joinCode.trim()) return setError("Enter the code");
 
     setLoading(true);
     setError(null);
 
     const code = normaliseCode(joinCode);
     const session = await getSession(code);
-    if (!session) { setLoading(false); return setError("Session not found. Check the code."); }
-    if (session.status === "closed") { setLoading(false); return setError("This session has ended."); }
+    if (!session) { setLoading(false); return setError("Club not found. Check the code."); }
+    if (session.status === "closed") { setLoading(false); return setError("This club has ended."); }
 
     const existing = await getParticipants(session.id);
     const takenNames = existing.map((p) => p.name);
@@ -212,7 +209,7 @@ export default function Home() {
                 background: tab === t ? "var(--surface-2)" : "transparent",
                 color: tab === t ? "var(--text)" : "var(--text-muted)",
               }}>
-              {t === "create" ? "New session" : "Join session"}
+              {t === "create" ? "New" : "Join"}
             </button>
           ))}
         </div>
@@ -228,41 +225,11 @@ export default function Home() {
               autoFocus />
           </Field>
 
-          {/* Session mode */}
-          <Field label="Session type">
-            <div className="grid grid-cols-2 gap-3">
-              <ModeCard selected={mode === "live"} onClick={() => setMode("live")}
-                icon={<Zap size={16} />} title="Live" />
-              <ModeCard selected={mode === "planned"} onClick={() => setMode("planned")}
-                icon={<Calendar size={16} />} title="Planned" />
-            </div>
-          </Field>
-
-          {/* Deadline */}
-          {mode === "live" ? (
-            <div className="space-y-2">
-              <label className="block text-xs font-medium uppercase tracking-wider"
-                style={{ color: "var(--text-muted)" }}>Deadline for vote</label>
-              <div className="w-full px-4 py-3 rounded-xl"
-                style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-                <span className="text-sm font-medium" style={{ color: "var(--text)" }}>First match wins!</span>
-              </div>
-            </div>
-          ) : (
-            <DateTimePicker
-              label="Deadline for vote"
-              dateStr={deadlineDateStr}
-              time={deadlineTime}
-              onDateChange={setDeadlineDateStr}
-              onTimeChange={setDeadlineTime}
-            />
-          )}
-
           {/* Watch mode */}
           <Field label="Watching at">
             <div className="grid grid-cols-3 gap-2">
               {([
-                { value: "home",   label: "At home",  icon: <HomeIcon size={15} /> },
+                { value: "home",   label: "Home",  icon: <HomeIcon size={15} /> },
                 { value: "cinema", label: "Cinema",   icon: <Clapperboard size={15} /> },
                 { value: "both",   label: "Either",   icon: <span className="text-xs">✦</span> },
               ] as { value: WatchMode; label: string; icon: React.ReactNode }[]).map(({ value, label, icon }) => (
@@ -351,19 +318,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* Cinema — live mode info */}
-          {showCinema && mode === "live" && (
-            <div className="px-4 py-3 rounded-xl text-sm"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-              <div className="mb-1"><DendyLogo height={14} /></div>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                Sessions showing from now today will appear in the pool automatically.
-              </p>
-            </div>
-          )}
-
-          {/* Cinema — planned: date + time window */}
-          {showCinema && mode === "planned" && (
+          {/* Cinema session window */}
+          {showCinema && (
             <CinemaDatePicker
               dateStr={cinemaDateStr}
               fromTime={cinemaFromTime}
@@ -379,31 +335,32 @@ export default function Home() {
           <button type="submit" disabled={loading}
             className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-opacity"
             style={{ background: "var(--accent)", color: "#0c0c0e", opacity: loading ? 0.6 : 1 }}>
-            {loading ? "Creating..." : <><span>Create session</span><ChevronRight size={16} /></>}
+            {loading ? "Starting..." : <><span>Start</span><ChevronRight size={16} /></>}
           </button>
         </form>
       )}
 
       {tab === "join" && (
         <form onSubmit={handleJoin} className="w-full max-w-sm space-y-5">
+          <Field label="Code">
+            <input type="text" placeholder="WOLF-42" value={joinCode}
+              onChange={handleJoinCodeChange}
+              maxLength={7}
+              className="w-full px-4 py-3 rounded-xl text-sm outline-none tracking-widest font-mono"
+              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--accent)" }}
+              autoFocus />
+          </Field>
           <Field label="Your name">
             <input type="text" placeholder="e.g. Red Rebel" value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
               className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
-              autoFocus />
-          </Field>
-          <Field label="Session code">
-            <input type="text" placeholder="WOLF-42" value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none tracking-widest font-mono"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--accent)" }} />
+              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }} />
           </Field>
           {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
           <button type="submit" disabled={loading}
             className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-opacity"
             style={{ background: "var(--accent)", color: "#0c0c0e", opacity: loading ? 0.6 : 1 }}>
-            {loading ? "Joining..." : <><Users size={16} /><span>Join session</span></>}
+            {loading ? "Joining..." : <><Users size={16} /><span>Join</span></>}
           </button>
         </form>
       )}
@@ -423,29 +380,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function ModeCard({ selected, onClick, icon, title }: {
-  selected: boolean; onClick: () => void;
-  icon: React.ReactNode; title: string;
-}) {
-  return (
-    <button type="button" onClick={onClick}
-      className="px-3 py-2.5 rounded-xl flex items-center gap-2 transition-all duration-200 border"
-      style={{
-        background: selected ? "var(--surface-2)" : "var(--surface)",
-        borderColor: selected ? "var(--accent)" : "var(--border)",
-      }}>
-      <span style={{ color: selected ? "var(--accent)" : "var(--text-muted)" }}>{icon}</span>
-      <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{title}</span>
-    </button>
-  );
-}
 
 function PickerShell({ label, summary, open, onToggle, children }: {
-  label: string;
-  summary: string;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
+  label: string; summary: string; open: boolean;
+  onToggle: () => void; children: React.ReactNode;
 }) {
   return (
     <div className="space-y-2">
@@ -470,29 +408,13 @@ function PickerShell({ label, summary, open, onToggle, children }: {
   );
 }
 
-function DateTimePicker({ label, dateStr, time, onDateChange, onTimeChange }: {
-  label: string; dateStr: string; time: string;
-  onDateChange: (v: string) => void; onTimeChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <PickerShell label={label} summary={formatDatetime(dateStr, time)}
-      open={open} onToggle={() => setOpen(o => !o)}>
-      <DayPicker value={dateStr} onChange={onDateChange} />
-      <input type="time" value={time} onChange={e => onTimeChange(e.target.value)}
-        className="px-3 py-2.5 rounded-xl text-sm outline-none" style={{ width: "42.5%",
-          background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", colorScheme: "dark" }} />
-    </PickerShell>
-  );
-}
-
 function CinemaDatePicker({ dateStr, fromTime, toTime, onDateChange, onFromChange, onToChange }: {
   dateStr: string; fromTime: string; toTime: string;
   onDateChange: (v: string) => void; onFromChange: (v: string) => void; onToChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <PickerShell label="Cinema session" summary={formatCinema(dateStr, fromTime, toTime)}
+    <PickerShell label="Cinema session times" summary={formatCinema(dateStr, fromTime, toTime)}
       open={open} onToggle={() => setOpen(o => !o)}>
       <DayPicker value={dateStr} onChange={onDateChange} />
       <div className="flex items-center gap-3" style={{ maxWidth: "85%" }}>
@@ -508,34 +430,32 @@ function CinemaDatePicker({ dateStr, fromTime, toTime, onDateChange, onFromChang
   );
 }
 
-/**
- * Row of day-name chips (Today / Tomorrow / Mon … Sun) for the next 7 days.
- * Selecting a chip updates the date string; changing the linked date input
- * automatically highlights the matching chip (or none if out of range).
- */
 function DayPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const chips = Array.from({ length: 7 }, (_, i) => {
+  const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    const str   = d.toISOString().slice(0, 10);
-    const label = i === 0 ? "Today" : i === 1 ? "Tomorrow"
+    const str     = d.toISOString().slice(0, 10);
+    const label   = i === 0 ? "Today" : i === 1 ? "Tomorrow"
       : d.toLocaleDateString("en-AU", { weekday: "short" });
-    return { str, label };
+    const dateNum = d.getDate();
+    return { str, label, dateNum };
   });
 
   return (
-    <div className="flex flex-wrap gap-1">
-      {chips.map(({ str, label }) => {
+    <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+      {days.map(({ str, label, dateNum }) => {
         const active = value === str;
         return (
           <button key={str} type="button" onClick={() => onChange(str)}
-            className="px-2 py-0.5 rounded text-xs font-medium border transition-all"
+            className="flex-none flex flex-col items-center justify-center gap-0.5 rounded-xl border transition-all"
             style={{
-              background:   active ? "var(--accent)" : "transparent",
-              borderColor:  active ? "var(--accent)" : "var(--border)",
-              color:        active ? "#0c0c0e"       : "var(--text-muted)",
+              width: 64, height: 64,
+              background:  active ? "var(--accent)" : "var(--surface)",
+              borderColor: active ? "var(--accent)" : "var(--border)",
+              color:       active ? "#0c0c0e"       : "var(--text-muted)",
             }}>
-            {label}
+            <span className="text-[11px] font-medium">{label}</span>
+            <span className="text-lg font-bold leading-none">{dateNum}</span>
           </button>
         );
       })}

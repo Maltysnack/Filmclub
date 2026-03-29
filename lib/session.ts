@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { Session, Participant, Film, Match, WatchMode } from "@/types";
+import { Session, Participant, Film, Match, WatchMode, SessionType } from "@/types";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
 import { fetchOmdbRating } from "./omdb";
 import { fetchWatchProvidersAU, getService } from "./streaming";
@@ -10,6 +10,16 @@ const WORDS = [
   "WOLF", "BEAR", "HAWK", "NOVA", "DUSK", "REEL", "LENS", "NOIR",
   "GOLD", "STAR", "FILM", "EPIC", "CAGE", "CULT", "WILD", "IRON",
   "JADE", "MOON", "REEF", "SAGE",
+  "DAWN", "DAZE", "ECHO", "EDGE", "FADE", "FAWN", "FIRE", "FIST",
+  "FLOW", "GAZE", "GEAR", "GILD", "GLOW", "GRIT", "GULF", "HALO",
+  "HAZE", "HEAT", "HIVE", "HOOK", "HORN", "HUNT", "ICON", "IDOL",
+  "IRIS", "KEEN", "KNOT", "LACE", "LARK", "LAVA", "LEAF", "LILT",
+  "LIME", "LINK", "LION", "LOFT", "LOOM", "LORE", "LYNX", "MANE",
+  "MARK", "MAST", "MELD", "MELT", "MESA", "MINT", "MIST", "MUSE",
+  "MYTH", "NEON", "NEST", "NOOK", "OPAL", "OPUS", "ORCA", "PAVE",
+  "PAWN", "PEAK", "PINE", "PYRE", "RUNE", "RUSH", "RUST", "SALT",
+  "SAND", "SEAL", "SHOT", "SILK", "SILT", "SLAB", "SOOT", "SOUL",
+  "SPIN", "SPUR", "SWAN", "TAKE", "TEAL", "TIDE", "TILE", "TUSK",
 ];
 
 export function generateCode(): string {
@@ -22,22 +32,22 @@ export function generateCode(): string {
 
 export function getParticipantId(sessionCode: string): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(`filmclub_participant_${sessionCode}`);
+  return sessionStorage.getItem(`filmclub_participant_${sessionCode}`);
 }
 
 export function setParticipantId(sessionCode: string, participantId: string) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(`filmclub_participant_${sessionCode}`, participantId);
+  sessionStorage.setItem(`filmclub_participant_${sessionCode}`, participantId);
 }
 
 export function setIsHost(sessionCode: string) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(`filmclub_host_${sessionCode}`, "true");
+  sessionStorage.setItem(`filmclub_host_${sessionCode}`, "true");
 }
 
 export function getIsHost(sessionCode: string): boolean {
   if (typeof window === "undefined") return false;
-  return localStorage.getItem(`filmclub_host_${sessionCode}`) === "true";
+  return sessionStorage.getItem(`filmclub_host_${sessionCode}`) === "true";
 }
 
 // ── Session CRUD ──────────────────────────────────────────────────────────────
@@ -51,6 +61,7 @@ export async function createSession(
   cinemaDate: string | null = null,
   cinemaTimeFrom: string | null = null,
   cinemaTimeTo: string | null = null,
+  sessionType: SessionType = "browse",
 ): Promise<Session | null> {
   let code = generateCode();
   const { data: existing } = await supabase.from("sessions").select("id").eq("code", code).single();
@@ -60,6 +71,7 @@ export async function createSession(
     .from("sessions")
     .insert({
       code, mode, deadline, threshold,
+      session_type: sessionType,
       watch_mode: watchMode,
       streaming_services: streamingServices,
       cinema_date: cinemaDate,
@@ -74,10 +86,15 @@ export async function createSession(
 }
 
 export async function getSession(code: string): Promise<Session | null> {
+  // Codes are stored as WORD-NN. Accept input with or without the hyphen.
+  const stripped = code.trim().toUpperCase().replace(/-/g, "");
+  const normalized = stripped.length >= 6
+    ? stripped.slice(0, stripped.length - 2) + "-" + stripped.slice(-2)
+    : stripped;
   const { data, error } = await supabase
     .from("sessions")
     .select("*")
-    .eq("code", code.toUpperCase())
+    .eq("code", normalized)
     .single();
   if (error) return null;
   return data;
@@ -85,6 +102,19 @@ export async function getSession(code: string): Promise<Session | null> {
 
 export async function closeSession(sessionId: string) {
   await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
+}
+
+/** Host only. Voids all shortlist submissions then removes the participant. */
+export async function removeParticipant(sessionId: string, participantId: string): Promise<void> {
+  // Delete submissions first — so totalParticipants and vote counts drop together,
+  // preventing the host advancement effects from firing with stale counts.
+  await Promise.all([
+    supabase.from("shortlist_vetoes")
+      .delete().eq("session_id", sessionId).eq("participant_id", participantId),
+    supabase.from("shortlist_votes")
+      .delete().eq("session_id", sessionId).eq("participant_id", participantId),
+  ]);
+  await supabase.from("participants").delete().eq("id", participantId).eq("session_id", sessionId);
 }
 
 export async function startSession(sessionId: string) {
