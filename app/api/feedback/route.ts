@@ -40,6 +40,31 @@ export async function POST(req: NextRequest) {
   const replyLine = email?.trim() ? `<p style="color:#999;font-size:12px;margin:0 0 24px">${email.trim()}</p>` : "";
   const safe = (s: string) => s.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+  // Create GitHub issue
+  const githubToken = process.env.GITHUB_TOKEN;
+  if (githubToken) {
+    const issueTitle = `[${subjectTag}] ${message.trim().slice(0, 60)}${message.trim().length > 60 ? "…" : ""}`;
+    const issueBody = [
+      message.trim(),
+      "",
+      email?.trim() ? `**From:** ${email.trim()}` : "",
+    ].filter(Boolean).join("\n");
+
+    await fetch("https://api.github.com/repos/Maltysnack/Filmclub/issues", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${githubToken}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: issueTitle,
+        body: issueBody,
+        labels: [tag],
+      }),
+    });
+  }
+
   await resend.emails.send({
     from:    "Filmclub <feedback@filmclub.watch>",
     to:      "owner@example.com",

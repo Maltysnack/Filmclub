@@ -234,20 +234,8 @@ export function getServiceByTmdbId(tmdbId: number, region: Region = "AU") {
 export function detectRegion(): Region {
   if (typeof window === "undefined") return "AU";
 
-  const lang = (navigator.language ?? "").toUpperCase();
-  // Match exact country suffix (e.g. "en-AU", "pt-BR", "ko-KR")
-  const langMap: Record<string, Region> = {
-    "-AU": "AU", "-BR": "BR", "PT-BR": "BR", "-CA": "CA", "FR-CA": "CA",
-    "-DE": "DE", "-ES": "ES", "-FR": "FR", "-GB": "GB",
-    "-IN": "IN", "HI-IN": "IN", "-IT": "IT", "-JP": "JP", "JA-JP": "JP",
-    "-KR": "KR", "KO-KR": "KR", "-MX": "MX", "ES-MX": "MX",
-    "-NL": "NL", "-NZ": "NZ", "-US": "US",
-  };
-  for (const [suffix, region] of Object.entries(langMap)) {
-    if (lang.endsWith(suffix) || lang === suffix) return region;
-  }
-
-  // Fallback: IANA timezone
+  // Timezone is the most reliable location signal — check it first.
+  // Language codes like "en-GB" are common on Apple devices outside the UK.
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (tz.startsWith("Australia/"))   return "AU";
@@ -266,6 +254,19 @@ export function detectRegion(): Region {
     if (tz === "Pacific/Auckland") return "NZ";
     if (tz.startsWith("America/New_York") || tz.startsWith("America/Chicago") || tz.startsWith("America/Denver") || tz.startsWith("America/Los_Angeles") || tz.startsWith("America/Phoenix")) return "US";
   } catch { /* ignore */ }
+
+  // Fallback: language code suffix (e.g. "pt-BR", "ko-KR")
+  const lang = (navigator.language ?? "").toUpperCase();
+  const langMap: Record<string, Region> = {
+    "-AU": "AU", "-BR": "BR", "PT-BR": "BR", "-CA": "CA", "FR-CA": "CA",
+    "-DE": "DE", "-ES": "ES", "-FR": "FR", "-GB": "GB",
+    "-IN": "IN", "HI-IN": "IN", "-IT": "IT", "-JP": "JP", "JA-JP": "JP",
+    "-KR": "KR", "KO-KR": "KR", "-MX": "MX", "ES-MX": "MX",
+    "-NL": "NL", "-NZ": "NZ", "-US": "US",
+  };
+  for (const [suffix, region] of Object.entries(langMap)) {
+    if (lang.endsWith(suffix) || lang === suffix) return region;
+  }
 
   return "AU";
 }
