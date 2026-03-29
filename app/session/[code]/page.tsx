@@ -16,9 +16,10 @@ import {
   closeSession, startSession, resolveMatch, addFilmToSession, getSessionSwipeStats,
   removeParticipant,
 } from "@/lib/session";
-import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getAUProviderList, posterUrl } from "@/lib/tmdb";
+import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getProviderList, posterUrl, getFilmDetail, tmdbToFilm } from "@/lib/tmdb";
+import { CHARACTER_FILMS } from "@/lib/characters";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
-import { getService, AU_SERVICES, TMDB_GENRES } from "@/lib/streaming";
+import { getService, getServicesForRegion, TMDB_GENRES } from "@/lib/streaming";
 import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
@@ -26,6 +27,7 @@ import { Film, Session, Participant, Match } from "@/types";
 import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List, Clock } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
+import FilmWinnerScreen from "@/components/FilmWinnerScreen";
 
 const LOAD_MESSAGE = "Arguing with the studio execs…";
 
@@ -42,6 +44,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [showShortlist, setShowShortlist] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
+  const [characterFilm, setCharacterFilm] = useState<Film | null>(null);
+  const [characterFilmLoading, setCharacterFilmLoading] = useState(false);
   const [matchList, setMatchList] = useState<Match[]>([]);
   // Wheel state — lifted here so SpinWheel can overlay MatchScreen without flash
   const [wheelFilms, setWheelFilms] = useState<Match[] | null>(null);
@@ -186,31 +190,33 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Fast initial seed — just enough to show the first card immediately.
   // Resolve session streaming_services (service IDs like "netflix") → TMDB provider IDs
   function sessionProviderTmdbIds(s: Session): number[] {
+    const services = getServicesForRegion(s.region ?? "AU");
     return (s.streaming_services ?? [])
       .flatMap((sid) => {
-        const tmdbId = AU_SERVICES.find((svc) => svc.id === sid)?.tmdbId;
+        const tmdbId = services.find((svc) => svc.id === sid)?.tmdbId;
         return tmdbId != null ? [tmdbId] : [];
       });
   }
 
   // session_films upsert is idempotent so re-adding later is safe.
   async function seedHomePool(s: Session) {
+    const region = s.region ?? "AU";
     const providerIds = sessionProviderTmdbIds(s);
-    console.log("[seed] services:", s.streaming_services, "→ providerIds:", providerIds);
-    // DEV: log the real TMDB AU provider list once to verify IDs
+    console.log("[seed] region:", region, "services:", s.streaming_services, "→ providerIds:", providerIds);
+    // DEV: log the real TMDB provider list once to verify IDs
     if (process.env.NODE_ENV === "development") {
-      getAUProviderList().then((list) => {
+      getProviderList(region).then((list) => {
         const relevant = list.filter((p) =>
-          /stan|binge|netflix|prime|disney|apple|paramount|foxtel/i.test(p.provider_name)
+          /stan|binge|netflix|prime|disney|apple|paramount|foxtel|hulu|peacock|max|now|britbox|itvx|bbc/i.test(p.provider_name)
         );
-        console.log("[TMDB AU providers]", relevant.map(p => `${p.provider_name} (${p.provider_id})`));
+        console.log(`[TMDB ${region} providers]`, relevant.map(p => `${p.provider_name} (${p.provider_id})`));
       });
     }
     // When streaming services are selected, seed from TMDB Discover so only
     // films actually available on those services are added.
     // Fall back to trending when no services are specified.
     const films = providerIds.length > 0
-      ? await discoverFilmsByProviders(providerIds, 1)
+      ? await discoverFilmsByProviders(providerIds, 1, region)
       : await getTrendingFilms(1);
     console.log("[seed] discover returned", films.length, "films, titles:", films.slice(0, 3).map(f => f.title));
     const seen = new Set<number>();
@@ -226,9 +232,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Adds ~80 more films in batches of 8; the real-time subscription
   // picks up each batch and extends the live queue automatically.
   async function seedMoreHomePool(s: Session) {
+    const region = s.region ?? "AU";
     const providerIds = sessionProviderTmdbIds(s);
     const raw = providerIds.length > 0
-      ? await discoverFilmsByProviders(providerIds, 4)
+      ? await discoverFilmsByProviders(providerIds, 4, region)
       : await Promise.all([getTrendingFilms(3), getTopRatedFilms(2)]).then(([a, b]) => [...a, ...b]);
     const seen = new Set<number>();
     const deduped = raw.filter((m) => {
@@ -300,11 +307,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
     // Filter home pool by streaming services.
     // Since we now seed from TMDB Discover (provider-filtered), films in the pool
-    // should already match. This filter is the final safety net.
-    // Films with no provider data are excluded when services are selected — they
-    // shouldn't be in the pool anyway if seeding worked correctly.
+    // should already match. This filter is the final safety net for AU sessions —
+    // watch_providers_au contains AU provider data so the filter is only reliable there.
+    // For non-AU sessions we trust the Discover seed and skip this filter.
     let filteredAuto = autoSeeded;
-    if ((s.watch_mode === "home" || s.watch_mode === "both") && s.streaming_services?.length > 0) {
+    if (
+      (s.region ?? "AU") === "AU" &&
+      (s.watch_mode === "home" || s.watch_mode === "both") &&
+      s.streaming_services?.length > 0
+    ) {
       console.log("[filter] session services:", s.streaming_services);
       console.log("[filter] pool before filter:", autoSeeded.length, "films");
       autoSeeded.slice(0, 5).forEach(({ film }) =>
@@ -721,6 +732,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             participantId={participant?.id ?? ""}
             isHost={isHost}
             totalParticipants={participants.length}
+            sessionServices={session.streaming_services ?? []}
+            region={session.region ?? "AU"}
             onComplete={async (winnerId) => {
               if (isHost) await resolveMatch(session.id, winnerId);
               setMatchList(prev => prev.filter(m => m.film_id === winnerId));
@@ -866,33 +879,47 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       </div>
 
       {/* Participants */}
-      <div className="flex items-center gap-2 px-5 pb-3 shrink-0">
-        <Users size={12} style={{ color: "var(--text-muted)" }} />
-        <div className="flex gap-1 flex-wrap">
-          {participants.map((p) => {
-            const col = participantColor(p.name);
+      <div className="flex flex-col items-center px-5 py-3 shrink-0">
+        <div className="flex justify-center gap-1 flex-wrap">
+          {participants.map((p, i) => {
             const isMe = p.id === participant?.id;
-            const canRemove = isHost && !isMe;
+            const hasFilm = !!CHARACTER_FILMS[p.name];
             return (
-              <button key={p.id}
-                onClick={() => canRemove && setConfirmRemoveId(p.id)}
-                className="text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{
-                  background: `${col}22`,
-                  color: col,
-                  border: `1px solid ${col}55`,
-                  outline: isMe ? `2px solid ${col}` : "none",
-                  outlineOffset: "1px",
-                  cursor: canRemove ? "pointer" : "default",
-                }}>
-                {p.name}
-              </button>
+              <span key={p.id} className="flex items-center gap-1.5">
+                {i > 0 && (
+                  <span style={{ color: "var(--text-muted)", opacity: 0.35 }}>·</span>
+                )}
+                <button
+                  onClick={async () => {
+                    if (!hasFilm || characterFilmLoading) return;
+                    setCharacterFilmLoading(true);
+                    const entry = CHARACTER_FILMS[p.name];
+                    const detail = await getFilmDetail(entry.tmdbId);
+                    if (detail) {
+                      const film = { ...tmdbToFilm(detail), id: `char-${entry.tmdbId}` } as Film;
+                      setCharacterFilm(film);
+                    }
+                    setCharacterFilmLoading(false);
+                  }}
+                  style={{
+                    color: isMe ? "var(--text)" : "var(--text-muted)",
+                    fontWeight: isMe ? 600 : 400,
+                    fontSize: isMe ? "13px" : "12px",
+                    cursor: hasFilm ? "pointer" : "default",
+                    opacity: characterFilmLoading ? 0.5 : 1,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                  }}>
+                  {p.name}
+                </button>
+              </span>
             );
           })}
         </div>
       </div>
 
-      {/* Remove participant confirmation */}
+      {/* REMOVE_PARTICIPANT_HIDDEN: re-enable to allow host to remove members
       {confirmRemoveId && session && (() => {
         const target = participants.find(p => p.id === confirmRemoveId);
         if (!target) return null;
@@ -926,7 +953,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             </div>
           </div>
         );
-      })()}
+      })()} */}
 
       <div className="mb-4 shrink-0" />
 
@@ -1064,6 +1091,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         </>
       )}
 
+      {/* Character film overlay — tap your own name bubble to open */}
+      <FilmInfoOverlay
+        film={characterFilm}
+        onClose={() => setCharacterFilm(null)}
+        sessionServices={session?.streaming_services ?? []}
+      />
+
       <div className="h-24 shrink-0" />
     </div>
     </div>
@@ -1144,9 +1178,19 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortl
   if (matches.length === 0 || !matches[0]?.film) return null;
   const isTied = matches.length > 1;
 
-  // Card width based on count so all tied films are equal size.
-  // Single match fills the middle of the screen; ties share the space equally.
-  const cardWidthClass = matches.length === 1 ? "w-72" : matches.length === 2 ? "w-36" : "w-28";
+  // Single match — use the shared winner screen
+  if (!isTied) {
+    return (
+      <FilmWinnerScreen
+        film={matches[0].film!}
+        sessionServices={session.streaming_services ?? []}
+        region={session.region ?? "AU"}
+      />
+    );
+  }
+
+  // Tied — show all tied films with host actions
+  const cardWidthClass = matches.length === 2 ? "w-36" : "w-28";
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
@@ -1156,17 +1200,13 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortl
           className="w-full h-full object-cover" style={{ filter: "blur(20px)" }} />
       </div>
 
-      {/* Scrollable content — padded bottom so sticky bar doesn't overlap */}
       <div className="relative z-10 flex flex-col items-center px-5 pt-12 pb-32 flex-1 overflow-y-auto">
-        <div className="text-4xl mb-3">🎬</div>
-        <h1 className="text-xl font-medium mb-1" style={{ color: "var(--accent)" }}>
-          {isTied ? "It's a tie!" : "You've got a match"}
-        </h1>
+        <div className="mb-3"><Logo size="sm" /></div>
+        <h1 className="text-xl font-medium mb-1" style={{ color: "var(--accent)" }}>It's a tie!</h1>
         <p className="text-xs mb-8 text-center" style={{ color: "var(--text-muted)" }}>
-          {isTied ? `${matches.length} films everyone agreed on` : "Everyone agreed on tonight's film"}
+          {matches.length} films everyone agreed on
         </p>
 
-        {/* Equal-size film cards — all tied films shown together */}
         <div className={`flex gap-3 justify-center ${matches.length >= 3 ? "flex-wrap" : ""}`}>
           {matches.map((m) => {
             if (!m.film) return null;
@@ -1175,17 +1215,15 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortl
             const available = providers.filter((p) => sessionServices.includes(p.serviceId));
             return (
               <div key={m.id} className={`${cardWidthClass} flex flex-col gap-2`}>
-                {/* Poster card */}
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "2/3" }}>
                   <img src={posterUrl(m.film.poster_path, "w342")} alt={m.film.title}
                     className="w-full h-full object-cover" />
                   <div className="absolute inset-0"
                     style={{ background: "linear-gradient(to top, rgba(12,12,14,0.85) 0%, transparent 50%)" }} />
-                  {/* Streaming logos bottom-left */}
                   {available.length > 0 && (
                     <div className="absolute bottom-2 left-2 flex gap-1 flex-wrap">
                       {available.slice(0, 3).map((p) => {
-                        const svc = getService(p.serviceId);
+                        const svc = getService(p.serviceId, session.region ?? "AU");
                         if (!svc) return null;
                         const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath?: string | null }).tmdbLogoPath;
                         return logo ? (
@@ -1199,7 +1237,6 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortl
                     </div>
                   )}
                 </div>
-                {/* Title + year below card */}
                 <div className="text-center">
                   <p className="text-sm font-semibold leading-tight" style={{ color: "var(--text)" }}>{m.film.title}</p>
                   {m.film.release_year && (
@@ -1212,17 +1249,16 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortl
         </div>
       </div>
 
-      {/* Sticky action bar — always visible */}
       <div className="fixed bottom-0 left-0 right-0 z-20 px-5 pb-6 pt-3"
         style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
         <div className="mx-auto flex gap-3" style={{ maxWidth: 480 }}>
-          {isTied && isHost && onShortlist && (
+          {isHost && onShortlist && (
             <button onClick={onShortlist} className="flex-1 py-3 rounded-xl text-sm font-semibold border"
               style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
               Shortlist
             </button>
           )}
-          {isTied && isHost && onRandomise && (
+          {isHost && onRandomise && (
             <button onClick={() => {
               const winner = matches[Math.floor(Math.random() * matches.length)];
               onRandomise(winner.film_id);
@@ -1231,20 +1267,13 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortl
               Randomise
             </button>
           )}
-          {isTied && !isHost && (
+          {!isHost && (
             <p className="flex-1 text-xs text-center py-3" style={{ color: "var(--text-muted)" }}>
               Waiting for the host to decide…
             </p>
           )}
-          {!isTied && (
-            <button onClick={() => router.push("/")} className="w-72 py-3 rounded-xl text-sm font-semibold mx-auto"
-              style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-              Done
-            </button>
-          )}
         </div>
       </div>
-
     </div>
   );
 }
@@ -1263,7 +1292,7 @@ function WatchOptions({ film, dendy, session, compact = false }: {
   if (!dendy && !availableProviders.length) return null;
 
   function ServiceLogo({ p }: { p: Provider }) {
-    const svc = getService(p.serviceId);
+    const svc = getService(p.serviceId, session.region ?? "AU");
     if (!svc) return null;
     const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath?: string | null }).tmdbLogoPath;
     return logo ? (

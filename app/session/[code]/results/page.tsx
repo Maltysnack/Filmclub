@@ -386,6 +386,8 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
           participantId={myParticipantId}
           isHost={isHost}
           totalParticipants={participants.length}
+          sessionServices={session.streaming_services ?? []}
+          region={session.region ?? "AU"}
           onComplete={async (winnerId) => {
             if (isHost) await closeSession(session.id);
             router.push("/");

@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import DendyLogo from "@/components/DendyLogo";
+import InfoPanel from "@/components/InfoPanel";
 import { createSession, joinSession, getSession, getParticipants, setParticipantId, setIsHost } from "@/lib/session";
-import { AU_SERVICES } from "@/lib/streaming";
-import { ChevronRight, ChevronDown, Users, Home as HomeIcon, Clapperboard } from "lucide-react";
-import type { WatchMode } from "@/types";
+import { getServicesForRegion, detectRegion, REGION_OPTIONS } from "@/lib/streaming";
+import { ChevronRight, ChevronDown, Users, Mail } from "lucide-react";
+import type { WatchMode, Region } from "@/types";
 
 type Tab = "create" | "join";
 
@@ -41,67 +42,79 @@ function formatCinema(dateStr: string, from: string, to: string): string {
   return `${weekday} ${ordinal(d.getDate())} ${month} ${fmtTime(from)} – ${fmtTime(to)}`;
 }
 
+import { MYSTERY_NAMES } from "@/lib/characters";
+
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("create");
+  // NAME_INPUT_HIDDEN: random name only — re-enable these to let users type their own name
+  // const [namePlaceholder, setNamePlaceholder] = useState("");
+  // useEffect(() => {
+  //   setNamePlaceholder(`e.g. ${MYSTERY_NAMES[Math.floor(Math.random() * MYSTERY_NAMES.length)]}`);
+  // }, []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   // Create form
-  const [name, setName] = useState("");
+  // NAME_INPUT_HIDDEN: name state preserved for re-enable
+  // const [name, setName] = useState("");
   const [threshold] = useState(100);
-  const [watchMode, setWatchMode] = useState<WatchMode>("home");
+  // CINEMA_HIDDEN: watchMode locked to "home" until cinema feature is re-enabled
+  const watchMode: WatchMode = "home";
+  const [region, setRegion] = useState<Region>("AU");
+  const [regionOpen, setRegionOpen] = useState(false);
+
+  function changeRegion(r: Region) {
+    setRegion(r);
+    try { localStorage.setItem("filmclub_region", r); } catch { /* ignore */ }
+  }
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [streamingOpen, setStreamingOpen] = useState(false);
 
-  // Cinema session window — default: today 18:00 → 20:00
-  const [cinemaDateStr, setCinemaDateStr] = useState(() => dateStrFromOffset(0));
-  const [cinemaFromTime, setCinemaFromTime] = useState("18:00");
-  const [cinemaToTime, setCinemaToTime] = useState("20:00");
+  // CINEMA_HIDDEN: date/time state preserved for when cinema is re-enabled
+  // const [cinemaDateStr, setCinemaDateStr] = useState(() => dateStrFromOffset(0));
+  // const [cinemaFromTime, setCinemaFromTime] = useState("18:00");
+  // const [cinemaToTime, setCinemaToTime] = useState("20:00");
 
-  // Preload streaming service logos so they're instant when the dropdown opens
+  // Restore saved region, or auto-detect on first ever visit
   useEffect(() => {
-    AU_SERVICES.forEach(svc => {
-      if (svc.tmdbLogoPath) {
-        const img = new window.Image();
-        img.src = `https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`;
-      }
+    try {
+      const saved = localStorage.getItem("filmclub_region") as Region | null;
+      if (saved) { setRegion(saved); return; }
+    } catch { /* ignore */ }
+    setRegion(detectRegion());
+  }, []);
+
+
+  // Derive the service list for the currently selected region
+  const regionServices = getServicesForRegion(region);
+
+  // Preload every logo across all regions once on mount — switching region is then instant
+  useEffect(() => {
+    (["AU", "US", "GB"] as Region[]).forEach((r) => {
+      getServicesForRegion(r).forEach((svc) => {
+        if (svc.tmdbLogoPath) {
+          const img = new window.Image();
+          img.src = `https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`;
+        }
+      });
     });
   }, []);
 
+  // Clear selected services when region changes (service IDs differ per region)
+  useEffect(() => {
+    setSelectedServices([]);
+    setStreamingOpen(false);
+  }, [region]);
+
   // Join form
   const [joinCode, setJoinCode] = useState("");
-  const [joinName, setJoinName] = useState("");
+  // NAME_INPUT_HIDDEN: joinName preserved for re-enable
+  // const [joinName, setJoinName] = useState("");
 
-  const MYSTERY_NAMES = [
-    "James Bond",       "Mr. X",            "Mrs. X",           "Ethan Hunt",
-    "Keyser Söze",      "John Doe",         "Batman",           "Indiana Jones",
-    "Ellen Ripley",     "Tyler Durden",     "Patrick Bateman",  "Amy Dunne",
-    "Anton Chigurh",    "Hans Landa",       "The Joker",        "John Wick",
-    "Jason Bourne",     "Jack Torrance",    "Norman Bates",     "Hannibal Lecter",
-    "The Dude",         "Jules Winnfield",  "Vincent Vega",     "Mia Wallace",
-    "Winston Wolfe",    "Roy Batty",        "Snake Plissken",   "Max Rockatansky",
-    "The Bride",        "Villanelle",       "Tom Ripley",       "Travis Bickle",
-    "Tony Montana",     "Gordon Gekko",     "Walter White",     "Tony Soprano",
-    "Don Draper",       "Frank Underwood",  "Sherlock Holmes",  "Prof. Moriarty",
-    "Hercule Poirot",   "Sam Spade",        "Philip Marlowe",   "Lt. Columbo",
-    "Dirty Harry",      "Jack Reacher",     "The Wolf",         "Raoul Duke",
-    "Holly Golightly",  "Clarice Starling", "Marge Gunderson",  "Sarah Connor",
-    "John Connor",      "Nurse Ratched",    "Alex DeLarge",     "HAL 9000",
-    "Maximus",          "Leon",             "O-Ren Ishii",      "Beatrix Kiddo",
-    "Winston Smith",    "Forrest Gump",     "Edward Scissorhands", "Rorschach",
-    "Sweeney Todd",     "Annie Wilkes",     "Ted Lasso",        "Roy Kent",
-    "Fleabag",          "Eve Polastri",     "The Mandalorian",  "Sam Lowry",
-    "Dr. Strangelove",  "Captain Nemo",     "Frank Booth",      "Atticus Finch",
-    "McMurphy",         "V",                "The Man in Black", "Jack Skellington",
-    "Edward Blake",     "Pinhead",          "Sam Malone",       "Philip J. Fry",
-    "Sterling Archer",  "Ron Swanson",      "Omar Little",      "Ghostface",
-    "Frank Martin",     "Mathilda",         "Elle Driver",      "Bill",
-    "Dr. Phibes",       "Big Brother",      "O'Brien",          "Agent 47",
-    "The Phantom",      "Shadow",           "Ghost",            "Cipher",
-  ];
 
   function handleJoinCodeChange(e: React.ChangeEvent<HTMLInputElement>) {
     // Strip hyphens + non-alphanumeric, uppercase, cap at 6 chars
@@ -137,7 +150,7 @@ export default function Home() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if ((watchMode === "home" || watchMode === "both") && selectedServices.length === 0)
+    if (selectedServices.length === 0)
       return setError("Select at least one streaming service");
 
     setLoading(true);
@@ -148,14 +161,16 @@ export default function Home() {
       null,
       threshold,
       watchMode,
-      watchMode !== "cinema" ? selectedServices : [],
-      watchMode !== "home" ? cinemaDateStr : null,
-      watchMode !== "home" ? cinemaFromTime : null,
-      watchMode !== "home" ? cinemaToTime : null,
+      selectedServices,
+      null, // cinemaDateStr — CINEMA_HIDDEN
+      null, // cinemaFromTime — CINEMA_HIDDEN
+      null, // cinemaToTime  — CINEMA_HIDDEN
+      "browse",
+      region,
     );
     if (!session) { setLoading(false); return setError("Something went wrong. Try again."); }
 
-    const participant = await joinSession(session.id, resolveName(name));
+    const participant = await joinSession(session.id, resolveName(""));
     if (!participant) { setLoading(false); return setError("Something went wrong. Try again."); }
 
     setParticipantId(session.code, participant.id);
@@ -177,19 +192,33 @@ export default function Home() {
 
     const existing = await getParticipants(session.id);
     const takenNames = existing.map((p) => p.name);
-    const participant = await joinSession(session.id, resolveName(joinName, takenNames));
+    const participant = await joinSession(session.id, resolveName("", takenNames));
     if (!participant) { setLoading(false); return setError("Something went wrong. Try again."); }
 
     setParticipantId(session.code, participant.id);
     router.push(`/session/${session.code}`);
   }
 
-  const showStreaming = watchMode === "home" || watchMode === "both";
-  const showCinema   = watchMode === "cinema" || watchMode === "both";
+  // CINEMA_HIDDEN: showStreaming always true, showCinema always false
+  const showStreaming = true;
+  // const showCinema = watchMode === "cinema" || watchMode === "both";
 
   return (
     <main className="h-dvh overflow-y-auto flex flex-col items-center justify-center px-5 py-8"
       style={{ background: "var(--bg)" }}>
+
+      {/* Three-dot button — top-right corner */}
+      <button
+        onClick={() => setInfoOpen(true)}
+        className="fixed top-4 right-4 z-40 flex items-center justify-center w-9 h-9 rounded-full transition-all"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+        aria-label="Info"
+      >
+        <Mail size={15} />
+      </button>
+
+      <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} />
+
       <div className="mb-10 text-center">
         <div className="flex justify-center mb-3">
           <Logo size="lg" />
@@ -217,41 +246,78 @@ export default function Home() {
 
       {tab === "create" && (
         <form onSubmit={handleCreate} className="w-full max-w-sm space-y-5">
+          {/* NAME_INPUT_HIDDEN: name field removed — random character assigned automatically
           <Field label="Your name">
-            <input type="text" placeholder="e.g. Red Rebel" value={name}
+            <input type="text" placeholder={namePlaceholder} value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+              className="w-full px-4 py-3 rounded-xl text-sm outline-none placeholder:opacity-30"
               style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
               autoFocus />
           </Field>
+          */}
 
-          {/* Watch mode */}
-          <Field label="Watching at">
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                { value: "home",   label: "Home",  icon: <HomeIcon size={15} /> },
-                { value: "cinema", label: "Cinema",   icon: <Clapperboard size={15} /> },
-                { value: "both",   label: "Either",   icon: <span className="text-xs">✦</span> },
-              ] as { value: WatchMode; label: string; icon: React.ReactNode }[]).map(({ value, label, icon }) => (
-                <button key={value} type="button" onClick={() => setWatchMode(value)}
-                  className="flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-medium border transition-all"
-                  style={{
-                    background: watchMode === value ? "var(--surface-2)" : "var(--surface)",
-                    borderColor: watchMode === value ? "var(--accent)" : "var(--border)",
-                    color: watchMode === value ? "var(--accent)" : "var(--text-muted)",
-                  }}>
-                  {icon}
-                  {label}
-                </button>
-              ))}
-            </div>
-          </Field>
+          {/* CINEMA_HIDDEN: "Watching at" field removed — re-enable when cinema returns */}
 
-          {/* Streaming services */}
+          {/* Streaming services + region picker */}
           {showStreaming && (
             <div className="space-y-2">
-              <label className="block text-xs font-medium uppercase tracking-wider"
-                style={{ color: "var(--text-muted)" }}>Streaming services</label>
+              {/* Label row with region selector on the right */}
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-medium uppercase tracking-wider"
+                  style={{ color: "var(--text-muted)" }}>Streaming services</label>
+                {/* Region picker — pill shows current, click opens 3-col grid */}
+                <div className="relative">
+                  {(() => {
+                    const current = REGION_OPTIONS.find(r => r.value === region)!;
+                    return (
+                      <>
+                        <button type="button"
+                          onClick={() => setRegionOpen(v => !v)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                          style={{
+                            background: "var(--surface)",
+                            border: "1px solid var(--border)",
+                            color: "var(--text-muted)",
+                          }}>
+                          <span>{current.flag}</span>
+                          <span className="tracking-wide">{current.abbrev}</span>
+                          <ChevronDown size={10} style={{
+                            transform: regionOpen ? "rotate(180deg)" : "none",
+                            transition: "transform 0.15s",
+                            flexShrink: 0,
+                          }} />
+                        </button>
+                        {regionOpen && (
+                          <div className="absolute z-50 p-1.5 rounded-xl"
+                            style={{
+                              bottom: "calc(100% + 6px)",
+                              right: 0,
+                              background: "var(--surface-2)",
+                              border: "1px solid var(--border)",
+                              boxShadow: "0 -8px 24px rgba(0,0,0,0.5)",
+                              display: "grid",
+                              gridTemplateColumns: "repeat(5, 1fr)",
+                              gap: "2px",
+                            }}>
+                            {REGION_OPTIONS.map(({ value, flag, abbrev }) => (
+                              <button key={value} type="button"
+                                onClick={() => { changeRegion(value); setRegionOpen(false); }}
+                                className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg text-xs transition-colors"
+                                style={{
+                                  background: region === value ? "rgba(255,255,255,0.08)" : "transparent",
+                                  color: region === value ? "var(--text)" : "var(--text-muted)",
+                                }}>
+                                <span className="text-base leading-none">{flag}</span>
+                                <span className="tracking-wide font-medium" style={{ fontSize: "10px" }}>{abbrev}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
               <div className="relative">
                 <button type="button" onClick={() => setStreamingOpen(v => !v)}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors"
@@ -261,9 +327,9 @@ export default function Home() {
                   }}>
                   <span className="flex items-center gap-1.5">
                     {selectedServices.length === 0
-                      ? <span className="text-sm" style={{ color: "var(--text-muted)" }}>None selected</span>
+                      ? <span className="text-sm" style={{ color: "var(--text-muted)", opacity: 0.3 }}>None selected</span>
                       : selectedServices.map(id => {
-                          const svc = AU_SERVICES.find(s => s.id === id);
+                          const svc = regionServices.find(s => s.id === id);
                           if (!svc) return null;
                           return (
                             <span key={id}
@@ -297,7 +363,7 @@ export default function Home() {
                       border: "1px solid var(--border)",
                       boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
                     }}>
-                    {AU_SERVICES.map((svc) => {
+                    {regionServices.map((svc) => {
                       const on = selectedServices.includes(svc.id);
                       return (
                         <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
@@ -318,17 +384,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* Cinema session window */}
-          {showCinema && (
-            <CinemaDatePicker
-              dateStr={cinemaDateStr}
-              fromTime={cinemaFromTime}
-              toTime={cinemaToTime}
-              onDateChange={setCinemaDateStr}
-              onFromChange={setCinemaFromTime}
-              onToChange={setCinemaToTime}
-            />
-          )}
+          {/* CINEMA_HIDDEN: CinemaDatePicker removed — re-enable when cinema returns */}
 
           {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
 
@@ -350,12 +406,14 @@ export default function Home() {
               style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--accent)" }}
               autoFocus />
           </Field>
+          {/* NAME_INPUT_HIDDEN: name field removed — random character assigned automatically
           <Field label="Your name">
-            <input type="text" placeholder="e.g. Red Rebel" value={joinName}
+            <input type="text" placeholder={namePlaceholder} value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+              className="w-full px-4 py-3 rounded-xl text-sm outline-none placeholder:opacity-30"
               style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }} />
           </Field>
+          */}
           {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
           <button type="submit" disabled={loading}
             className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-opacity"

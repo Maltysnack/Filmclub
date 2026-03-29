@@ -12,7 +12,10 @@ export async function startNomination(
     .insert({ session_id: sessionId, round_number: 1, film_ids: pinnedFilmIds, phase: "nominate" })
     .select()
     .single();
-  if (error) { console.error(error); return null; }
+  if (error) {
+    // Likely a duplicate — another device already created the round. Fetch it instead.
+    return getCurrentRound(sessionId);
+  }
   return data;
 }
 

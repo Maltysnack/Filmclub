@@ -56,7 +56,7 @@ export default function Logo({ size = "md", showText = true }: LogoProps) {
       {/* Custom leave-session confirmation */}
       {confirming && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-5"
+          className="fixed inset-0 z-50 flex items-center justify-center px-5"
           style={{ background: "rgba(0,0,0,0.7)" }}
           onClick={() => setConfirming(false)}
         >

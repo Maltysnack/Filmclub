@@ -6,6 +6,9 @@ import { posterUrl } from "@/lib/tmdb";
 import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 import SpinWheel from "@/components/SpinWheel";
+import FilmWinnerScreen from "@/components/FilmWinnerScreen";
+import { getService } from "@/lib/streaming";
+import type { Region } from "@/types";
 import {
   startShortlist, startNomination, advanceFromNomination,
   getCurrentRound,
@@ -23,6 +26,8 @@ interface Props {
   participantId: string;
   isHost: boolean;
   totalParticipants: number;
+  sessionServices: string[];
+  region: Region;
   onComplete: (winnerId: string) => void;
 }
 
@@ -34,7 +39,7 @@ function gridCols(n: number): number {
 }
 
 export default function ShortlistOverlay({
-  films, pinnedFilmIds = [], sessionId, participantId, isHost, totalParticipants, onComplete,
+  films, pinnedFilmIds = [], sessionId, participantId, isHost, totalParticipants, sessionServices, region, onComplete,
 }: Props) {
   const [round, setRound] = useState<ShortlistRound | null>(null);
   const [vetoes, setVetoes] = useState<ShortlistVeto[]>([]);
@@ -132,6 +137,8 @@ export default function ShortlistOverlay({
           // receive the INSERT event and open their overlays in sync.
           if (isHost) {
             existing = await startNomination(sessionId, pinnedFilmIds);
+            // Fallback: if insert failed (duplicate), fetch the round that already exists
+            if (!existing) existing = await getCurrentRound(sessionId);
           }
           // Non-hosts wait here — the subscription will fire when the round is created.
           updateUiPhase("nominate");
@@ -332,14 +339,7 @@ export default function ShortlistOverlay({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [votes.length, uiPhase, round?.id]);
 
-  // ── Call onComplete after winner is shown ─────────────────────────────────
-  useEffect(() => {
-    const completionId = winnerFilm?.id ?? roundRef.current?.winner_id;
-    if (uiPhase === "winner" && completionId) {
-      const t = setTimeout(() => onComplete(completionId), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [uiPhase, winnerFilm, onComplete]);
+  // Winner screen is dismissed manually via the Done button — no auto-dismiss.
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   async function handleSubmitVeto() {
@@ -557,35 +557,21 @@ export default function ShortlistOverlay({
   // ── Render: winner reveal ─────────────────────────────────────────────────
   if (uiPhase === "winner") {
     const completionId = winnerFilm?.id ?? roundRef.current?.winner_id ?? "";
-    return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center" style={{ background: "var(--bg)" }}>
-      <div className="w-full flex flex-col items-center gap-5 px-8 mx-auto" style={{ maxWidth: 480 }}>
-        <Logo size="sm" showText />
-        {winnerFilm ? (
-          <>
-            {winnerFilm.poster_path && (
-              <img
-                src={posterUrl(winnerFilm.poster_path, "w342")}
-                alt={winnerFilm.title}
-                className="rounded-2xl shadow-2xl"
-                style={{ width: 160, height: 240, objectFit: "cover" }}
-              />
-            )}
-            <p className="text-2xl font-bold text-center" style={{ color: "var(--text)" }}>
-              {winnerFilm.title}
-            </p>
-          </>
-        ) : (
+    if (!winnerFilm) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "var(--bg)" }}>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading result…</p>
-        )}
-        <button
-          onClick={() => completionId && onComplete(completionId)}
-          className="w-full py-4 rounded-2xl text-sm font-semibold mt-2"
-          style={{ background: "var(--accent)", color: "#0c0c0e", opacity: completionId ? 1 : 0.4 }}>
-          Done
-        </button>
-      </div>
-      </div>
+        </div>
+      );
+    }
+    return (
+      <FilmWinnerScreen
+        film={winnerFilm}
+        sessionServices={sessionServices}
+        region={region}
+        onDone={() => completionId && onComplete(completionId)}
+        doneDisabled={!completionId}
+      />
     );
   }
 

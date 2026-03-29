@@ -1,4 +1,4 @@
-import { TMDBMovie, TMDBMovieDetail, Film } from "@/types";
+import { TMDBMovie, TMDBMovieDetail, Film, Region } from "@/types";
 
 const BASE = "https://api.themoviedb.org/3";
 const KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY!;
@@ -36,19 +36,20 @@ export async function getTopRatedFilms(pages = 1): Promise<TMDBMovie[]> {
   return fetchPages(`${BASE}/movie/top_rated?`, pages);
 }
 
-// Films available on specific streaming services in AU (TMDB Discover).
+// Films available on specific streaming services in a given region (TMDB Discover).
 // Calls once per provider (avoids pipe-OR URL ambiguity) then deduplicates.
 // with_watch_monetization_types=flatrate limits to subscription streaming only.
 export async function discoverFilmsByProviders(
   providerIds: number[],
-  pagesPerProvider = 1
+  pagesPerProvider = 1,
+  region: Region = "AU"
 ): Promise<TMDBMovie[]> {
   if (!providerIds.length) return [];
 
   const perProvider = await Promise.all(
     providerIds.map((id) =>
       fetchPages(
-        `${BASE}/discover/movie?watch_region=AU&with_watch_providers=${id}&sort_by=popularity.desc&`,
+        `${BASE}/discover/movie?watch_region=${region}&with_watch_providers=${id}&sort_by=popularity.desc&`,
         pagesPerProvider
       )
     )
@@ -74,17 +75,20 @@ export async function discoverFilmsByProviders(
   return result;
 }
 
-// Fetch the full list of AU streaming providers from TMDB.
+// Fetch the full list of streaming providers from TMDB for a given region.
 // Call this from the browser console to verify/correct provider IDs:
-//   import { getAUProviderList } from "@/lib/tmdb"; getAUProviderList().then(console.log)
-export async function getAUProviderList(): Promise<{ provider_id: number; provider_name: string; logo_path: string }[]> {
-  const res = await fetch(`${BASE}/watch/providers/movie?${params({ watch_region: "AU" })}`);
+//   import { getProviderList } from "@/lib/tmdb"; getProviderList("AU").then(console.log)
+export async function getProviderList(region: Region = "AU"): Promise<{ provider_id: number; provider_name: string; logo_path: string }[]> {
+  const res = await fetch(`${BASE}/watch/providers/movie?${params({ watch_region: region })}`);
   if (!res.ok) return [];
   const data = await res.json();
   return (data.results ?? []).sort((a: { provider_name: string }, b: { provider_name: string }) =>
     a.provider_name.localeCompare(b.provider_name)
   );
 }
+
+// Legacy AU alias
+export async function getAUProviderList() { return getProviderList("AU"); }
 
 export async function searchFilms(query: string): Promise<TMDBMovie[]> {
   if (!query.trim()) return [];

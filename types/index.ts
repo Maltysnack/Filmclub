@@ -3,6 +3,7 @@ export type SessionStatus = "active" | "closed";
 export type WatchMode = "home" | "cinema" | "both";
 export type SessionType = "browse" | "shortlist";
 export type ShortlistPhase = "nominate" | "veto" | "vote" | "complete";
+export type Region = "AU" | "BR" | "CA" | "DE" | "ES" | "FR" | "GB" | "IN" | "IT" | "JP" | "KR" | "MX" | "NL" | "NZ" | "US";
 
 export interface Session {
   id: string;
@@ -15,6 +16,7 @@ export interface Session {
   started: boolean;
   watch_mode: WatchMode;
   streaming_services: string[];
+  region: Region;
   cinema_date: string | null;       // "2026-03-25"
   cinema_time_from: string | null;  // "18:00"
   cinema_time_to: string | null;    // "20:00"

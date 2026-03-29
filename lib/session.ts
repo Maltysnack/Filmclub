@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { Session, Participant, Film, Match, WatchMode, SessionType } from "@/types";
+import { Session, Participant, Film, Match, WatchMode, SessionType, Region } from "@/types";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
 import { fetchOmdbRating } from "./omdb";
 import { fetchWatchProvidersAU, getService } from "./streaming";
@@ -62,6 +62,7 @@ export async function createSession(
   cinemaTimeFrom: string | null = null,
   cinemaTimeTo: string | null = null,
   sessionType: SessionType = "browse",
+  region: Region = "AU",
 ): Promise<Session | null> {
   let code = generateCode();
   const { data: existing } = await supabase.from("sessions").select("id").eq("code", code).single();
@@ -77,6 +78,7 @@ export async function createSession(
       cinema_date: cinemaDate,
       cinema_time_from: cinemaTimeFrom,
       cinema_time_to: cinemaTimeTo,
+      region,
     })
     .select()
     .single();
