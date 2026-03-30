@@ -2,7 +2,7 @@ export type SessionMode = "planned" | "live";
 export type SessionStatus = "active" | "closed";
 export type WatchMode = "home" | "cinema" | "both";
 export type SessionType = "browse" | "shortlist";
-export type ShortlistPhase = "nominate" | "veto" | "vote" | "complete";
+export type ShortlistPhase = "nominate" | "veto" | "vote" | "spinning" | "complete";
 export type Region = "AU" | "BR" | "CA" | "DE" | "ES" | "FR" | "GB" | "IN" | "IT" | "JP" | "KR" | "MX" | "NL" | "NZ" | "US";
 
 export interface Session {

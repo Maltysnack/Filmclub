@@ -470,3 +470,22 @@ export async function getFilmScores(sessionId: string): Promise<{ film: Film; sc
     })
     .sort((a, b) => b.score - a.score);
 }
+
+/**
+ * Returns the props needed to open ShortlistOverlay from any entry point.
+ * - films: all liked films (matched + also-liked), sorted by score
+ * - pinnedFilmIds: the matched film IDs that are already locked in as top picks
+ *
+ * Both the session page and the results page should call this rather than
+ * constructing their own film lists — one source of truth for shortlist data.
+ */
+export async function getShortlistData(
+  sessionId: string,
+  matchedFilmIds: string[]
+): Promise<{ films: Film[]; pinnedFilmIds: string[] }> {
+  const scores = await getFilmScores(sessionId);
+  return {
+    films: scores.map(s => s.film),
+    pinnedFilmIds: matchedFilmIds,
+  };
+}

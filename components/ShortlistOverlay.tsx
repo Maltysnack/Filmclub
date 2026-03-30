@@ -14,7 +14,7 @@ import {
   getCurrentRound,
   submitVeto, getVetoes, advanceToVotePhase,
   submitVotes, getVotes, tallyVotes, votesAllowed,
-  advanceToNextRound, completeShortlist,
+  advanceToNextRound, completeShortlist, markSpinning,
 } from "@/lib/shortlist";
 
 type UiPhase = "loading" | "nominate" | "veto" | "vote" | "three_film" | "host_decision" | "two_film" | "narrowing" | "winner";
@@ -104,6 +104,11 @@ export default function ShortlistOverlay({
       // If films haven't loaded yet into the ref, queue the winner_id to resolve later
       if (!winner && r.winner_id) setPendingWinnerId(r.winner_id);
       updateUiPhase("winner");
+    } else if (r.phase === "spinning") {
+      // Spin state written to DB — non-hosts who missed the broadcast sync here
+      setSpinWinnerId(r.winner_id ?? null);
+      setSpinFilmIds(r.film_ids);
+      updateUiPhase("two_film");
     } else if (r.phase === "vote") {
       updateUiPhase(r.film_ids.length === 3 ? "three_film" : "vote");
     } else if (r.phase === "nominate") {
@@ -250,7 +255,12 @@ export default function ShortlistOverlay({
     setSpinWinnerId(winnerId);
     setSpinFilmIds(filmIds);
     updateUiPhase("two_film");
+    // Broadcast for instant sync, AND write to DB so non-hosts who miss the
+    // broadcast still transition via their Postgres subscription (Bug B fix).
     revetoCh.current?.send({ type: "broadcast", event: "spin_start", payload: { winnerId, filmIds } });
+    if (roundRef.current) {
+      markSpinning(sessionId, roundRef.current.round_number, winnerId, filmIds);
+    }
   }
 
   // ── Host: advance veto → vote when all vetoes in ──────────────────────────

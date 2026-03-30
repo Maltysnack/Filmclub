@@ -203,6 +203,21 @@ export async function advanceToNextRound(
   return data;
 }
 
+/** Host only. Writes the spin state to the DB so non-hosts who miss the broadcast
+ *  still transition to the spin screen via their Postgres subscription. */
+export async function markSpinning(
+  sessionId: string,
+  roundNumber: number,
+  winnerId: string,
+  filmIds: string[]
+): Promise<void> {
+  await supabase
+    .from("shortlist_rounds")
+    .update({ phase: "spinning", winner_id: winnerId, film_ids: filmIds })
+    .eq("session_id", sessionId)
+    .eq("round_number", roundNumber);
+}
+
 /** Host only. Marks the shortlist complete with a winner. */
 export async function completeShortlist(
   sessionId: string,

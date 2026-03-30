@@ -14,7 +14,7 @@ import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
   getMySwipes, getMyLikes, recordSwipe, checkForMatch, checkAllMatches, getMatches,
   closeSession, startSession, resolveMatch, addFilmToSession, getSessionSwipeStats,
-  removeParticipant,
+  removeParticipant, getShortlistData,
 } from "@/lib/session";
 import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getProviderList, posterUrl, getFilmDetail, tmdbToFilm } from "@/lib/tmdb";
 import { CHARACTER_FILMS } from "@/lib/characters";
@@ -42,6 +42,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [isHost, setIsHostState] = useState(false);
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
   const [showShortlist, setShowShortlist] = useState(false);
+  const [shortlistData, setShortlistData] = useState<{ films: import("@/types").Film[]; pinnedFilmIds: string[] } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
   const [characterFilm, setCharacterFilm] = useState<Film | null>(null);
@@ -88,13 +89,22 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }, [matchList, code]);
 
   // ── Auto-open shortlist overlay for all participants when host starts it ───
+  // openShortlist fetches all liked films (matched + also-liked) so both entry
+  // points use the same data — one source of truth for shortlist props (Bug A fix).
+  const openShortlist = useCallback(async (sid: string, matchedFilmIds: string[]) => {
+    if (matchedFilmIds.length === 0) { router.push(`/session/${code}/results`); return; }
+    const data = await getShortlistData(sid, matchedFilmIds);
+    setShortlistData(data);
+    setShowShortlist(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
   useEffect(() => {
     if (!session) return;
     // Check if a round is already active (e.g. rejoining mid-shortlist)
     getCurrentRound(session.id).then(r => {
       if (r && r.phase !== "complete") {
-        if (matchListRef.current.length > 0) setShowShortlist(true);
-        else router.push(`/session/${code}/results`);
+        openShortlist(session.id, matchListRef.current.map(m => m.film_id));
       }
     });
     const sub = supabase
@@ -103,8 +113,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         event: "INSERT", schema: "public", table: "shortlist_rounds",
         filter: `session_id=eq.${session.id}`,
       }, () => {
-        if (matchListRef.current.length > 0) setShowShortlist(true);
-        else router.push(`/session/${code}/results`);
+        openShortlist(session.id, matchListRef.current.map(m => m.film_id));
       })
       .subscribe();
     return () => { supabase.removeChannel(sub); };
@@ -700,7 +709,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                 payload: { winnerId: winnerFilmId, films: matchList },
               });
             }}
-            onShortlist={() => setShowShortlist(true)}
+            onShortlist={() => session && openShortlist(session.id, matchList.map(m => m.film_id))}
           />
         </div>
 
@@ -725,9 +734,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           />
         )}
 
-        {showShortlist && session && (
+        {showShortlist && session && shortlistData && (
           <ShortlistOverlay
-            films={matchList.map(m => m.film!)}
+            films={shortlistData.films}
+            pinnedFilmIds={shortlistData.pinnedFilmIds}
             sessionId={session.id}
             participantId={participant?.id ?? ""}
             isHost={isHost}
