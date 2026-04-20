@@ -4,6 +4,7 @@ import { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, Trophy, Lock, Clock, Plus, Layers, Info } from "lucide-react";
+import { useLongPress } from "@/hooks/useLongPress";
 import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, recordSwipe, removeParticipant } from "@/lib/session";
 import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
@@ -113,6 +114,9 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
   const isTiedTop = tiedFilms.length > 1;
   const remainingFilms = isTiedTop ? scores.filter(s => s.score < topScore) : scores.slice(1);
 
+  // Long press for top film hero (single card, safe to call at component level)
+  const topFilmLp = useLongPress(() => topFilm && setInfoFilm(topFilm.film));
+
   return (
     <div className="min-h-dvh" style={{ background: "var(--bg)" }}>
     <div className="flex flex-col h-dvh mx-auto" style={{ maxWidth: 480 }}>
@@ -217,6 +221,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                   <motion.div
                     className="w-full relative rounded-2xl overflow-hidden text-left"
                     style={{ aspectRatio: "16/9", background: "var(--surface)" }}
+                    {...topFilmLp.handlers}
                   >
                     <img
                       src={posterUrl(topFilm.film.backdrop_path ?? topFilm.film.poster_path, "w500")}
@@ -253,7 +258,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                   </p>
                   <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${gridCols(tiedFilms.length)}, minmax(0, 1fr))` }}>
                     {tiedFilms.map(({ film }) => (
-                      <button key={film.id} onClick={() => setInfoFilm(film)}
+                      <ResultsFilmCard key={film.id} film={film} onInfo={setInfoFilm}
                         className="relative rounded-xl overflow-hidden text-left"
                         style={{ aspectRatio: "2/3", background: "var(--surface)" }}>
                         {film.poster_path ? (
@@ -267,7 +272,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                           style={{ background: "linear-gradient(to top, rgba(12,12,14,0.85) 0%, transparent 50%)" }} />
                         <p className="absolute bottom-2 left-2 right-2 text-xs font-medium leading-tight"
                           style={{ color: "var(--text)" }}>{film.title}</p>
-                      </button>
+                      </ResultsFilmCard>
                     ))}
                   </div>
                 </div>
@@ -282,15 +287,10 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                   </p>
                   <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${alsoLikedCols(remainingFilms.length)}, minmax(0, 1fr))` }}>
                     {remainingFilms.map(({ film }, i) => (
-                      <motion.button
-                        key={film.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.03 }}
-                        onClick={() => setInfoFilm(film)}
+                      <ResultsFilmCard key={film.id} film={film} onInfo={setInfoFilm}
+                        motionDelay={i * 0.03}
                         className="relative rounded-lg overflow-hidden text-left"
-                        style={{ aspectRatio: "2/3", background: "var(--surface)" }}
-                      >
+                        style={{ aspectRatio: "2/3", background: "var(--surface)" }}>
                         {film.poster_path ? (
                           <img src={posterUrl(film.poster_path, "w342")} alt={film.title}
                             className="w-full h-full object-cover" />
@@ -302,7 +302,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                           style={{ background: "linear-gradient(to top, rgba(12,12,14,0.85) 0%, transparent 50%)" }} />
                         <p className="absolute bottom-1.5 left-1.5 right-1.5 leading-tight"
                           style={{ fontSize: 9, color: "var(--text)" }}>{film.title}</p>
-                      </motion.button>
+                      </ResultsFilmCard>
                     ))}
                   </div>
                 </>
@@ -399,6 +399,37 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
   );
 }
 
+
+function ResultsFilmCard({
+  film,
+  onInfo,
+  motionDelay,
+  className,
+  style,
+  children,
+}: {
+  film: Film;
+  onInfo: (film: Film) => void;
+  motionDelay?: number;
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const { handlers, consumeFired } = useLongPress(() => onInfo(film));
+  return (
+    <motion.button
+      initial={motionDelay !== undefined ? { opacity: 0, y: 10 } : false}
+      animate={motionDelay !== undefined ? { opacity: 1, y: 0 } : undefined}
+      transition={motionDelay !== undefined ? { delay: motionDelay } : undefined}
+      className={className}
+      style={style}
+      {...handlers}
+      onClick={(e) => { if (consumeFired()) { e.preventDefault(); return; } onInfo(film); }}
+    >
+      {children}
+    </motion.button>
+  );
+}
 
 function LikedByNames({ ids, participants }: { ids: string[]; participants: Participant[] }) {
   if (!ids.length) return null;

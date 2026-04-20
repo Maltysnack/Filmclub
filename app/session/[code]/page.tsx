@@ -24,7 +24,7 @@ import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Plus, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List, Clock } from "lucide-react";
+import { Search, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List, Clock } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
@@ -42,6 +42,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [isHost, setIsHostState] = useState(false);
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
   const [showShortlist, setShowShortlist] = useState(false);
+  const [introDismissed, setIntroDismissed] = useState(false);
   const [shortlistData, setShortlistData] = useState<{ films: import("@/types").Film[]; pinnedFilmIds: string[] } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
@@ -684,6 +685,45 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     );
   }
 
+  if (!introDismissed) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center px-8" style={{ background: "var(--bg)" }}>
+        <div className="w-full rounded-2xl p-8" style={{ maxWidth: 320, background: "var(--surface)", border: "1px solid var(--border)" }}>
+          <div className="mb-10" style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "20px 12px", alignItems: "center" }}>
+            <span className="flex items-center justify-center p-1.5 rounded-lg" style={{ background: "var(--surface-2)" }}>
+              <Search size={14} style={{ color: "var(--accent)" }} />
+            </span>
+            <span className="text-sm" style={{ color: "var(--text)" }}>Search to add films</span>
+
+            <span className="flex items-center justify-center p-1.5 rounded-lg" style={{ background: "var(--surface-2)" }}>
+              <Clock size={14} style={{ color: "var(--accent)" }} />
+            </span>
+            <span className="text-sm" style={{ color: "var(--text)" }}>Hold a film for more info</span>
+
+            <span className="flex items-center justify-center p-1.5 rounded-lg" style={{ background: "var(--surface-2)" }}>
+              <Trophy size={14} style={{ color: "var(--accent)" }} />
+            </span>
+            <span className="text-sm" style={{ color: "var(--text)" }}>See everyone's results</span>
+
+            {isHost && <>
+              <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold justify-center" style={{ background: "var(--like)", color: "#0c0c0e" }}>
+                <Play size={10} fill="currentColor" />
+                Start
+              </span>
+              <span className="text-sm" style={{ color: "var(--text)" }}>When everyone is in</span>
+            </>}
+          </div>
+          <button
+            onClick={() => setIntroDismissed(true)}
+            className="w-full py-3.5 rounded-xl text-sm font-semibold"
+            style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+            Let's go
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (matchList.length > 0) {
     return (
       <div style={{ background: "var(--bg)" }}>
@@ -787,7 +827,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           <button onClick={() => router.push(`/session/${code}/add`)}
             className="p-2 rounded-lg"
             style={{ background: "var(--surface)", color: "var(--accent)" }}>
-            <Plus size={18} />
+            <Search size={18} />
           </button>
           <button onClick={() => router.push(`/session/${code}/results`)}
             className="p-2 rounded-lg"

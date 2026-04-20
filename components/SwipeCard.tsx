@@ -6,7 +6,8 @@ import { Film } from "@/types";
 import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
 import { posterUrl } from "@/lib/tmdb";
-import { Info, Heart, X } from "lucide-react";
+import { Heart, X } from "lucide-react";
+import { useLongPress } from "@/hooks/useLongPress";
 import DendyLogo from "./DendyLogo";
 import { Participant } from "@/types";
 import { participantColor } from "@/lib/names";
@@ -35,6 +36,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
   const dislikeOpacity = useTransform(x, [-100, -20], [1, 0]);
 
   const [isDragging, setIsDragging] = useState(false);
+  const { handlers: lpHandlers, cancel: cancelLongPress } = useLongPress(onInfo);
 
   function handleDragEnd(_: unknown, info: PanInfo) {
     setIsDragging(false);
@@ -55,7 +57,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
       drag={isTop ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.7}
-      onDragStart={() => { setIsDragging(true); onDragStartProp?.(); }}
+      onDragStart={() => { setIsDragging(true); cancelLongPress(); onDragStartProp?.(); }}
       onDragEnd={handleDragEnd}
       whileTap={isTop ? { scale: 1.02 } : undefined}
       initial={isTop ? false : { scale: 0.96, y: 12 }}
@@ -64,6 +66,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
       <div
         className="relative w-full h-full rounded-[28px] overflow-hidden shadow-2xl drag-card"
         style={{ background: "var(--surface-2)" }}
+        {...lpHandlers}
       >
         {/* Poster image */}
         <div className="absolute inset-0 overflow-hidden">
@@ -204,7 +207,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
             </div>
           )}
 
-          <div className="flex items-end justify-between gap-3">
+          <div className="flex items-end gap-3">
             <div className="min-w-0">
               <h2 className="text-xl font-semibold leading-tight truncate" style={{ color: "var(--text)" }}>
                 {film.title}
@@ -230,13 +233,6 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
                 )}
               </div>
             </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); onInfo(); }}
-              className="shrink-0 p-2 rounded-full transition-opacity"
-              style={{ background: "rgba(28,28,32,0.8)", color: "var(--text-muted)" }}
-            >
-              <Info size={18} />
-            </button>
           </div>
         </div>
       </div>
