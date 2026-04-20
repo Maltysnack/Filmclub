@@ -216,18 +216,17 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
                   </span>
                 )}
                 {film.imdb_rating && (
-                  <span className="flex items-center gap-1 text-sm" style={{ color: "#F5C518" }}>
+                  <a
+                    href={`https://www.imdb.com/title/${film.imdb_id}/`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1 text-sm"
+                    style={{ color: "#F5C518" }}
+                  >
                     <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
                     {film.imdb_rating}
-                  </span>
-                )}
-                {film.genres?.[0] && (
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full"
-                    style={{ background: "var(--surface)", color: "var(--text-muted)" }}
-                  >
-                    {film.genres[0].name}
-                  </span>
+                  </a>
                 )}
               </div>
             </div>

@@ -164,23 +164,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSwipeCount, groupLikeCount, participants.length]);
 
-  // View mode — persisted to localStorage (scroll is the default)
-  const [viewMode, setViewMode] = useState<"swipe" | "scroll">(() => {
-    if (typeof window === "undefined") return "scroll";
-    return (localStorage.getItem("filmclub-view-mode") as "swipe" | "scroll") ?? "scroll";
-  });
-  function toggleViewMode() {
-    setViewMode((m) => {
-      const next = m === "swipe" ? "scroll" : "swipe";
-      localStorage.setItem("filmclub-view-mode", next);
-      if (next === "swipe") {
-        // Scroll → swipe: resume swipe at last known scroll index
-        setCurrentIndex(scrollIndexRef.current);
-      }
-      // Swipe → scroll: initialIndex prop handles the position on mount
-      return next;
-    });
-  }
+  // SCROLL_HIDDEN: scroll mode deprecated — swipe is always active.
+  // ScrollView code preserved below in case scroll mode is re-enabled later.
+  const viewMode = "swipe" as "swipe" | "scroll";
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function toggleViewMode() { /* SCROLL_HIDDEN */ }
 
   // Liked film IDs for scroll mode (starts empty, populated from swipe history + new likes)
   const [likedInScroll, setLikedInScroll] = useState<Set<string>>(new Set());
@@ -784,12 +772,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
         <Logo size="sm" />
         <div className="flex items-center gap-2">
-          <button onClick={toggleViewMode}
-            className="p-2 rounded-lg"
-            title={viewMode === "swipe" ? "Switch to scroll" : "Switch to swipe"}
-            style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
-            {viewMode === "swipe" ? <List size={18} /> : <Layers size={18} />}
-          </button>
+          {/* SCROLL_HIDDEN: toggle button removed — swipe is always active */}
           <button onClick={() => setShowGenreFilter((v) => !v)}
             className="p-2 rounded-lg relative"
             style={{ background: "var(--surface)", color: selectedGenres.length > 0 ? "var(--accent)" : "var(--text-muted)" }}>
