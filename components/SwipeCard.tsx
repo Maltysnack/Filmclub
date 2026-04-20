@@ -22,11 +22,13 @@ interface SwipeCardProps {
   votePhase?: 1 | 2 | 3;
   voteInfo?: { count: number; participantIds: string[] };
   participants?: Participant[];
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }
 
 const SWIPE_THRESHOLD = 80;
 
-export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dendyInfo, sessionServices = [], votePhase = 1, voteInfo, participants = [] }: SwipeCardProps) {
+export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dendyInfo, sessionServices = [], votePhase = 1, voteInfo, participants = [], onDragStart: onDragStartProp, onDragEnd: onDragEndProp }: SwipeCardProps) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-18, 18]);
   const likeOpacity = useTransform(x, [20, 100], [0, 1]);
@@ -36,6 +38,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
 
   function handleDragEnd(_: unknown, info: PanInfo) {
     setIsDragging(false);
+    onDragEndProp?.();
     if (info.offset.x > SWIPE_THRESHOLD) {
       onLike();
     } else if (info.offset.x < -SWIPE_THRESHOLD) {
@@ -52,7 +55,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
       drag={isTop ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.7}
-      onDragStart={() => setIsDragging(true)}
+      onDragStart={() => { setIsDragging(true); onDragStartProp?.(); }}
       onDragEnd={handleDragEnd}
       whileTap={isTop ? { scale: 1.02 } : undefined}
       initial={isTop ? false : { scale: 0.96, y: 12 }}

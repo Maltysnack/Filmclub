@@ -72,6 +72,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so loadFilms (useCallback with [] deps) always sees the latest index
   const currentIndexRef = useRef(0);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  // Ref to track whether the user currently has a finger on the card mid-drag.
+  // Like propagation (queue reorder) is deferred while a swipe is in progress
+  // to prevent the card being yanked out from under the user's finger (Bug #4).
+  const swipeInProgress = useRef(false);
   // Ref to imperatively scroll ScrollView when switching from swipe → scroll
   const scrollViewRef = useRef<ScrollViewHandle>(null);
   // Tracks the last known scroll mode index so swipe can resume at the same position
@@ -510,8 +514,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               return next;
             });
 
-            // Like propagation: someone else liked a film — surface it near top of our unseen queue
-            if (newSwipe.participant_id !== participantRef.current?.id) {
+            // Like propagation: someone else liked a film — surface it near top of our unseen queue.
+            // Skip the reorder if the user has a finger on the card mid-drag (Bug #4 fix).
+            if (newSwipe.participant_id !== participantRef.current?.id && !swipeInProgress.current) {
               const ci = currentIndexRef.current;
               setFullQueue((prev) => {
                 const filmIdx = prev.findIndex((f) => f.id === newSwipe.film_id);
@@ -1072,7 +1077,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                             count: (filmLikes.get(currentFilm.id) ?? []).filter(id => id !== participant?.id).length,
                             participantIds: (filmLikes.get(currentFilm.id) ?? []).filter(id => id !== participant?.id),
                           }}
-                          participants={participants} />
+                          participants={participants}
+                          onDragStart={() => { swipeInProgress.current = true; }}
+                          onDragEnd={() => { swipeInProgress.current = false; }} />
                       </motion.div>
                     )}
                   </>
