@@ -199,11 +199,15 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
       const imdbRating = (imdbId && !cached.imdb_rating)
         ? await fetchOmdbRating(imdbId)
         : cached.imdb_rating ?? null;
-      const updates: Record<string, unknown> = { watch_providers_au: fresh };
+      // Only overwrite providers if we got a non-empty result — guards against
+      // transient API failures (e.g. poor connectivity overseas) clobbering
+      // previously good data stored for another session's participants.
+      const providerUpdate = fresh.length > 0 || providers.length === 0 ? fresh : providers;
+      const updates: Record<string, unknown> = { watch_providers_au: providerUpdate };
       if (imdbId) updates.imdb_id = imdbId;
       if (imdbRating) updates.imdb_rating = imdbRating;
       await supabase.from("films").update(updates).eq("id", cached.id);
-      return { ...cached, watch_providers_au: fresh, imdb_id: imdbId, imdb_rating: imdbRating };
+      return { ...cached, watch_providers_au: providerUpdate, imdb_id: imdbId, imdb_rating: imdbRating };
     }
     // Backfill imdb_rating for cached films that have imdb_id but no rating yet
     if (!cached.imdb_rating && cached.imdb_id) {

@@ -212,19 +212,25 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
             )}
           </div>
 
-          {/* Active service filter pills */}
+          {/* Active service filter — logo icons */}
           {sessionServices.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2.5">
+            <div className="flex flex-wrap gap-2 mt-2.5">
               {sessionServices.map((sid) => {
                 const svc = getService(sid);
                 if (!svc) return null;
                 return (
-                  <span
-                    key={sid}
-                    className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}40` }}
-                  >
-                    {svc.name}
+                  <span key={sid} title={svc.name}
+                    className="relative inline-flex items-center justify-center w-7 h-7 rounded-lg text-[9px] font-bold shrink-0"
+                    style={{ background: svc.color, color: "#fff" }}>
+                    {svc.abbrev}
+                    {svc.tmdbLogoPath && (
+                      <img
+                        src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
+                        alt={svc.name}
+                        className="absolute inset-0 w-7 h-7 rounded-lg object-cover"
+                        onError={e => { e.currentTarget.style.display = "none"; }}
+                      />
+                    )}
                   </span>
                 );
               })}

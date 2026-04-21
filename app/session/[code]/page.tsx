@@ -647,7 +647,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   if (!introDismissed) {
     return (
-      <div className="min-h-dvh flex items-center justify-center px-8" style={{ background: "var(--bg)" }}>
+      <div className="min-h-dvh flex flex-col items-center justify-center px-8 gap-6" style={{ background: "var(--bg)" }}>
+        <Logo size="md" />
         <div className="w-full rounded-2xl p-8" style={{ maxWidth: 320, background: "var(--surface)", border: "1px solid var(--border)" }}>
           <div className="mb-10" style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "20px 12px", alignItems: "center" }}>
             <span className="flex items-center justify-center p-1.5 rounded-lg" style={{ background: "var(--surface-2)" }}>
@@ -668,9 +669,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             {isHost && <>
               <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold justify-center" style={{ background: "var(--like)", color: "#0c0c0e" }}>
                 <Play size={10} fill="currentColor" />
-                Start
+                Lock In
               </span>
-              <span className="text-sm" style={{ color: "var(--text)" }}>When everyone is in</span>
+              <span className="text-sm" style={{ color: "var(--text)" }}>When everyone is ready</span>
             </>}
           </div>
           <button
@@ -791,6 +792,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
           style={{ background: "var(--surface)" }}>
           <button onClick={handleShare} className="flex items-center gap-2 min-w-0">
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Join code</span>
             <span className="font-mono font-bold tracking-widest text-sm" style={{ color: "var(--accent)" }}>
               {code}
             </span>
@@ -804,7 +806,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{ background: "var(--like)", color: "#0c0c0e", opacity: starting ? 0.6 : 1 }}>
                 <Play size={12} fill="currentColor" />
-                {starting ? "Starting…" : "Start"}
+                {starting ? "Starting…" : `Lock In · ${participants.length}`}
               </button>
             ) : (
               <span className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0"

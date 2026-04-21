@@ -72,7 +72,6 @@ export default function Home() {
     try { localStorage.setItem("filmclub_region", r); } catch { /* ignore */ }
   }
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
-  const [streamingOpen, setStreamingOpen] = useState(false);
 
   // CINEMA_HIDDEN: date/time state preserved for when cinema is re-enabled
   // const [cinemaDateStr, setCinemaDateStr] = useState(() => dateStrFromOffset(0));
@@ -107,7 +106,6 @@ export default function Home() {
   // Clear selected services when region changes (service IDs differ per region)
   useEffect(() => {
     setSelectedServices([]);
-    setStreamingOpen(false);
   }, [region]);
 
   // Join form
@@ -204,7 +202,7 @@ export default function Home() {
   // const showCinema = watchMode === "cinema" || watchMode === "both";
 
   return (
-    <main className="h-dvh overflow-y-auto flex flex-col items-center justify-center px-5 py-8"
+    <main className="min-h-dvh overflow-y-auto flex flex-col items-center justify-start px-5 pt-16 pb-12"
       style={{ background: "var(--bg)" }}>
 
       {/* Three-dot button — top-right corner */}
@@ -260,12 +258,12 @@ export default function Home() {
 
           {/* Streaming services + region picker */}
           {showStreaming && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {/* Label row with region selector on the right */}
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-medium uppercase tracking-wider"
                   style={{ color: "var(--text-muted)" }}>Streaming services</label>
-                {/* Region picker — pill shows current, click opens 3-col grid */}
+                {/* Region picker — pill shows current, click opens grid */}
                 <div className="relative">
                   {(() => {
                     const current = REGION_OPTIONS.find(r => r.value === region)!;
@@ -318,68 +316,39 @@ export default function Home() {
                   })()}
                 </div>
               </div>
-              <div className="relative">
-                <button type="button" onClick={() => setStreamingOpen(v => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors"
-                  style={{
-                    background: "var(--surface)",
-                    border: `1px solid ${streamingOpen ? "var(--accent)" : "var(--border)"}`,
-                  }}>
-                  <span className="flex items-center gap-1.5">
-                    {selectedServices.length === 0
-                      ? <span className="text-sm" style={{ color: "var(--text-muted)", opacity: 0.3 }}>None selected</span>
-                      : selectedServices.map(id => {
-                          const svc = regionServices.find(s => s.id === id);
-                          if (!svc) return null;
-                          return (
-                            <span key={id}
-                              className="relative inline-flex items-center justify-center w-6 h-6 rounded text-[8px] font-bold shrink-0"
-                              style={{ background: svc.color, color: "#fff" }}>
-                              {svc.abbrev}
-                              {svc.tmdbLogoPath && (
-                                <img
-                                  src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
-                                  alt={svc.name}
-                                  className="absolute inset-0 w-6 h-6 rounded"
-                                  style={{ objectFit: "cover" }}
-                                  onError={e => { e.currentTarget.style.display = "none"; }} />
-                              )}
-                            </span>
-                          );
-                        })
-                    }
-                  </span>
-                  <ChevronDown size={15} style={{
-                    color: "var(--text-muted)",
-                    transform: streamingOpen ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.2s",
-                  }} />
-                </button>
-                {/* Floating popover — overlays layout so nothing shifts */}
-                {streamingOpen && (
-                  <div className="absolute left-0 right-0 z-50 mt-1 p-3 rounded-xl flex flex-wrap gap-2"
-                    style={{
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
-                      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-                    }}>
-                    {regionServices.map((svc) => {
-                      const on = selectedServices.includes(svc.id);
-                      return (
-                        <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
-                          className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
-                          style={{
-                            background: on ? svc.color : "var(--surface)",
-                            borderColor: on ? svc.color : "var(--border)",
-                            color: on ? "#fff" : "var(--text-muted)",
-                            opacity: on ? 1 : 0.8,
-                          }}>
-                          {svc.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+
+              {/* Always-open service grid — tap to select/deselect */}
+              <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+                {regionServices.map((svc) => {
+                  const on = selectedServices.includes(svc.id);
+                  return (
+                    <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
+                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl transition-all"
+                      style={{
+                        background: on ? `${svc.color}22` : "var(--surface)",
+                        border: `1px solid ${on ? svc.color : "var(--border)"}`,
+                        outline: "none",
+                      }}>
+                      {/* Logo tile */}
+                      <span className="relative flex items-center justify-center w-9 h-9 rounded-lg text-[9px] font-bold"
+                        style={{ background: svc.color, color: "#fff", flexShrink: 0 }}>
+                        {svc.abbrev}
+                        {svc.tmdbLogoPath && (
+                          <img
+                            src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
+                            alt={svc.name}
+                            className="absolute inset-0 w-9 h-9 rounded-lg object-cover"
+                            onError={e => { e.currentTarget.style.display = "none"; }}
+                          />
+                        )}
+                      </span>
+                      <span className="text-center leading-tight"
+                        style={{ fontSize: "10px", color: on ? "var(--text)" : "var(--text-muted)", maxWidth: "100%", wordBreak: "break-word" }}>
+                        {svc.name}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
