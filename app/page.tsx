@@ -202,7 +202,7 @@ export default function Home() {
   // const showCinema = watchMode === "cinema" || watchMode === "both";
 
   return (
-    <main className="min-h-dvh overflow-y-auto flex flex-col items-center justify-start px-5 pt-16 pb-12"
+    <main className="min-h-dvh overflow-y-auto flex flex-col items-center justify-center px-5 py-12"
       style={{ background: "var(--bg)" }}>
 
       {/* Three-dot button — top-right corner */}
@@ -262,7 +262,7 @@ export default function Home() {
               {/* Label row with region selector on the right */}
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-medium uppercase tracking-wider"
-                  style={{ color: "var(--text-muted)" }}>Streaming services</label>
+                  style={{ color: "var(--text-muted)" }}>Your streaming services</label>
                 {/* Region picker — pill shows current, click opens grid */}
                 <div className="relative">
                   {(() => {
@@ -318,34 +318,30 @@ export default function Home() {
               </div>
 
               {/* Always-open service grid — tap to select/deselect */}
-              <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+              <div className="flex flex-wrap gap-2 justify-center">
                 {regionServices.map((svc) => {
                   const on = selectedServices.includes(svc.id);
                   return (
                     <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
-                      className="flex flex-col items-center gap-1.5 py-3 rounded-xl transition-all"
+                      className="relative flex items-center justify-center rounded-xl transition-all"
                       style={{
-                        background: on ? `${svc.color}22` : "var(--surface)",
-                        border: `1px solid ${on ? svc.color : "var(--border)"}`,
+                        width: 52, height: 52,
+                        background: svc.color,
+                        border: `2px solid ${on ? "var(--like)" : "transparent"}`,
+                        boxShadow: on ? "0 0 0 2px var(--like)" : "none",
                         outline: "none",
+                        opacity: on ? 1 : 0.45,
                       }}>
-                      {/* Logo tile */}
-                      <span className="relative flex items-center justify-center w-9 h-9 rounded-lg text-[9px] font-bold"
-                        style={{ background: svc.color, color: "#fff", flexShrink: 0 }}>
-                        {svc.abbrev}
-                        {svc.tmdbLogoPath && (
-                          <img
-                            src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
-                            alt={svc.name}
-                            className="absolute inset-0 w-9 h-9 rounded-lg object-cover"
-                            onError={e => { e.currentTarget.style.display = "none"; }}
-                          />
-                        )}
-                      </span>
-                      <span className="text-center leading-tight"
-                        style={{ fontSize: "10px", color: on ? "var(--text)" : "var(--text-muted)", maxWidth: "100%", wordBreak: "break-word" }}>
-                        {svc.name}
-                      </span>
+                      <span className="text-[9px] font-bold" style={{ color: "#fff" }}>{svc.abbrev}</span>
+                      {svc.tmdbLogoPath && (
+                        <img
+                          src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
+                          alt={svc.name}
+                          title={svc.name}
+                          className="absolute inset-0 w-full h-full rounded-xl object-cover"
+                          onError={e => { e.currentTarget.style.display = "none"; }}
+                        />
+                      )}
                     </button>
                   );
                 })}
