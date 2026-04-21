@@ -56,8 +56,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
       const tiebreakerIds = s.tiebreaker_film_ids?.length ? new Set(s.tiebreaker_film_ids) : null;
       const filtered = allScores
         .filter((fs) => fs.score > 0)
-        .filter((fs) => !tiebreakerIds || tiebreakerIds.has(fs.film.id))
-        .slice(0, 20);
+        .filter((fs) => !tiebreakerIds || tiebreakerIds.has(fs.film.id));
       setScores(filtered);
       setParticipants(allParticipants);
       setLoading(false);
@@ -84,8 +83,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
       const fresh = await getFilmScores(sessionId);
       const filtered = fresh
         .filter((fs) => fs.score > 0)
-        .filter((fs) => !tiebreakerIds || tiebreakerIds.has(fs.film.id))
-        .slice(0, 20);
+        .filter((fs) => !tiebreakerIds || tiebreakerIds.has(fs.film.id));
       setScores(filtered);
     }
 

@@ -121,6 +121,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so swipes subscription always sees the latest participant without stale closure
   const participantRef = useRef<Participant | null>(null);
   useEffect(() => { participantRef.current = participant; }, [participant]);
+  // Ref for join-order slot — set imperatively in init() before loadFilms runs,
+  // because the setParticipants state update hasn't flushed to the closure yet.
+  const participantsRef = useRef<Participant[]>([]);
   // ── Pool / reserve / drip refs ────────────────────────────────────────────────
   // Films seeded but not yet shown — drained into the active queue every 20 swipes.
   const reserveQueueRef = useRef<Film[]>([]);
@@ -263,21 +266,35 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   // Background expander — runs silently after the session page is shown.
-  // Pool size scales with service count: 200 base + 40 per service.
+  // Pool size scales with service count: 160 base + 20 per service.
   // Films land in batches via the realtime subscription, extending the reserve automatically.
   async function seedMoreHomePool(s: Session) {
     const region = s.region ?? "AU";
     const providerIds = sessionProviderTmdbIds(s);
     const serviceCount = Math.max(1, providerIds.length);
-    const targetPool = 200 + (40 * serviceCount);
+    const targetPool = 160 + (20 * serviceCount);
+    console.log(`[pool] services: ${serviceCount} → target pool: ${targetPool} films`);
 
     let raw: import("@/types").TMDBMovie[];
     if (providerIds.length > 0) {
-      // Pages per provider: divide target evenly across services (each TMDB page = 20 films)
-      const pagesPerProvider = Math.ceil(targetPool / (20 * serviceCount));
-      raw = await discoverFilmsByProviders(providerIds, pagesPerProvider, region);
+      // Fetch two equal halves in parallel: popularity-sorted and rating-sorted (min 1000 votes).
+      // halfPages covers half the target across all services (each TMDB page = 20 films per provider).
+      const halfPages = Math.ceil(targetPool / (20 * serviceCount * 2));
+      const [popularFilms, ratedFilms] = await Promise.all([
+        discoverFilmsByProviders(providerIds, halfPages, region, "popularity.desc"),
+        discoverFilmsByProviders(providerIds, halfPages, region, "vote_average.desc", 1000),
+      ]);
+      // Interleave popular[i] and rated[i] so neither half dominates the final pool.
+      const mixSeen = new Set<number>();
+      raw = [];
+      const maxLen = Math.max(popularFilms.length, ratedFilms.length);
+      for (let i = 0; i < maxLen; i++) {
+        for (const film of [popularFilms[i], ratedFilms[i]]) {
+          if (film && !mixSeen.has(film.id)) { mixSeen.add(film.id); raw.push(film); }
+        }
+      }
     } else {
-      // No services — split target between trending and top-rated
+      // No services — split target between trending and top-rated (already quality content)
       const halfPages = Math.ceil(targetPool / 40);
       raw = await Promise.all([getTrendingFilms(halfPages), getTopRatedFilms(halfPages)])
         .then(([a, b]) => [...a, ...b]);
@@ -290,11 +307,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       return true;
     }).slice(0, targetPool);
 
+    console.log(`[pool] fetched ${raw.length} raw → ${deduped.length} deduped, seeding now...`);
     const BATCH = 8;
     for (let i = 0; i < deduped.length; i += BATCH) {
       await Promise.all(deduped.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
       if (i + BATCH < deduped.length) await new Promise((r) => setTimeout(r, 400));
     }
+    console.log(`[pool] seeding complete — ${deduped.length} films added to session`);
   }
 
   // loadFilms fetches Dendy sessions itself and keeps the result as a local variable.
@@ -404,12 +423,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     }
 
     // ── Update queue ─────────────────────────────────────────────────────────
-    const INITIAL_SLICE = 80;
+    const INITIAL_SLICE = 40;
     const userAddedFilmIds = new Set(userAdded.map(({ film }) => film.id));
 
     if (isInitial) {
-      // Seeded shuffle of auto films — gives each participant a different personal deck.
-      // User-added films are always included and kept near position 3 as a priority signal.
+      // Partition the pool into non-overlapping slots so the first 4 participants
+      // collectively cover different films, maximising group coverage from swipe 1.
+      // Participant 5+ falls back to a seeded shuffle of the full pool.
+      // After the initial 40, the reserve is shuffled per-participant so drip order varies.
       const autoFilms = filteredAuto.map(({ film }) => film);
       const userAddedFilms = userAdded.map(({ film }) => film);
 
@@ -418,12 +439,25 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       for (let i = 0; i < participantId.length; i++) seed = Math.imul(31, seed) + participantId.charCodeAt(i) | 0;
       seed = Math.abs(seed);
 
-      const shuffledAuto = seededShuffle(autoFilms, seed);
+      // Slot = join order (0-indexed, sorted by created_at). -1 means not found → shuffle fallback.
+      const slot = participantsRef.current.findIndex((p) => p.id === participantId);
 
-      // Split: user-added always in the initial slice, auto fills the rest
+      // How many auto films fill the initial deck (user-added take priority for their slots)
       const autoSlice = Math.max(0, INITIAL_SLICE - userAddedFilms.length);
-      const initialAuto = shuffledAuto.slice(0, autoSlice);
-      reserveQueueRef.current = shuffledAuto.slice(autoSlice);
+
+      let initialAuto: Film[];
+      if (slot >= 0 && slot < 4) {
+        // Non-overlapping slice: slot 0 = films 0–39, slot 1 = 40–79, slot 2 = 80–119, slot 3 = 120–159.
+        const slotStart = slot * INITIAL_SLICE;
+        initialAuto = autoFilms.slice(slotStart, slotStart + autoSlice);
+        // Reserve = everything after this slot, shuffled so each participant drips in a different order.
+        reserveQueueRef.current = seededShuffle(autoFilms.slice(slotStart + INITIAL_SLICE), seed);
+      } else {
+        // Participant 5+: seeded shuffle of the full pool (same behaviour as before).
+        const shuffledAuto = seededShuffle(autoFilms, seed);
+        initialAuto = shuffledAuto.slice(0, autoSlice);
+        reserveQueueRef.current = shuffledAuto.slice(autoSlice);
+      }
 
       // Interleave user-added near position 3 in the initial queue
       const insertAt = Math.min(3, initialAuto.length);
@@ -494,6 +528,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       }
 
       const allParticipants = await getParticipants(s.id);
+      participantsRef.current = allParticipants; // set before loadFilms so slot calc sees correct list
       setParticipant(allParticipants.find((p) => p.id === pid) ?? null);
       setParticipants(allParticipants);
 
@@ -730,8 +765,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     // workingQueue is also extended so skipBlocked sees the new films this render.
     swipeCountRef.current += 1;
     if (swipeCountRef.current % 20 === 0 && reserveQueueRef.current.length > 0) {
-      const drip = reserveQueueRef.current.slice(0, 10);
-      reserveQueueRef.current = reserveQueueRef.current.slice(10);
+      const drip = reserveQueueRef.current.slice(0, 20);
+      reserveQueueRef.current = reserveQueueRef.current.slice(20);
+      console.log(`[drip] swipe ${swipeCountRef.current} — spliced ${drip.length} films into queue, reserve remaining: ${reserveQueueRef.current.length}`);
       workingQueue = [...workingQueue, ...drip];
       const ci = currentIndex;
       setFullQueue((prev) => {
