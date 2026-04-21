@@ -317,8 +317,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Always-open service grid — 4 equal columns filling the form width */}
-              <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+              {/* Always-open service grid — always exactly 2 rows */}
+              <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.ceil(regionServices.length / 2)}, 1fr)` }}>
                 {regionServices.map((svc) => {
                   const on = selectedServices.includes(svc.id);
                   return (
@@ -335,7 +335,7 @@ export default function Home() {
                       <span className="text-[9px] font-bold" style={{ color: "#fff" }}>{svc.abbrev}</span>
                       {svc.tmdbLogoPath && (
                         <img
-                          src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
+                          src={`https://image.tmdb.org/t/p/w92${svc.tmdbLogoPath}`}
                           alt={svc.name}
                           title={svc.name}
                           className="absolute inset-0 w-full h-full object-cover"
