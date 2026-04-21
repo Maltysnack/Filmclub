@@ -703,8 +703,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             </div>
           </div>
 
-          {/* How it works — main content while waiting */}
-          <div className="flex flex-col gap-5">
+          {/* How it works — fills remaining space and centres itself between members and CTA */}
+          <div className="flex-1 flex flex-col justify-center gap-5">
             {[
               { icon: <Search size={20} />, text: "Search to add films to the pool" },
               { icon: <Trophy size={20} />, text: "See everyone's results as you go" },
@@ -718,7 +718,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           </div>
 
           {/* CTA */}
-          <div className="mt-auto pt-10">
+          <div className="pt-6">
             {isHost ? (
               <button
                 onClick={handleStart}
