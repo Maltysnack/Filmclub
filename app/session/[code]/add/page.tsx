@@ -32,7 +32,6 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   const [providerMap, setProviderMap] = useState<Map<number, string[]>>(new Map());
   // Info modal
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
-  const [infoLoading, setInfoLoading] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -109,14 +108,32 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   }
 
   async function handleInfo(movie: TMDBMovie) {
-    setInfoLoading(true);
+    // Show overlay immediately with data we already have from the search result
+    const provisional: Film = {
+      id: String(movie.id),
+      tmdb_id: movie.id,
+      title: movie.title,
+      poster_path: movie.poster_path ?? null,
+      backdrop_path: movie.backdrop_path ?? null,
+      overview: movie.overview ?? null,
+      release_year: movie.release_date ? parseInt(movie.release_date.slice(0, 4)) : null,
+      runtime: null,
+      genres: [],
+      film_cast: [],
+      rating: null,
+      imdb_id: null,
+      imdb_rating: null,
+      watch_providers_au: [],
+    };
+    setInfoFilm(provisional);
+
+    // Fetch full detail + providers in background, then update the open overlay
     const detail = await getFilmDetail(movie.id);
     if (detail) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
       const providers = await fetchWatchProvidersAU(movie.id, apiKey);
       setInfoFilm({ ...tmdbToFilm(detail), id: String(movie.id), watch_providers_au: providers });
     }
-    setInfoLoading(false);
   }
 
   const showSearch = query.trim().length > 0;
@@ -256,18 +273,6 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
         sessionServices={sessionServices}
       />
 
-      {/* Loading spinner while fetching info */}
-      <AnimatePresence>
-        {infoLoading && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: "rgba(0,0,0,0.4)" }}
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          >
-            <div className="text-3xl animate-spin">🎬</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
