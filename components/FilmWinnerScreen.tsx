@@ -1,10 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import { posterUrl } from "@/lib/tmdb";
 import { getService } from "@/lib/streaming";
 import { Film, Region } from "@/types";
+import FilmInfoOverlay from "@/components/FilmInfoOverlay";
+import { useLongPress } from "@/hooks/useLongPress";
 
 interface FilmWinnerScreenProps {
   film: Film;
@@ -24,6 +27,8 @@ export default function FilmWinnerScreen({
 }: FilmWinnerScreenProps) {
   const router = useRouter();
   const handleDone = onDone ?? (() => router.push("/"));
+  const [infoOpen, setInfoOpen] = useState(false);
+  const { handlers: posterLp } = useLongPress(() => setInfoOpen(true));
 
   const providers = (film.watch_providers_au ?? []) as { serviceId: string; logoPath?: string | null }[];
   const available = providers.filter((p) => sessionServices.includes(p.serviceId));
@@ -58,10 +63,11 @@ export default function FilmWinnerScreen({
         </p>
 
         <div className="w-72 flex flex-col gap-2">
-          {/* Poster */}
+          {/* Poster — long press to open info */}
           <div
             className="relative rounded-2xl overflow-hidden shadow-2xl"
             style={{ aspectRatio: "2/3" }}
+            {...posterLp}
           >
             <img
               src={posterUrl(film.poster_path, "w342")}
@@ -131,6 +137,12 @@ export default function FilmWinnerScreen({
           </button>
         </div>
       </div>
+
+      <FilmInfoOverlay
+        film={infoOpen ? film : null}
+        onClose={() => setInfoOpen(false)}
+        sessionServices={sessionServices}
+      />
     </div>
   );
 }

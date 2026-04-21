@@ -3,7 +3,8 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
-import { ArrowLeft, Search, Plus, Check, Heart, Trophy, Info, Layers, Lock, Clock } from "lucide-react";
+import { ArrowLeft, Search, Plus, Check, Heart, Trophy, Layers, Lock, Clock } from "lucide-react";
+import { useLongPress } from "@/hooks/useLongPress";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
 import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
 import { addFilmToSession, getSession, getParticipantId, getSessionFilms, recordSwipe } from "@/lib/session";
@@ -235,7 +236,6 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
                   likedByMe={likedByMe}
                   sessionServices={sessionServices}
                   providerMap={providerMap}
-                  onAdd={handleAdd}
                   onLike={handleLike}
                   onInfo={handleInfo}
                 />
@@ -306,14 +306,13 @@ function HeartButton({ liked, onClick }: { liked: boolean; onClick: () => void }
 }
 
 function FilmGrid({
-  films, alreadyInPool, likedByMe, sessionServices, providerMap, onAdd, onLike, onInfo,
+  films, alreadyInPool, likedByMe, sessionServices, providerMap, onLike, onInfo,
 }: {
   films: TMDBMovie[];
   alreadyInPool: Set<number>;
   likedByMe: Set<number>;
   sessionServices: string[];
   providerMap: Map<number, string[]>;
-  onAdd: (m: TMDBMovie) => void;
   onLike: (m: TMDBMovie) => void;
   onInfo: (m: TMDBMovie) => void;
 }) {
@@ -322,8 +321,6 @@ function FilmGrid({
       {films.map((movie) => {
         const inPool = alreadyInPool.has(movie.id);
         const liked = likedByMe.has(movie.id);
-
-        // Availability — grey out only if checked and confirmed unavailable on a known service
         const serviceIds = providerMap.get(movie.id);
         const unavailable =
           sessionServices.length > 0 &&
@@ -332,76 +329,87 @@ function FilmGrid({
           !serviceIds.some((id) => sessionServices.includes(id));
 
         return (
-          <motion.div
+          <SearchFilmCard
             key={movie.id}
-            layout
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: unavailable ? 0.45 : 1, scale: 1 }}
-            className="relative rounded-xl overflow-hidden"
-            style={{ aspectRatio: "2/3", background: "var(--surface)" }}
-          >
-            <img
-              src={posterUrl(movie.poster_path, "w500")}
-              alt={movie.title}
-              className="w-full h-full object-cover"
-            />
-
-            {/* Gradient */}
-            <div
-              className="absolute inset-0"
-              style={{ background: "linear-gradient(to top, rgba(12,12,14,0.92) 0%, transparent 55%)" }}
-            />
-
-            {/* "Not on your services" banner */}
-            {unavailable && (
-              <div
-                className="absolute top-0 left-0 right-0 px-1.5 py-1 text-center"
-                style={{ background: "rgba(12,12,14,0.82)" }}
-              >
-                <p className="text-xs leading-tight" style={{ color: "var(--text-muted)" }}>
-                  Not on your services
-                </p>
-              </div>
-            )}
-
-            {/* Title + year */}
-            <div className="absolute bottom-0 left-0 right-0 p-2">
-              <p className="text-xs font-medium leading-tight line-clamp-2" style={{ color: "var(--text)" }}>
-                {movie.title}
-              </p>
-              {movie.release_date && (
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  {movie.release_date.slice(0, 4)}
-                </p>
-              )}
-            </div>
-
-            {/* Persistent heart button — bottom-right */}
-            <HeartButton liked={liked} onClick={() => onLike(movie)} />
-
-            {/* Top-right — info button, with liked/in-pool dot indicator */}
-            <div className="absolute top-2 right-2">
-              <button
-                onClick={() => onInfo(movie)}
-                className="w-7 h-7 rounded-full flex items-center justify-center"
-                style={{ background: "rgba(12,12,14,0.7)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
-              >
-                <Info size={12} />
-              </button>
-              {/* Status dot */}
-              {(liked || inPool) && (
-                <div
-                  className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 flex items-center justify-center"
-                  style={{
-                    background: liked ? "var(--like)" : "var(--surface-2)",
-                    borderColor: "var(--bg)",
-                  }}
-                />
-              )}
-            </div>
-          </motion.div>
+            movie={movie}
+            inPool={inPool}
+            liked={liked}
+            unavailable={unavailable}
+            onLike={onLike}
+            onInfo={onInfo}
+          />
         );
       })}
     </div>
+  );
+}
+
+function SearchFilmCard({
+  movie, inPool, liked, unavailable, onLike, onInfo,
+}: {
+  movie: TMDBMovie;
+  inPool: boolean;
+  liked: boolean;
+  unavailable: boolean;
+  onLike: (m: TMDBMovie) => void;
+  onInfo: (m: TMDBMovie) => void;
+}) {
+  const { handlers } = useLongPress(() => onInfo(movie));
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: unavailable ? 0.45 : 1, scale: 1 }}
+      className="relative rounded-xl overflow-hidden"
+      style={{ aspectRatio: "2/3", background: "var(--surface)" }}
+      {...handlers}
+    >
+      <img
+        src={posterUrl(movie.poster_path, "w500")}
+        alt={movie.title}
+        className="w-full h-full object-cover"
+      />
+
+      {/* Gradient */}
+      <div
+        className="absolute inset-0"
+        style={{ background: "linear-gradient(to top, rgba(12,12,14,0.92) 0%, transparent 55%)" }}
+      />
+
+      {/* "Not on your services" banner */}
+      {unavailable && (
+        <div
+          className="absolute top-0 left-0 right-0 px-1.5 py-1 text-center"
+          style={{ background: "rgba(12,12,14,0.82)" }}
+        >
+          <p className="text-xs leading-tight" style={{ color: "var(--text-muted)" }}>
+            Not on your services
+          </p>
+        </div>
+      )}
+
+      {/* Title + year */}
+      <div className="absolute bottom-0 left-0 right-0 p-2 pr-10">
+        <p className="text-xs font-medium leading-tight line-clamp-2" style={{ color: "var(--text)" }}>
+          {movie.title}
+        </p>
+        {movie.release_date && (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {movie.release_date.slice(0, 4)}
+          </p>
+        )}
+      </div>
+
+      {/* Status dot — top-left corner when in pool or liked */}
+      {(liked || inPool) && (
+        <div
+          className="absolute top-1.5 left-1.5 w-2.5 h-2.5 rounded-full"
+          style={{ background: liked ? "var(--like)" : "rgba(255,255,255,0.3)" }}
+        />
+      )}
+
+      {/* Heart button — bottom-right */}
+      <HeartButton liked={liked} onClick={() => onLike(movie)} />
+    </motion.div>
   );
 }
