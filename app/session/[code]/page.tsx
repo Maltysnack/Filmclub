@@ -18,17 +18,16 @@ import {
 } from "@/lib/session";
 import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getProviderList, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
-import { getService, getServicesForRegion, TMDB_GENRES } from "@/lib/streaming";
+import { getService, getServicesForRegion } from "@/lib/streaming";
 import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Search, Users, Trophy, CheckCircle, Play, SlidersHorizontal, X, Heart, Layers, List, Clock } from "lucide-react";
+import { Search, Trophy, CheckCircle, Play, Clock } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
 
-const LOAD_MESSAGE = "Arguing with the studio execs…";
 
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -58,11 +57,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const wheelChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [allDone, setAllDone] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [minLoadDone, setMinLoadDone] = useState(false);
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showGenreFilter, setShowGenreFilter] = useState(false);
-  const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   // Map from film.id -> dendy session info
   const [dendyMap, setDendyMap] = useState<Map<string, DendyFilm>>(new Map());
   // Debounce timer so background batch-inserts don't hammer loadFilms
@@ -140,11 +136,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     }
   }, [currentIndex, loading, code]);
 
-  // ── Minimum loading screen (3s) — only on genuine first visit ─────────────
-  useEffect(() => {
-    const timer = setTimeout(() => setMinLoadDone(true), 3000);
-    return () => clearTimeout(timer);
-  }, []);
 
   // ── Phase-based vote visibility ───────────────────────────────────────────
   // groupSwipeCount / groupLikeCount track ALL participants' swipes for this session.
@@ -177,20 +168,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Liked film IDs for scroll mode (starts empty, populated from swipe history + new likes)
   const [likedInScroll, setLikedInScroll] = useState<Set<string>>(new Set());
 
-  // Derived: genre-filtered queue (user-added films always shown)
-  const [userAddedIds, setUserAddedIds] = useState<Set<string>>(new Set());
-  const queue = selectedGenres.length === 0
-    ? fullQueue
-    : fullQueue.filter((f) =>
-        userAddedIds.has(f.id) ||
-        (f.genres ?? []).some((g) => selectedGenres.includes(g.id))
-      );
-
-  function toggleGenre(id: number) {
-    setSelectedGenres((prev) =>
-      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
-    );
-  }
+  const queue = fullQueue;
 
   // Fast initial seed — just enough to show the first card immediately.
   // Resolve session streaming_services (service IDs like "netflix") → TMDB provider IDs
@@ -308,7 +286,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
     const userAdded = unswiped.filter(({ addedBy }) => addedBy && addedBy !== participantId);
     const autoSeeded = unswiped.filter(({ addedBy }) => !addedBy || addedBy === participantId);
-    setUserAddedIds(new Set(userAdded.map(({ film }) => film.id)));
 
     // Filter home pool by streaming services.
     // Since we now seed from TMDB Discover (provider-filtered), films in the pool
@@ -443,7 +420,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         setGroupLikeCount(stats.totalLikes);
         setFilmLikes(stats.filmLikes);
         setLoading(false);
-        setMinLoadDone(true); // skip 3s timer — not a first visit
         loadFilms(s, pid);   // silent background refresh for new films
         return;
       }
@@ -669,25 +645,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setTimeout(() => setCopied(false), 1500);
   }
 
-  if (loading || !minLoadDone) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center" style={{ background: "var(--bg)" }}>
-        <div className="text-center space-y-5 mx-auto px-6" style={{ maxWidth: 480 }}>
-          <Logo size="md" />
-          {/* Spinning film reel */}
-          <div className="flex justify-center">
-            <div className="relative w-16 h-16">
-              <div className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin"
-                style={{ borderColor: `var(--accent) transparent var(--accent) var(--accent)` }} />
-              <div className="absolute inset-0 flex items-center justify-center text-2xl">🎬</div>
-            </div>
-          </div>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{LOAD_MESSAGE}</p>
-        </div>
-      </div>
-    );
-  }
-
   if (!introDismissed) {
     return (
       <div className="min-h-dvh flex items-center justify-center px-8" style={{ background: "var(--bg)" }}>
@@ -717,10 +674,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             </>}
           </div>
           <button
+            disabled={loading}
             onClick={() => { localStorage.setItem(`intro-${code}`, "1"); setIntroDismissed(true); }}
             className="w-full py-3.5 rounded-xl text-sm font-semibold"
-            style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-            Let's go
+            style={{ background: "var(--accent)", color: "#0c0c0e", opacity: loading ? 0.45 : 1 }}>
+            {loading ? "Loading…" : "Let's go"}
           </button>
         </div>
       </div>
@@ -815,18 +773,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
         <Logo size="sm" />
         <div className="flex items-center gap-2">
-          {/* SCROLL_HIDDEN: toggle button removed — swipe is always active */}
-          <button onClick={() => setShowGenreFilter((v) => !v)}
-            className="p-2 rounded-lg relative"
-            style={{ background: "var(--surface)", color: selectedGenres.length > 0 ? "var(--accent)" : "var(--text-muted)" }}>
-            <SlidersHorizontal size={18} />
-            {selectedGenres.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center"
-                style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-                {selectedGenres.length}
-              </span>
-            )}
-          </button>
           <button onClick={() => router.push(`/session/${code}/add`)}
             className="p-2 rounded-lg"
             style={{ background: "var(--surface)", color: "var(--accent)" }}>
@@ -839,51 +785,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           </button>
         </div>
       </header>
-
-      {/* Genre filter panel */}
-      <AnimatePresence>
-        {showGenreFilter && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} className="overflow-hidden shrink-0">
-            <div className="px-5 pb-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                  Filter by genre
-                </p>
-                {selectedGenres.length > 0 && (
-                  <button onClick={() => setSelectedGenres([])}
-                    className="text-xs flex items-center gap-1"
-                    style={{ color: "var(--text-muted)" }}>
-                    <X size={11} /> Clear
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {TMDB_GENRES.map((g) => {
-                  const on = selectedGenres.includes(g.id);
-                  return (
-                    <button key={g.id} onClick={() => toggleGenre(g.id)}
-                      className="px-2.5 py-1 rounded-full text-xs border transition-all"
-                      style={{
-                        background: on ? "var(--accent)" : "var(--surface)",
-                        borderColor: on ? "var(--accent)" : "var(--border)",
-                        color: on ? "#0c0c0e" : "var(--text-muted)",
-                      }}>
-                      {g.name}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-                {selectedGenres.length === 0
-                  ? "Showing all genres"
-                  : `${queue.length} film${queue.length !== 1 ? "s" : ""} match your filter`}
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Code + start bar */}
       <div className="px-5 pb-3 shrink-0">

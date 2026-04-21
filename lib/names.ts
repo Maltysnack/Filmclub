@@ -1,13 +1,19 @@
-// Mainstream first names used as anonymous session identifiers
+// Iconic film characters — recognisable at a glance, no explanation needed
 export const PLAYER_NAMES = [
-  "Alex", "Sam", "Jordan", "Taylor", "Morgan",
-  "Riley", "Casey", "Avery", "Quinn", "Blake",
-  "Drew", "Reese", "Logan", "Cameron", "Skyler",
-  "Harper", "Finley", "River", "Sage", "Parker",
-  "Peyton", "Sydney", "Jesse", "Charlie", "Jamie",
-  "Rowan", "Hayden", "Ellis", "Evan", "Hunter",
-  "Kai", "Max", "Nico", "Robin", "Jude",
-  "Remy", "Scout", "Wynne", "Luca", "Zara",
+  // Star Wars
+  "Luke Skywalker", "Darth Vader", "Han Solo", "Yoda", "Leia Organa", "Obi-Wan Kenobi",
+  // Lord of the Rings
+  "Frodo", "Gandalf", "Aragorn", "Legolas", "Gollum", "Samwise",
+  // Harry Potter
+  "Harry Potter", "Hermione", "Ron Weasley", "Dumbledore",
+  // Marvel
+  "Tony Stark", "Spider-Man", "Thor", "Black Widow", "Captain America", "Thanos",
+  // Disney / Pixar
+  "Simba", "Buzz Lightyear", "Woody", "Elsa", "Moana", "Dory",
+  // Classics
+  "Indiana Jones", "James Bond", "Jack Sparrow", "The Terminator",
+  "Forrest Gump", "Katniss Everdeen", "Neo", "Morpheus",
+  "Shrek", "Batman", "The Joker", "Jack Dawson",
 ];
 
 // Convert HSL to a hex colour string so we can append CSS alpha suffixes like #rrggbb22
