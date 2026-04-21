@@ -29,6 +29,19 @@ import ShortlistOverlay from "@/components/ShortlistOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
 
 
+// Deterministic shuffle using a seeded LCG PRNG — same result for the same
+// participantId across page refreshes, giving each user a stable personal deck.
+function seededShuffle<T>(arr: T[], seed: number): T[] {
+  let s = seed | 0;
+  const next = () => { s = Math.imul(1664525, s) + 1013904223 | 0; return (s >>> 0) / 0x100000000; };
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 // Returns the first index >= fromIdx that is not suppressed by a franchise block.
 // A film is suppressed if: it has a collection_id, that ID is blocked, and nobody
 // has liked it yet (filmLikes has no entries for it).
@@ -108,6 +121,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so swipes subscription always sees the latest participant without stale closure
   const participantRef = useRef<Participant | null>(null);
   useEffect(() => { participantRef.current = participant; }, [participant]);
+  // ── Pool / reserve / drip refs ────────────────────────────────────────────────
+  // Films seeded but not yet shown — drained into the active queue every 20 swipes.
+  const reserveQueueRef = useRef<Film[]>([]);
+  // Running swipe count for drip timing (every 20 swipes → 10 films from reserve).
+  const swipeCountRef = useRef(0);
+  // Full session film list (seen + unseen) — used for second-chance end-of-deck pass.
+  const allSessionFilmsRef = useRef<Film[]>([]);
+  // Per-user swipe history this session: film.id → liked. Used for second-chance ranking.
+  const mySwipeHistoryRef = useRef<Map<string, boolean>>(new Map());
 
   // ── Clear snapshot when session ends so stale data isn't restored ─────────
   useEffect(() => {
@@ -241,20 +263,32 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   // Background expander — runs silently after the session page is shown.
-  // Adds ~80 more films in batches of 8; the real-time subscription
-  // picks up each batch and extends the live queue automatically.
+  // Pool size scales with service count: 200 base + 40 per service.
+  // Films land in batches via the realtime subscription, extending the reserve automatically.
   async function seedMoreHomePool(s: Session) {
     const region = s.region ?? "AU";
     const providerIds = sessionProviderTmdbIds(s);
-    const raw = providerIds.length > 0
-      ? await discoverFilmsByProviders(providerIds, 4, region)
-      : await Promise.all([getTrendingFilms(3), getTopRatedFilms(2)]).then(([a, b]) => [...a, ...b]);
+    const serviceCount = Math.max(1, providerIds.length);
+    const targetPool = 200 + (40 * serviceCount);
+
+    let raw: import("@/types").TMDBMovie[];
+    if (providerIds.length > 0) {
+      // Pages per provider: divide target evenly across services (each TMDB page = 20 films)
+      const pagesPerProvider = Math.ceil(targetPool / (20 * serviceCount));
+      raw = await discoverFilmsByProviders(providerIds, pagesPerProvider, region);
+    } else {
+      // No services — split target between trending and top-rated
+      const halfPages = Math.ceil(targetPool / 40);
+      raw = await Promise.all([getTrendingFilms(halfPages), getTopRatedFilms(halfPages)])
+        .then(([a, b]) => [...a, ...b]);
+    }
+
     const seen = new Set<number>();
     const deduped = raw.filter((m) => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
       return true;
-    }).slice(0, 80);
+    }).slice(0, targetPool);
 
     const BATCH = 8;
     for (let i = 0; i < deduped.length; i += BATCH) {
@@ -306,11 +340,22 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       poolWithMeta = poolWithMeta.filter(({ film }) => ids.has(film.id));
     }
 
+    // Store full session film list for second-chance end-of-deck pass
+    allSessionFilmsRef.current = poolWithMeta.map(({ film }) => film);
+
     const [mySwiped, myLikes] = await Promise.all([
       getMySwipes(s.id, participantId),
       getMyLikes(s.id, participantId),
     ]);
     setLikedInScroll(myLikes);
+
+    // Initialise per-session swipe history ref from existing DB data
+    if (isInitial) {
+      const history = new Map<string, boolean>();
+      for (const id of mySwiped) history.set(id, myLikes.has(id));
+      mySwipeHistoryRef.current = history;
+    }
+
     const unswiped = poolWithMeta.filter(({ film }) => !mySwiped.has(film.id));
 
     const userAdded = unswiped.filter(({ addedBy }) => addedBy && addedBy !== participantId);
@@ -347,14 +392,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       return arr;
     }
     shuffle(userAdded);
-    shuffle(filteredAuto);
-
-    const insertAt = Math.max(3, Math.floor(filteredAuto.length * 0.3));
-    const ordered = [
-      ...filteredAuto.slice(0, insertAt).map(({ film }) => film),
-      ...userAdded.map(({ film }) => film),
-      ...filteredAuto.slice(insertAt).map(({ film }) => film),
-    ];
 
     // ── Resolve tmdbId-keyed map → DB film.id-keyed map ──────────────────────
     if (s.watch_mode !== "home") {
@@ -367,22 +404,53 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     }
 
     // ── Update queue ─────────────────────────────────────────────────────────
-    // isInitial=true  → first load: replace queue entirely and reset position.
-    // isInitial=false → background update: splice new films into the unseen
-    //   portion of the queue so the user's position is preserved but films
-    //   arrive in a natural mixed order rather than service-grouped at the tail.
+    const INITIAL_SLICE = 80;
+    const userAddedFilmIds = new Set(userAdded.map(({ film }) => film.id));
+
     if (isInitial) {
-      setFullQueue(ordered);
+      // Seeded shuffle of auto films — gives each participant a different personal deck.
+      // User-added films are always included and kept near position 3 as a priority signal.
+      const autoFilms = filteredAuto.map(({ film }) => film);
+      const userAddedFilms = userAdded.map(({ film }) => film);
+
+      // Hash participantId to a stable integer seed — same result on every refresh.
+      let seed = 0;
+      for (let i = 0; i < participantId.length; i++) seed = Math.imul(31, seed) + participantId.charCodeAt(i) | 0;
+      seed = Math.abs(seed);
+
+      const shuffledAuto = seededShuffle(autoFilms, seed);
+
+      // Split: user-added always in the initial slice, auto fills the rest
+      const autoSlice = Math.max(0, INITIAL_SLICE - userAddedFilms.length);
+      const initialAuto = shuffledAuto.slice(0, autoSlice);
+      reserveQueueRef.current = shuffledAuto.slice(autoSlice);
+
+      // Interleave user-added near position 3 in the initial queue
+      const insertAt = Math.min(3, initialAuto.length);
+      const initialQueue = [
+        ...initialAuto.slice(0, insertAt),
+        ...userAddedFilms,
+        ...initialAuto.slice(insertAt),
+      ];
+
+      setFullQueue(initialQueue);
       setCurrentIndex(0);
-      setAllDone(ordered.length === 0);
+      setAllDone(initialQueue.length === 0);
     } else {
-      // Capture the index outside the functional update (refs are always current)
+      // Background update: new user-added films surface near top of active queue;
+      // new auto-seeded films go into the reserve to be dripped in gradually.
       const ci = currentIndexRef.current;
-      const userAddedFilmIds = new Set(userAdded.map(({ film }) => film.id));
 
       setFullQueue((prev) => {
-        const existingIds = new Set(prev.map((f) => f.id));
-        const fresh = ordered.filter((f) => !existingIds.has(f.id));
+        const existingQueueIds = new Set(prev.map((f) => f.id));
+        const existingReserveIds = new Set(reserveQueueRef.current.map((f) => f.id));
+        const existingIds = new Set([...existingQueueIds, ...existingReserveIds]);
+
+        const allOrdered = [
+          ...filteredAuto.map(({ film }) => film),
+          ...userAdded.map(({ film }) => film),
+        ];
+        const fresh = allOrdered.filter((f) => !existingIds.has(f.id));
         if (fresh.length === 0) return prev;
 
         setAllDone(false);
@@ -390,28 +458,21 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         const freshUserAdded = fresh.filter((f) => userAddedFilmIds.has(f.id));
         const freshAuto = fresh.filter((f) => !userAddedFilmIds.has(f.id));
 
-        // Split queue into already-seen and unseen portions
-        const seen = prev.slice(0, ci);
-        const unseen = [...prev.slice(ci)];
-
-        // Auto-seeded films: scatter randomly throughout the unseen portion.
-        // Always insert at position ≥ 1 so the current card (unseen[0]) is never displaced.
-        for (const film of freshAuto) {
-          const pos = unseen.length <= 1
-            ? unseen.length
-            : 1 + Math.floor(Math.random() * unseen.length);
-          unseen.splice(pos, 0, film);
+        // Auto films → reserve (drip will bring them into the active queue)
+        if (freshAuto.length > 0) {
+          reserveQueueRef.current = [...reserveQueueRef.current, ...freshAuto];
         }
 
-        // User-added films: surface near positions 3–8 of the unseen portion,
-        // but never before position 1 (don't displace the current card).
+        if (freshUserAdded.length === 0) return prev;
+
+        // User-added → surface near positions 3–8 of the unseen queue immediately
+        const unseen = [...prev.slice(ci)];
         const userInsertBase = Math.max(1, Math.min(3, unseen.length));
         for (const film of freshUserAdded) {
           const pos = Math.min(userInsertBase + Math.floor(Math.random() * 6), unseen.length);
           unseen.splice(pos, 0, film);
         }
-
-        return [...seen, ...unseen];
+        return [...prev.slice(0, ci), ...unseen];
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -600,6 +661,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     const isSolo = participants.length <= 1;
     await recordSwipe(s.id, participant.id, film.id, liked);
 
+    // Track this user's swipe history locally — used for second-chance end-of-deck pass
+    mySwipeHistoryRef.current.set(film.id, liked);
+
     if (liked && s.started && !isSolo) {
       const isMatch = await checkForMatch(s.id, film.id, s.threshold);
       if (isMatch && s.mode === "live") {
@@ -661,12 +725,63 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setBlockedCollections(newBlocked);
     }
 
+    // ── Continuous drip ───────────────────────────────────────────────────────
+    // Every 20 swipes, pull 10 films from the reserve into the active queue.
+    // workingQueue is also extended so skipBlocked sees the new films this render.
+    swipeCountRef.current += 1;
+    if (swipeCountRef.current % 20 === 0 && reserveQueueRef.current.length > 0) {
+      const drip = reserveQueueRef.current.slice(0, 10);
+      reserveQueueRef.current = reserveQueueRef.current.slice(10);
+      workingQueue = [...workingQueue, ...drip];
+      const ci = currentIndex;
+      setFullQueue((prev) => {
+        const seen = prev.slice(0, ci + 1);
+        const unseen = [...prev.slice(ci + 1)];
+        for (const f of drip) {
+          const pos = unseen.length <= 1 ? unseen.length : 1 + Math.floor(Math.random() * Math.min(unseen.length, 15));
+          unseen.splice(pos, 0, f);
+        }
+        return [...seen, ...unseen];
+      });
+    }
+
     const nextIdx = skipBlocked(currentIndex + 1, workingQueue, newBlocked, filmLikes);
-    if (nextIdx >= queue.length) {
-      // Final batch check — catches the case where this was the last voter
+    if (nextIdx >= workingQueue.length) {
+      // ── Layer 1: Drain remaining reserve ──────────────────────────────────
+      if (reserveQueueRef.current.length > 0) {
+        const refill = reserveQueueRef.current.slice(0, 20);
+        reserveQueueRef.current = reserveQueueRef.current.slice(20);
+        setFullQueue((prev) => [...prev, ...refill]);
+        setCurrentIndex(workingQueue.length); // first refill film
+        if (infoFilm) setInfoFilm(refill[0]);
+        return;
+      }
+
+      // ── Layer 2: Second chance — films others liked that you said no to ────
+      const secondChance = allSessionFilmsRef.current
+        .filter((f) => {
+          const likers = filmLikes.get(f.id) ?? [];
+          return likers.length > 0 && mySwipeHistoryRef.current.get(f.id) === false;
+        })
+        .sort((a, b) => (filmLikes.get(b.id)?.length ?? 0) - (filmLikes.get(a.id)?.length ?? 0));
+
+      if (secondChance.length > 0) {
+        setFullQueue((prev) => [...prev, ...secondChance]);
+        setCurrentIndex(workingQueue.length);
+        if (infoFilm) setInfoFilm(secondChance[0]);
+        return;
+      }
+
+      // ── Layer 3: Fetch a fresh batch from TMDB ────────────────────────────
+      // Fire-and-forget — subscription will extend the queue when films land.
+      if (s.watch_mode === "home" || s.watch_mode === "both") {
+        seedMoreHomePool(s);
+      }
+
+      // Final batch match check — catches the case where this was the last voter
       if (s.started && s.mode === "live" && !isSolo) {
         let found = false;
-        for (const f of queue) {
+        for (const f of workingQueue) {
           if (await checkForMatch(s.id, f.id, s.threshold)) found = true;
         }
         if (found) {
@@ -680,7 +795,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setInfoFilm(null);
     } else {
       setCurrentIndex(nextIdx);
-      if (infoFilm) setInfoFilm(queue[nextIdx]);
+      if (infoFilm) setInfoFilm(workingQueue[nextIdx]);
     }
   }
 
