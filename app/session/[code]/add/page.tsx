@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef, use } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence, useAnimation } from "framer-motion";
-import { ArrowLeft, Search, Heart, Trophy, Layers, Lock, Clock } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, Trophy, Layers, Lock, Clock } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
 import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
@@ -167,25 +167,18 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
       <div className="flex flex-col min-h-dvh mx-auto" style={{ maxWidth: 480 }}>
         {/* Header */}
         <header className="flex items-center gap-3 px-5 pt-5 pb-4 shrink-0">
-          <button
-            onClick={() => router.back()}
-            className="p-2 rounded-lg"
-            style={{ background: "var(--surface)", color: "var(--text-muted)" }}
-          >
-            <ArrowLeft size={18} />
-          </button>
           <Logo size="sm" showText={false} />
-          <h1 className="flex-1 text-base font-semibold" style={{ color: "var(--text)" }}>Add films</h1>
+          <h1 className="flex-1 text-base font-semibold" style={{ color: "var(--text)" }}>Search</h1>
           <div className="flex items-center gap-2">
-            <button onClick={() => router.push(`/session/${code}/results`)}
-              className="p-2 rounded-lg"
-              style={{ background: "var(--surface)", color: "var(--accent)" }}>
-              <Trophy size={18} />
-            </button>
             <button onClick={() => router.push(`/session/${code}`)}
               className="p-2 rounded-lg"
               style={{ background: "var(--surface)", color: "var(--accent)" }}>
               <Layers size={18} />
+            </button>
+            <button onClick={() => router.push(`/session/${code}/results`)}
+              className="p-2 rounded-lg"
+              style={{ background: "var(--surface)", color: "var(--accent)" }}>
+              <Trophy size={18} />
             </button>
             <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
               style={{
@@ -275,7 +268,6 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
                   likedByMe={likedByMe}
                   sessionServices={sessionServices}
                   providerMap={providerMap}
-                  onLike={handleLike}
                   onInfo={handleInfo}
                 />
               </AnimatePresence>
@@ -299,86 +291,68 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   );
 }
 
-function HeartButton({ liked, onClick }: { liked: boolean; onClick: () => void }) {
-  const controls = useAnimation();
-
-  async function handleClick() {
-    if (!liked) {
-      await controls.start({
-        scale: [1, 1.4, 1],
-        transition: { duration: 0.35, ease: "easeOut" },
-      });
-    }
-    onClick();
-  }
-
-  return (
-    <motion.button
-      animate={controls}
-      onClick={handleClick}
-      className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center"
-      style={
-        liked
-          ? { background: "var(--like)", color: "#0c0c0e" }
-          : {
-              border: "1.5px solid rgba(74,222,128,0.45)",
-              background: "rgba(12,12,14,0.6)",
-              color: "var(--like)",
-            }
-      }
-    >
-      <Heart size={14} fill={liked ? "currentColor" : "none"} />
-    </motion.button>
-  );
-}
-
 function FilmGrid({
-  films, alreadyInPool, likedByMe, sessionServices, providerMap, onLike, onInfo,
+  films, alreadyInPool, likedByMe, sessionServices, providerMap, onInfo,
 }: {
   films: TMDBMovie[];
   alreadyInPool: Set<number>;
   likedByMe: Set<number>;
   sessionServices: string[];
-  providerMap: Map<number, string[]>; // populated lazily — undefined means still checking
-  onLike: (m: TMDBMovie) => void;
+  providerMap: Map<number, string[]>;
   onInfo: (m: TMDBMovie) => void;
 }) {
-  return (
-    <div className="grid grid-cols-3 gap-3">
-      {films.map((movie) => {
-        const inPool = alreadyInPool.has(movie.id);
-        const liked = likedByMe.has(movie.id);
-        const serviceIds = providerMap.get(movie.id);
-        const unavailable =
-          sessionServices.length > 0 &&
-          serviceIds !== undefined &&
-          serviceIds.length > 0 &&
-          !serviceIds.some((id) => sessionServices.includes(id));
+  // Split into available and unavailable — films not yet checked stay in available (optimistic)
+  const isUnavailable = (movie: TMDBMovie) => {
+    const sids = providerMap.get(movie.id);
+    return sessionServices.length > 0 && sids !== undefined && !sids.some(id => sessionServices.includes(id));
+  };
 
-        return (
+  const available = films.filter(m => !isUnavailable(m));
+  const unavailable = sessionServices.length > 0 ? films.filter(isUnavailable) : [];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-3 gap-3">
+        {available.map(movie => (
           <SearchFilmCard
             key={movie.id}
             movie={movie}
-            inPool={inPool}
-            liked={liked}
-            unavailable={unavailable}
-            onLike={onLike}
+            inPool={alreadyInPool.has(movie.id)}
+            liked={likedByMe.has(movie.id)}
             onInfo={onInfo}
           />
-        );
-      })}
+        ))}
+      </div>
+
+      {unavailable.length > 0 && (
+        <>
+          <p className="text-xs font-medium uppercase tracking-wider"
+            style={{ color: "var(--text-muted)" }}>
+            Not on your services
+          </p>
+          <div className="grid grid-cols-3 gap-3" style={{ opacity: 0.4 }}>
+            {unavailable.map(movie => (
+              <SearchFilmCard
+                key={movie.id}
+                movie={movie}
+                inPool={alreadyInPool.has(movie.id)}
+                liked={likedByMe.has(movie.id)}
+                onInfo={onInfo}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 function SearchFilmCard({
-  movie, inPool, liked, unavailable, onLike, onInfo,
+  movie, inPool, liked, onInfo,
 }: {
   movie: TMDBMovie;
   inPool: boolean;
   liked: boolean;
-  unavailable: boolean;
-  onLike: (m: TMDBMovie) => void;
   onInfo: (m: TMDBMovie) => void;
 }) {
   const { handlers } = useLongPress(() => onInfo(movie));
@@ -386,7 +360,7 @@ function SearchFilmCard({
     <motion.div
       layout
       initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: unavailable ? 0.45 : 1, scale: 1 }}
+      animate={{ opacity: 1, scale: 1 }}
       className="relative rounded-xl overflow-hidden"
       style={{ aspectRatio: "2/3", background: "var(--surface)" }}
       {...handlers}
@@ -396,27 +370,11 @@ function SearchFilmCard({
         alt={movie.title}
         className="w-full h-full object-cover"
       />
-
-      {/* Gradient */}
-      <div
-        className="absolute inset-0"
-        style={{ background: "linear-gradient(to top, rgba(12,12,14,0.92) 0%, transparent 55%)" }}
-      />
-
-      {/* "Not on your services" banner */}
-      {unavailable && (
-        <div
-          className="absolute top-0 left-0 right-0 px-1.5 py-1 text-center"
-          style={{ background: "rgba(12,12,14,0.82)" }}
-        >
-          <p className="text-xs leading-tight" style={{ color: "var(--text-muted)" }}>
-            Not on your services
-          </p>
-        </div>
-      )}
+      <div className="absolute inset-0"
+        style={{ background: "linear-gradient(to top, rgba(12,12,14,0.92) 0%, transparent 55%)" }} />
 
       {/* Title + year */}
-      <div className="absolute bottom-0 left-0 right-0 p-2 pr-10">
+      <div className="absolute bottom-0 left-0 right-0 p-2">
         <p className="text-xs font-medium leading-tight line-clamp-2" style={{ color: "var(--text)" }}>
           {movie.title}
         </p>
@@ -427,16 +385,11 @@ function SearchFilmCard({
         )}
       </div>
 
-      {/* Status dot — top-left corner when in pool or liked */}
+      {/* Status dot — top-left, shows when already added or liked */}
       {(liked || inPool) && (
-        <div
-          className="absolute top-1.5 left-1.5 w-2.5 h-2.5 rounded-full"
-          style={{ background: liked ? "var(--like)" : "rgba(255,255,255,0.3)" }}
-        />
+        <div className="absolute top-1.5 left-1.5 w-2.5 h-2.5 rounded-full"
+          style={{ background: liked ? "var(--like)" : "rgba(255,255,255,0.3)" }} />
       )}
-
-      {/* Heart button — bottom-right */}
-      <HeartButton liked={liked} onClick={() => onLike(movie)} />
     </motion.div>
   );
 }

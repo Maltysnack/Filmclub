@@ -42,7 +42,7 @@ function formatCinema(dateStr: string, from: string, to: string): string {
   return `${weekday} ${ordinal(d.getDate())} ${month} ${fmtTime(from)} – ${fmtTime(to)}`;
 }
 
-import { MYSTERY_NAMES } from "@/lib/characters";
+import { PLAYER_NAMES } from "@/lib/names";
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
@@ -124,8 +124,8 @@ export default function Home() {
   }
 
   function pickMysteryName(takenNames: string[]): string {
-    const available = MYSTERY_NAMES.filter((n) => !takenNames.includes(n));
-    const pool = available.length > 0 ? available : MYSTERY_NAMES;
+    const available = PLAYER_NAMES.filter((n) => !takenNames.includes(n));
+    const pool = available.length > 0 ? available : PLAYER_NAMES;
     return pool[Math.floor(Math.random() * pool.length)];
   }
 

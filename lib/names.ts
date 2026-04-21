@@ -1,3 +1,15 @@
+// Mainstream first names used as anonymous session identifiers
+export const PLAYER_NAMES = [
+  "Alex", "Sam", "Jordan", "Taylor", "Morgan",
+  "Riley", "Casey", "Avery", "Quinn", "Blake",
+  "Drew", "Reese", "Logan", "Cameron", "Skyler",
+  "Harper", "Finley", "River", "Sage", "Parker",
+  "Peyton", "Sydney", "Jesse", "Charlie", "Jamie",
+  "Rowan", "Hayden", "Ellis", "Evan", "Hunter",
+  "Kai", "Max", "Nico", "Robin", "Jude",
+  "Remy", "Scout", "Wynne", "Luca", "Zara",
+];
+
 // Convert HSL to a hex colour string so we can append CSS alpha suffixes like #rrggbb22
 function hslToHex(h: number, s: number, l: number): string {
   s /= 100; l /= 100;

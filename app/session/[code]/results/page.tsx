@@ -3,7 +3,7 @@
 import { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, Trophy, Lock, Clock, Plus, Layers, Info } from "lucide-react";
+import { Trophy, Lock, Clock, Search, Layers, Info } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, recordSwipe, removeParticipant } from "@/lib/session";
 import { getCurrentRound } from "@/lib/shortlist";
@@ -122,13 +122,6 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
     <div className="flex flex-col h-dvh mx-auto" style={{ maxWidth: 480 }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-5 pt-5 pb-4 shrink-0">
-        <button
-          onClick={() => router.back()}
-          className="p-2 rounded-lg"
-          style={{ background: "var(--surface)", color: "var(--text-muted)" }}
-        >
-          <ArrowLeft size={18} />
-        </button>
         <Logo size="sm" showText={false} />
         <div className="flex-1">
           <h1 className="text-base font-semibold" style={{ color: "var(--text)" }}>Results</h1>
@@ -138,7 +131,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
           <button onClick={() => router.push(`/session/${code}/add`)}
             className="p-2 rounded-lg"
             style={{ background: "var(--surface)", color: "var(--accent)" }}>
-            <Plus size={18} />
+            <Search size={18} />
           </button>
           <button onClick={() => router.push(`/session/${code}`)}
             className="p-2 rounded-lg"
@@ -196,7 +189,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                     background: `${color}22`, color, border: `1px solid ${color}55`,
                     cursor: canRemove ? "pointer" : "default",
                   }}>
-                  {p.name}
+                  {p.name}{p.id === myParticipantId ? " (you)" : ""}
                 </button>
               );
             })}

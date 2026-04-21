@@ -16,8 +16,7 @@ import {
   closeSession, startSession, resolveMatch, addFilmToSession, getSessionSwipeStats,
   removeParticipant, getShortlistData,
 } from "@/lib/session";
-import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getProviderList, posterUrl, getFilmDetail, tmdbToFilm } from "@/lib/tmdb";
-import { CHARACTER_FILMS } from "@/lib/characters";
+import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getProviderList, posterUrl } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, getServicesForRegion, TMDB_GENRES } from "@/lib/streaming";
 import { getCurrentRound } from "@/lib/shortlist";
@@ -43,11 +42,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
   const [showShortlist, setShowShortlist] = useState(false);
   const [introDismissed, setIntroDismissed] = useState(false);
+  // Persist intro dismissal per session so it only shows once per join
+  useEffect(() => {
+    if (typeof window !== "undefined" && localStorage.getItem(`intro-${code}`)) {
+      setIntroDismissed(true);
+    }
+  }, [code]);
   const [shortlistData, setShortlistData] = useState<{ films: import("@/types").Film[]; pinnedFilmIds: string[] } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
-  const [characterFilm, setCharacterFilm] = useState<Film | null>(null);
-  const [characterFilmLoading, setCharacterFilmLoading] = useState(false);
   const [matchList, setMatchList] = useState<Match[]>([]);
   // Wheel state — lifted here so SpinWheel can overlay MatchScreen without flash
   const [wheelFilms, setWheelFilms] = useState<Match[] | null>(null);
@@ -714,7 +717,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             </>}
           </div>
           <button
-            onClick={() => setIntroDismissed(true)}
+            onClick={() => { localStorage.setItem(`intro-${code}`, "1"); setIntroDismissed(true); }}
             className="w-full py-3.5 rounded-xl text-sm font-semibold"
             style={{ background: "var(--accent)", color: "#0c0c0e" }}>
             Let's go
@@ -917,44 +920,18 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       </div>
 
       {/* Participants */}
-      <div className="flex flex-col items-center px-5 py-3 shrink-0">
-        <div className="flex justify-center gap-1 flex-wrap">
-          {participants.map((p, i) => {
-            const isMe = p.id === participant?.id;
-            const hasFilm = !!CHARACTER_FILMS[p.name];
-            return (
-              <span key={p.id} className="flex items-center gap-1.5">
-                {i > 0 && (
-                  <span style={{ color: "var(--text-muted)", opacity: 0.35 }}>·</span>
-                )}
-                <button
-                  onClick={async () => {
-                    if (!hasFilm || characterFilmLoading) return;
-                    setCharacterFilmLoading(true);
-                    const entry = CHARACTER_FILMS[p.name];
-                    const detail = await getFilmDetail(entry.tmdbId);
-                    if (detail) {
-                      const film = { ...tmdbToFilm(detail), id: `char-${entry.tmdbId}` } as Film;
-                      setCharacterFilm(film);
-                    }
-                    setCharacterFilmLoading(false);
-                  }}
-                  style={{
-                    color: isMe ? "var(--text)" : "var(--text-muted)",
-                    fontWeight: isMe ? 600 : 400,
-                    fontSize: isMe ? "13px" : "12px",
-                    cursor: hasFilm ? "pointer" : "default",
-                    opacity: characterFilmLoading ? 0.5 : 1,
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                  }}>
-                  {p.name}
-                </button>
-              </span>
-            );
-          })}
-        </div>
+      <div className="flex justify-center gap-1.5 flex-wrap px-5 py-3 shrink-0">
+        {participants.map((p) => {
+          const isMe = p.id === participant?.id;
+          const color = participantColor(p.name);
+          return (
+            <span key={p.id}
+              className="text-xs px-2.5 py-1 rounded-full font-medium"
+              style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}>
+              {p.name}{isMe ? " (you)" : ""}
+            </span>
+          );
+        })}
       </div>
 
       {/* REMOVE_PARTICIPANT_HIDDEN: re-enable to allow host to remove members
@@ -1131,12 +1108,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         </>
       )}
 
-      {/* Character film overlay — tap your own name bubble to open */}
-      <FilmInfoOverlay
-        film={characterFilm}
-        onClose={() => setCharacterFilm(null)}
-        sessionServices={session?.streaming_services ?? []}
-      />
 
       <div className="h-24 shrink-0" />
     </div>
