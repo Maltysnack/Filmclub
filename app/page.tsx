@@ -317,8 +317,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Always-open service grid — tap to select/deselect */}
-              <div className="flex flex-wrap gap-2 justify-center">
+              {/* Always-open service grid — 4 columns, centred */}
+              <div className="grid gap-2 mx-auto" style={{ gridTemplateColumns: "repeat(4, 52px)" }}>
                 {regionServices.map((svc) => {
                   const on = selectedServices.includes(svc.id);
                   return (

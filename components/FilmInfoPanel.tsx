@@ -44,19 +44,24 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
             {Math.floor(film.runtime / 60)}h {film.runtime % 60}m
           </span>
         )}
-        {/* Rating — IMDb if available (tappable), fallback to TMDB */}
-        {(film.imdb_rating || film.rating) && (
+        {/* Rating — only show IMDb if we have the actual IMDb figure.
+            Never fall back to TMDB's vote_average under IMDb branding.
+            For brand-new films with no rating yet, show a "New" pill instead. */}
+        {film.imdb_rating ? (
           film.imdb_id ? (
             <a href={`https://www.imdb.com/title/${film.imdb_id}/`} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs font-medium rounded px-1 py-0.5"
               style={{ background: "rgba(245,197,24,0.15)", color: "#F5C518" }}>
               <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
-              {film.imdb_rating ?? film.rating}
+              {film.imdb_rating}
             </a>
           ) : (
-            <span className="text-xs font-medium" style={{ color: "#F5C518" }}>★ {film.imdb_rating ?? film.rating}</span>
+            <span className="text-xs font-medium" style={{ color: "#F5C518" }}>★ {film.imdb_rating}</span>
           )
-        )}
+        ) : film.release_year === new Date().getFullYear() ? (
+          <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+            style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>New</span>
+        ) : null}
         {film.genres?.slice(0, 2).map((g) => (
           <span key={g.id} className="text-xs px-1.5 py-0.5 rounded-full"
             style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
