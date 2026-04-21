@@ -104,6 +104,16 @@ export async function getFilmDetail(tmdbId: number): Promise<TMDBMovieDetail | n
   return res.json();
 }
 
+// Fetch all TMDB movie IDs that belong to a collection (franchise).
+// Used client-side to patch the local queue when the user swipes no on an
+// uncached film — lets skipBlocked suppress the rest of the franchise.
+export async function fetchCollectionTmdbIds(collectionId: number): Promise<Set<number>> {
+  const res = await fetch(`${BASE}/collection/${collectionId}?${params()}`);
+  if (!res.ok) return new Set();
+  const data = await res.json();
+  return new Set<number>((data.parts ?? []).map((p: { id: number }) => p.id));
+}
+
 export function posterUrl(path: string | null, size: "w342" | "w500" | "w780" | "w1280" | "original" = "w500"): string {
   if (!path) return "/placeholder-poster.jpg";
   return `${TMDB_IMAGE}/${size}${path}`;

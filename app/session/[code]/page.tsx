@@ -16,7 +16,7 @@ import {
   closeSession, startSession, resolveMatch, addFilmToSession, getSessionSwipeStats,
   removeParticipant, getShortlistData,
 } from "@/lib/session";
-import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getProviderList, posterUrl } from "@/lib/tmdb";
+import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getProviderList, posterUrl, getFilmDetail, fetchCollectionTmdbIds } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, getServicesForRegion } from "@/lib/streaming";
 import { getCurrentRound } from "@/lib/shortlist";
@@ -64,7 +64,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [showShortlistConfirm, setShowShortlistConfirm] = useState(false);
   // Set of TMDB collection IDs the user has swiped no on — hides remaining
   // films from that franchise unless another participant has already liked one.
-  const [blockedCollections, setBlockedCollections] = useState<Set<number>>(new Set());
+  const [blockedCollections, setBlockedCollections] = useState<Set<number>>(() => {
+    try { const s = sessionStorage.getItem(`filmclub-blocked-${code}`); return s ? new Set<number>(JSON.parse(s)) : new Set(); }
+    catch { return new Set(); }
+  });
   // Computed synchronously — avoids the flash where host briefly sees "Waiting..." before init
   const isHost = getIsHost(code);
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
@@ -145,6 +148,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     return () => { supabase.removeChannel(sub); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id]);
+
+  useEffect(() => {
+    sessionStorage.setItem(`filmclub-blocked-${code}`, JSON.stringify([...blockedCollections]));
+  }, [blockedCollections, code]);
 
   // ── Persist queue + index to sessionStorage so returning from + / results is instant ──
   useEffect(() => {
@@ -603,22 +610,58 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       }
     }
 
-    // Update franchise block list
+    // ── Franchise block ───────────────────────────────────────────────────────
+    // collection_id semantics:
+    //   null / undefined → not yet checked against TMDB (pre-migration cached film)
+    //   0               → checked, confirmed no collection (sentinel)
+    //   positive int    → belongs to that TMDB collection
     const cid = film.collection_id ?? null;
     let newBlocked = blockedCollections;
-    if (cid) {
-      if (!liked) {
-        // No on a franchise film — block the rest
+    // workingQueue may be replaced with an enriched copy when we fetch on-demand
+    let workingQueue = queue;
+
+    if (!liked) {
+      if (cid === null) {
+        // Collection unknown — fetch TMDB detail on-demand so we can block correctly
+        const detail = await getFilmDetail(film.tmdb_id);
+        const detailCid = detail?.belongs_to_collection?.id ?? 0; // 0 = sentinel
+
+        if (detailCid) {
+          // Film is part of a franchise — find all sibling TMDB IDs
+          const colMemberIds = await fetchCollectionTmdbIds(detailCid);
+
+          // Patch collection_id into our local queue for this film and any franchise
+          // siblings that are still unchecked (collection_id == null).
+          // This lets skipBlocked suppress them for the rest of this session.
+          const enriched = fullQueue.map((f) =>
+            f.id === film.id || (colMemberIds.has(f.tmdb_id) && f.collection_id == null)
+              ? { ...f, collection_id: detailCid }
+              : f
+          );
+          setFullQueue(enriched);
+          workingQueue = enriched;
+
+          newBlocked = new Set([...blockedCollections, detailCid]);
+          setBlockedCollections(newBlocked);
+        } else {
+          // No collection — mark with sentinel 0 so we skip the fetch next time
+          setFullQueue((prev) =>
+            prev.map((f) => f.id === film.id ? { ...f, collection_id: 0 } : f)
+          );
+          // workingQueue stays as queue — nothing to block
+        }
+      } else if (cid) {
+        // Already have the collection_id — block it directly
         newBlocked = new Set([...blockedCollections, cid]);
         setBlockedCollections(newBlocked);
-      } else if (blockedCollections.has(cid)) {
-        // Yes on a previously blocked franchise — reopen it
-        newBlocked = new Set([...blockedCollections].filter(id => id !== cid));
-        setBlockedCollections(newBlocked);
       }
+    } else if (cid && blockedCollections.has(cid)) {
+      // Yes on a previously blocked franchise — reopen it
+      newBlocked = new Set([...blockedCollections].filter((id) => id !== cid));
+      setBlockedCollections(newBlocked);
     }
 
-    const nextIdx = skipBlocked(currentIndex + 1, queue, newBlocked, filmLikes);
+    const nextIdx = skipBlocked(currentIndex + 1, workingQueue, newBlocked, filmLikes);
     if (nextIdx >= queue.length) {
       // Final batch check — catches the case where this was the last voter
       if (s.started && s.mode === "live" && !isSolo) {
