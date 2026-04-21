@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
-import { ArrowLeft, Search, Plus, Check, Heart, Trophy, Layers, Lock, Clock } from "lucide-react";
+import { ArrowLeft, Search, Heart, Trophy, Layers, Lock, Clock } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
 import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
@@ -11,6 +11,12 @@ import { addFilmToSession, getSession, getParticipantId, getSessionFilms, record
 import { TMDBMovie, Film } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
+
+// Module-level provider cache — persists across re-renders and back/forward navigation
+const providerCache = new Map<number, string[]>();
+
+const MIN_VOTES = 50;  // filter out films with fewer TMDB votes than this
+const MAX_RESULTS = 9; // always show a 3×3 grid
 
 export default function AddFilmsPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -21,17 +27,18 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   const [alreadyInPool, setAlreadyInPool] = useState<Set<number>>(new Set());
   const [likedByMe, setLikedByMe] = useState<Set<number>>(new Set());
   const [searching, setSearching] = useState(false);
-  const [checkingProviders, setCheckingProviders] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionClosed, setSessionClosed] = useState(false);
   const [participantId, setParticipantIdState] = useState<string | null>(null);
   const [filmIdMap, setFilmIdMap] = useState<Map<number, string>>(new Map());
   const [sessionServices, setSessionServices] = useState<string[]>([]);
-  // tmdbId → serviceIds available on (undefined = not yet checked)
+  // tmdbId → serviceIds (populated lazily, one film at a time)
   const [providerMap, setProviderMap] = useState<Map<number, string[]>>(new Map());
-  // Info modal
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
+
+  // Tracks the current set of displayed result IDs — used to drop stale provider callbacks
+  const currentResultIds = useRef(new Set<number>());
 
   useEffect(() => {
     async function init() {
@@ -52,29 +59,46 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
     init();
   }, [code, router]);
 
-  // Debounced search
+  // Debounced search — show results immediately, check providers lazily
   useEffect(() => {
     const timer = setTimeout(async () => {
       const q = query.trim();
-      if (!q) { setResults([]); setProviderMap(new Map()); return; }
+      if (!q) {
+        setResults([]);
+        setProviderMap(new Map());
+        currentResultIds.current = new Set();
+        return;
+      }
       setSearching(true);
-      const res = await searchFilms(q);
-      const trimmed = res.slice(0, 20);
-      setResults(trimmed);
+      const raw = await searchFilms(q);
       setSearching(false);
 
-      // Fetch providers for all results in parallel if session has service filters
+      // Filter: must have a poster and enough votes to be a real film
+      const filtered = raw
+        .filter(m => m.poster_path && m.vote_count >= MIN_VOTES)
+        .slice(0, MAX_RESULTS);
+
+      currentResultIds.current = new Set(filtered.map(m => m.id));
+      setResults(filtered);
+      // Seed providerMap with any already-cached entries so cards update instantly
+      setProviderMap(new Map(
+        filtered
+          .filter(m => providerCache.has(m.id))
+          .map(m => [m.id, providerCache.get(m.id)!])
+      ));
+
+      // Check providers for uncached films one at a time — each resolves independently
       if (sessionServices.length > 0) {
-        setCheckingProviders(true);
         const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-        const entries = await Promise.all(
-          trimmed.map(async (movie) => {
-            const providers = await fetchWatchProvidersAU(movie.id, apiKey);
-            return { tmdbId: movie.id, serviceIds: providers.map((p) => p.serviceId) };
-          })
-        );
-        setProviderMap(new Map(entries.map((e) => [e.tmdbId, e.serviceIds])));
-        setCheckingProviders(false);
+        filtered.forEach(async (movie) => {
+          if (providerCache.has(movie.id)) return; // already seeded above
+          const providers = await fetchWatchProvidersAU(movie.id, apiKey);
+          const serviceIds = providers.map(p => p.serviceId);
+          providerCache.set(movie.id, serviceIds);
+          // Only update state if this film is still in the current results
+          if (!currentResultIds.current.has(movie.id)) return;
+          setProviderMap(prev => new Map(prev).set(movie.id, serviceIds));
+        });
       }
     }, 400);
     return () => clearTimeout(timer);
@@ -190,10 +214,8 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
               style={{ color: "var(--text)" }}
               autoFocus
             />
-            {(searching || checkingProviders) && (
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                {searching ? "…" : "checking…"}
-              </span>
+            {searching && (
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>…</span>
             )}
           </div>
 
@@ -230,7 +252,7 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
               </p>
               <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
                 {sessionServices.length > 0
-                  ? "Films not on your selected services will be shown greyed out."
+                  ? "Films not on your selected services will be faded out."
                   : "Add films to the pool for everyone to swipe on."}
               </p>
             </div>
@@ -317,7 +339,7 @@ function FilmGrid({
   alreadyInPool: Set<number>;
   likedByMe: Set<number>;
   sessionServices: string[];
-  providerMap: Map<number, string[]>;
+  providerMap: Map<number, string[]>; // populated lazily — undefined means still checking
   onLike: (m: TMDBMovie) => void;
   onInfo: (m: TMDBMovie) => void;
 }) {
