@@ -42,14 +42,16 @@ export async function getTopRatedFilms(pages = 1): Promise<TMDBMovie[]> {
 export async function discoverFilmsByProviders(
   providerIds: number[],
   pagesPerProvider = 1,
-  region: Region = "AU"
+  region: Region = "AU",
+  sortBy: "popularity.desc" | "vote_average.desc" = "popularity.desc",
+  minVotes = 0
 ): Promise<TMDBMovie[]> {
   if (!providerIds.length) return [];
 
   const perProvider = await Promise.all(
     providerIds.map((id) =>
       fetchPages(
-        `${BASE}/discover/movie?watch_region=${region}&with_watch_providers=${id}&sort_by=popularity.desc&`,
+        `${BASE}/discover/movie?watch_region=${region}&with_watch_providers=${id}&sort_by=${sortBy}${minVotes ? `&vote_count.gte=${minVotes}` : ""}&`,
         pagesPerProvider
       )
     )
