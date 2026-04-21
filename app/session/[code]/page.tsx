@@ -23,7 +23,7 @@ import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Search, Trophy, Play, Copy, Check } from "lucide-react";
+import { Search, Trophy, Play, Copy, Check, Clock } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
@@ -665,9 +665,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                 ? <Check size={18} style={{ color: "var(--like)" }} />
                 : <Copy size={18} style={{ color: "var(--text-muted)" }} />}
             </button>
-            <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-              Tap to copy and share with your group
-            </p>
           </div>
 
           {/* Participants */}
@@ -706,16 +703,16 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             </div>
           </div>
 
-          {/* How it works — brief hint */}
-          <div className="mb-8 px-1 flex flex-col gap-2">
+          {/* How it works — main content while waiting */}
+          <div className="mb-8 flex flex-col gap-5">
             {[
-              { icon: <Search size={13} />, text: "Search to add films to the pool" },
-              { icon: <Trophy size={13} />, text: "Swipe right to like, left to skip" },
-              { icon: <Play size={13} fill="currentColor" />, text: "Host starts when everyone is ready" },
+              { icon: <Search size={22} />, text: "Search to add films to the pool" },
+              { icon: <Clock size={22} />, text: "Hold any film to see more info" },
+              { icon: <Trophy size={22} />, text: "Swipe right to like, left to skip" },
             ].map(({ icon, text }) => (
-              <div key={text} className="flex items-center gap-2.5">
-                <span className="shrink-0" style={{ color: "var(--text-muted)" }}>{icon}</span>
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>{text}</span>
+              <div key={text} className="flex items-center gap-4">
+                <span className="shrink-0" style={{ color: "var(--accent)" }}>{icon}</span>
+                <span className="text-base font-medium" style={{ color: "var(--text)" }}>{text}</span>
               </div>
             ))}
           </div>

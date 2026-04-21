@@ -42,7 +42,7 @@ function formatCinema(dateStr: string, from: string, to: string): string {
   return `${weekday} ${ordinal(d.getDate())} ${month} ${fmtTime(from)} – ${fmtTime(to)}`;
 }
 
-import { PLAYER_NAMES } from "@/lib/names";
+import { pickMysteryName } from "@/lib/names";
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
@@ -115,16 +115,20 @@ export default function Home() {
 
 
   function handleJoinCodeChange(e: React.ChangeEvent<HTMLInputElement>) {
-    // Strip hyphens + non-alphanumeric, uppercase, cap at 6 chars
-    const clean = e.target.value.replace(/-/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
-    // Auto-insert hyphen after 4th character once the user has typed past it
-    setJoinCode(clean.length > 4 ? clean.slice(0, 4) + "-" + clean.slice(4) : clean);
-  }
-
-  function pickMysteryName(takenNames: string[]): string {
-    const available = PLAYER_NAMES.filter((n) => !takenNames.includes(n));
-    const pool = available.length > 0 ? available : PLAYER_NAMES;
-    return pool[Math.floor(Math.random() * pool.length)];
+    const raw = e.target.value.toUpperCase();
+    // Strip everything except alphanumerics to get the raw code chars
+    const letters = raw.replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    // Auto-insert hyphen after 4 chars; also preserve a manually typed hyphen
+    // at exactly the 4-char boundary so HUNT- stays as HUNT- while typing
+    let display: string;
+    if (letters.length > 4) {
+      display = letters.slice(0, 4) + "-" + letters.slice(4);
+    } else if (letters.length === 4 && raw.replace(/[^A-Z0-9-]/g, "").endsWith("-")) {
+      display = letters + "-";
+    } else {
+      display = letters;
+    }
+    setJoinCode(display);
   }
 
   function resolveName(raw: string, takenNames: string[] = []): string {
