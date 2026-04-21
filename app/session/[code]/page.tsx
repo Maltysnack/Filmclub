@@ -23,7 +23,7 @@ import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Search, Trophy, CheckCircle, Play, Clock } from "lucide-react";
+import { Search, Trophy, Play, Copy, Check } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
@@ -40,13 +40,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [isHost, setIsHostState] = useState(false);
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
   const [showShortlist, setShowShortlist] = useState(false);
-  const [introDismissed, setIntroDismissed] = useState(false);
-  // Persist intro dismissal per session so it only shows once per join
-  useEffect(() => {
-    if (typeof window !== "undefined" && localStorage.getItem(`intro-${code}`)) {
-      setIntroDismissed(true);
-    }
-  }, [code]);
   const [shortlistData, setShortlistData] = useState<{ films: import("@/types").Film[]; pinnedFilmIds: string[] } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
@@ -645,42 +638,110 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setTimeout(() => setCopied(false), 1500);
   }
 
-  if (!introDismissed) {
+  // ── Lobby — shown to everyone until the host starts the session ─────────────
+  if (!session?.started) {
+    const hostParticipant = participants[0]; // creator always joins first
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center px-8 gap-6" style={{ background: "var(--bg)" }}>
-        <Logo size="md" />
-        <div className="w-full rounded-2xl p-8" style={{ maxWidth: 320, background: "var(--surface)", border: "1px solid var(--border)" }}>
-          <div className="mb-10" style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "20px 12px", alignItems: "center" }}>
-            <span className="flex items-center justify-center p-1.5 rounded-lg" style={{ background: "var(--surface-2)" }}>
-              <Search size={14} style={{ color: "var(--accent)" }} />
-            </span>
-            <span className="text-sm" style={{ color: "var(--text)" }}>Search to add films</span>
+      <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
+        <div className="flex flex-col flex-1 mx-auto w-full px-5 py-10" style={{ maxWidth: 480 }}>
 
-            <span className="flex items-center justify-center p-1.5 rounded-lg" style={{ background: "var(--surface-2)" }}>
-              <Clock size={14} style={{ color: "var(--accent)" }} />
-            </span>
-            <span className="text-sm" style={{ color: "var(--text)" }}>Hold a film for more info</span>
-
-            <span className="flex items-center justify-center p-1.5 rounded-lg" style={{ background: "var(--surface-2)" }}>
-              <Trophy size={14} style={{ color: "var(--accent)" }} />
-            </span>
-            <span className="text-sm" style={{ color: "var(--text)" }}>See everyone's results</span>
-
-            {isHost && <>
-              <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold justify-center" style={{ background: "var(--like)", color: "#0c0c0e" }}>
-                <Play size={10} fill="currentColor" />
-                Lock In
-              </span>
-              <span className="text-sm" style={{ color: "var(--text)" }}>When everyone is ready</span>
-            </>}
+          {/* Logo */}
+          <div className="flex justify-center mb-10">
+            <Logo size="md" />
           </div>
-          <button
-            disabled={loading}
-            onClick={() => { localStorage.setItem(`intro-${code}`, "1"); setIntroDismissed(true); }}
-            className="w-full py-3.5 rounded-xl text-sm font-semibold"
-            style={{ background: "var(--accent)", color: "#0c0c0e", opacity: loading ? 0.45 : 1 }}>
-            {loading ? "Loading…" : "Let's go"}
-          </button>
+
+          {/* Session code */}
+          <div className="mb-8 text-center">
+            <p className="text-xs font-medium uppercase tracking-wider mb-3"
+              style={{ color: "var(--text-muted)" }}>Join code</p>
+            <button
+              onClick={handleShare}
+              className="inline-flex items-center gap-3 px-6 py-4 rounded-2xl transition-all"
+              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <span className="font-mono font-bold text-3xl tracking-widest" style={{ color: "var(--accent)" }}>
+                {code}
+              </span>
+              {copied
+                ? <Check size={18} style={{ color: "var(--like)" }} />
+                : <Copy size={18} style={{ color: "var(--text-muted)" }} />}
+            </button>
+            <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+              Tap to copy and share with your group
+            </p>
+          </div>
+
+          {/* Participants */}
+          <div className="mb-6">
+            <p className="text-xs font-medium uppercase tracking-wider mb-3"
+              style={{ color: "var(--text-muted)" }}>
+              {participants.length === 0 ? "Waiting for people to join…" : `${participants.length} in the room`}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {participants.map((p) => {
+                const color = participantColor(p.name);
+                const isMe = p.id === participant?.id;
+                const isHostP = p.id === hostParticipant?.id;
+                return (
+                  <div key={p.id}
+                    className="flex items-center gap-3 px-3 py-3 rounded-xl"
+                    style={{ background: "var(--surface)", border: `1px solid ${color}33` }}>
+                    {/* Avatar */}
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold"
+                      style={{ background: `${color}25`, color }}>
+                      {p.name.charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color }}>
+                        {p.name}
+                      </p>
+                      {(isHostP || isMe) && (
+                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          {isHostP && isMe ? "Host · you" : isHostP ? "Host" : "you"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* How it works — brief hint */}
+          <div className="mb-8 px-1 flex flex-col gap-2">
+            {[
+              { icon: <Search size={13} />, text: "Search to add films to the pool" },
+              { icon: <Trophy size={13} />, text: "Swipe right to like, left to skip" },
+              { icon: <Play size={13} fill="currentColor" />, text: "Host starts when everyone is ready" },
+            ].map(({ icon, text }) => (
+              <div key={text} className="flex items-center gap-2.5">
+                <span className="shrink-0" style={{ color: "var(--text-muted)" }}>{icon}</span>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>{text}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div className="mt-auto">
+            {isHost ? (
+              <button
+                onClick={handleStart}
+                disabled={starting || loading}
+                className="w-full py-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+                style={{
+                  background: "var(--like)",
+                  color: "#0c0c0e",
+                  opacity: (starting || loading) ? 0.55 : 1,
+                }}>
+                <Play size={14} fill="currentColor" />
+                {starting ? "Starting…" : loading ? "Loading films…" : `Start · ${participants.length} ${participants.length === 1 ? "person" : "people"}`}
+              </button>
+            ) : (
+              <div className="w-full py-4 rounded-xl text-sm text-center"
+                style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
+                Waiting for {hostParticipant?.name ?? "the host"} to start…
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -752,7 +813,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   const currentFilm = queue[currentIndex];
   const nextFilm = queue[currentIndex + 1];
-  const sessionStarted = session?.started ?? false;
 
   // Preload backdrops for the next 6 films from the current position in either mode.
   // Swipe mode uses currentIndex; scroll mode uses scrollIndexRef.
@@ -786,41 +846,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           </button>
         </div>
       </header>
-
-      {/* Code + start bar */}
-      <div className="px-5 pb-3 shrink-0">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
-          style={{ background: "var(--surface)" }}>
-          <button onClick={handleShare} className="flex items-center gap-2 min-w-0">
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Join code</span>
-            <span className="font-mono font-bold tracking-widest text-sm" style={{ color: "var(--accent)" }}>
-              {code}
-            </span>
-            {copied && (
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Copied</span>
-            )}
-          </button>
-          <div className="flex items-center gap-2 shrink-0">
-            {isHost && !sessionStarted ? (
-              <button onClick={handleStart} disabled={starting}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-                style={{ background: "var(--like)", color: "#0c0c0e", opacity: starting ? 0.6 : 1 }}>
-                <Play size={12} fill="currentColor" />
-                {starting ? "Starting…" : `Lock In · ${participants.length}`}
-              </button>
-            ) : (
-              <span className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0"
-                style={{
-                  background: sessionStarted ? "rgba(74,222,128,0.12)" : "var(--surface-2)",
-                  color: sessionStarted ? "var(--like)" : "var(--text-muted)",
-                }}>
-                {sessionStarted ? <CheckCircle size={11} /> : <Clock size={11} />}
-                {sessionStarted ? "Live" : "Waiting"}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Participants */}
       <div className="flex justify-center gap-1.5 flex-wrap px-5 py-3 shrink-0">
