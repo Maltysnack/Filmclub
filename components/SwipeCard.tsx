@@ -218,7 +218,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
                     {film.release_year}
                   </span>
                 )}
-                {film.imdb_rating && (
+                {film.imdb_rating ? (
                   <a
                     href={`https://www.imdb.com/title/${film.imdb_id}/`}
                     target="_blank"
@@ -230,7 +230,24 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
                     <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
                     {film.imdb_rating}
                   </a>
-                )}
+                ) : film.release_year === new Date().getFullYear() ? (
+                  film.imdb_id ? (
+                    <a
+                      href={`https://www.imdb.com/title/${film.imdb_id}/`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: "rgba(255,255,255,0.12)", color: "var(--text-muted)" }}>
+                      New
+                    </a>
+                  ) : (
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                      style={{ background: "rgba(255,255,255,0.12)", color: "var(--text-muted)" }}>
+                      New
+                    </span>
+                  )
+                ) : null}
               </div>
             </div>
           </div>

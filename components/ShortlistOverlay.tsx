@@ -117,7 +117,13 @@ export default function ShortlistOverlay({
     } else if (r.phase === "nominate") {
       updateUiPhase("nominate");
     } else {
-      updateUiPhase("veto");
+      // "veto" phase — skip straight to three_film decider when pool is exactly 3
+      if (r.film_ids.length === 3) {
+        if (isHost) advanceToVotePhase(sessionId, r.round_number, r.film_ids);
+        updateUiPhase("three_film");
+      } else {
+        updateUiPhase("veto");
+      }
     }
   }
 

@@ -23,7 +23,7 @@ import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Search, Trophy, Play, Copy, Check, Clock } from "lucide-react";
+import { Search, Trophy, Play, Copy, Check, Clock, Zap, Crown } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
@@ -33,11 +33,18 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const { code } = use(params);
   const router = useRouter();
 
+  // Synchronous check on mount — prevents lobby flash for users returning from search/results
+  // (they have a snapshot), while new joiners (no snapshot) correctly see the lobby.
+  const hasSnapshot = useRef(!!sessionStorage.getItem(`filmclub-queue-${code}`));
+
   const [session, setSession] = useState<Session | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-  const [isHost, setIsHostState] = useState(false);
+  const [showLateModal, setShowLateModal] = useState(false);
+  const [showShortlistConfirm, setShowShortlistConfirm] = useState(false);
+  // Computed synchronously — avoids the flash where host briefly sees "Waiting..." before init
+  const isHost = getIsHost(code);
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
   const [showShortlist, setShowShortlist] = useState(false);
   const [shortlistData, setShortlistData] = useState<{ films: import("@/types").Film[]; pinnedFilmIds: string[] } | null>(null);
@@ -389,7 +396,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       if (!pid) return router.push("/");
 
       setSession(s);
-      setIsHostState(getIsHost(code));
 
       if (s.status === "closed") {
         const existing = await getMatches(s.id);
@@ -425,6 +431,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setGroupSwipeCount(stats.totalSwipes);
       setGroupLikeCount(stats.totalLikes);
       setFilmLikes(stats.filmLikes);
+
+      // Show a one-time "how it works" card to users who joined after the session started
+      if (s.started && !sessionStorage.getItem(`filmclub-hints-${code}`)) {
+        setShowLateModal(true);
+      }
 
       setLoading(false);
 
@@ -555,9 +566,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     if (!session || !participant || currentIndex >= queue.length) return;
     const s = sessionRef.current ?? session; // always fresh — avoids stale closure
     const film = queue[currentIndex];
+    // Solo sessions (1 participant) never auto-match — only shortlist vote can resolve.
+    // This makes single-tab testing practical and supports solo "make a shortlist" use.
+    const isSolo = participants.length <= 1;
     await recordSwipe(s.id, participant.id, film.id, liked);
 
-    if (liked && s.started) {
+    if (liked && s.started && !isSolo) {
       const isMatch = await checkForMatch(s.id, film.id, s.threshold);
       if (isMatch && s.mode === "live") {
         await closeSession(s.id);
@@ -570,7 +584,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     const next = currentIndex + 1;
     if (next >= queue.length) {
       // Final batch check — catches the case where this was the last voter
-      if (s.started && s.mode === "live") {
+      if (s.started && s.mode === "live" && !isSolo) {
         let found = false;
         for (const f of queue) {
           if (await checkForMatch(s.id, f.id, s.threshold)) found = true;
@@ -597,7 +611,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     // Update local state immediately so handleSwipe checks fire correctly
     setSession((s) => s ? { ...s, started: true } : s);
 
-    if (session.mode === "live") {
+    if (session.mode === "live" && participants.length > 1) {
       const matched = await checkAllMatches(session.id, session.threshold);
       if (matched.length > 0) {
         await closeSession(session.id);
@@ -638,8 +652,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setTimeout(() => setCopied(false), 1500);
   }
 
-  // ── Lobby — shown to everyone until the host starts the session ─────────────
-  if (!session?.started) {
+  // ── Lobby — shown to new joiners until the host starts the session ──────────
+  // Skip lobby if the user has a snapshot (returning from search/results) to
+  // avoid a flash of the lobby before the snapshot is restored.
+  if (!hasSnapshot.current && session !== null && !session.started) {
     const hostParticipant = participants[0]; // creator always joins first
     return (
       <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
@@ -673,26 +689,26 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               style={{ color: "var(--text-muted)" }}>
               {participants.length === 0 ? "Waiting for people to join…" : `${participants.length} in the room`}
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {participants.map((p) => {
                 const color = participantColor(p.name);
                 const isMe = p.id === participant?.id;
                 const isHostP = p.id === hostParticipant?.id;
                 return (
                   <div key={p.id}
-                    className="flex items-center gap-3 px-3 py-3 rounded-xl"
+                    className="flex items-center gap-2 px-2 py-2 rounded-xl"
                     style={{ background: "var(--surface)", border: `1px solid ${color}33` }}>
                     {/* Avatar */}
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold"
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
                       style={{ background: `${color}25`, color }}>
                       {p.name.charAt(0)}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color }}>
+                      <p className="text-xs font-semibold truncate" style={{ color }}>
                         {p.name}
                       </p>
                       {(isHostP || isMe) && (
-                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        <p className="text-[10px] leading-none mt-0.5" style={{ color: "var(--text-muted)" }}>
                           {isHostP && isMe ? "Host · you" : isHostP ? "Host" : "you"}
                         </p>
                       )}
@@ -703,18 +719,42 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             </div>
           </div>
 
-          {/* How it works — fills remaining space and centres itself between members and CTA */}
-          <div className="flex-1 flex flex-col justify-center gap-5">
-            {[
-              { icon: <Search size={20} />, text: "Search to add films to the pool" },
-              { icon: <Trophy size={20} />, text: "See everyone's results as you go" },
-              { icon: <Clock size={20} />, text: "Press and hold any film for more info" },
-            ].map(({ icon, text }) => (
-              <div key={text} className="flex items-center gap-4">
-                <span className="shrink-0" style={{ color: "var(--accent)" }}>{icon}</span>
-                <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{text}</span>
+          {/* How it works + How it's decided — fills remaining space, centred between members and CTA */}
+          <div className="flex-1 flex flex-col justify-center gap-6">
+
+            {/* How to play */}
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-medium uppercase tracking-wider"
+                style={{ color: "var(--text-muted)" }}>How to</p>
+              {[
+                { icon: <Search size={16} />, text: "Search to add films to the pool" },
+                { icon: <Trophy size={16} />, text: "See everyone's results as you go" },
+                { icon: <Clock size={16} />, text: "Press and hold any film for more info" },
+              ].map(({ icon, text }) => (
+                <div key={text} className="flex items-center gap-3">
+                  <span className="shrink-0" style={{ color: "var(--accent)" }}>{icon}</span>
+                  <span className="text-xs font-medium" style={{ color: "var(--text)" }}>{text}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* How it's decided */}
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-medium uppercase tracking-wider"
+                style={{ color: "var(--text-muted)" }}>How it&apos;s decided</p>
+              <div className="flex items-center gap-3">
+                <span className="shrink-0" style={{ color: "var(--accent)" }}><Zap size={16} /></span>
+                <span className="text-xs font-medium" style={{ color: "var(--text)" }}>Everyone swipes right → instant match</span>
               </div>
-            ))}
+              <div className="flex items-center gap-3">
+                <span className="w-4 shrink-0 text-center text-[10px] font-bold" style={{ color: "var(--accent)" }}>OR</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="shrink-0" style={{ color: "var(--accent)" }}><Crown size={16} /></span>
+                <span className="text-xs font-medium" style={{ color: "var(--text)" }}>{hostParticipant?.name ?? "Host"} can call a shortlist vote at any time</span>
+              </div>
+            </div>
+
           </div>
 
           {/* CTA */}
@@ -828,9 +868,28 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     ))}
     <div className="flex flex-col h-dvh mx-auto overflow-hidden"
       style={{ maxWidth: infoFilm ? 920 : 480, transition: "max-width 0.3s cubic-bezier(0.4,0,0.2,1)" }}>
-      <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
-        <Logo size="sm" />
-        <div className="flex items-center gap-2">
+      <header className="flex items-center px-5 pt-5 pb-3 shrink-0">
+        {/* Left: icon centres on the combined Filmclub+code block */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Logo size="sm" showText={false} />
+          <div>
+            <p className="text-lg font-light tracking-[0.15em] uppercase leading-tight" style={{ color: "var(--text)" }}>Filmclub</p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>{code}</p>
+          </div>
+        </div>
+        <div className="flex-1" />
+        {/* Centre: Shortlist Vote — flex spacers keep it centred in the gap */}
+        {isHost && session?.status !== "closed" && !allDone && filmLikes.size > 0 && (
+          <button
+            onClick={() => setShowShortlistConfirm(true)}
+            className="shrink-0 whitespace-nowrap px-5 py-1.5 rounded-lg text-xs font-semibold"
+            style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+            Shortlist Vote
+          </button>
+        )}
+        <div className="flex-1" />
+        {/* Right */}
+        <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => router.push(`/session/${code}/add`)}
             className="p-2 rounded-lg"
             style={{ background: "var(--surface)", color: "var(--accent)" }}>
@@ -845,7 +904,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       </header>
 
       {/* Participants */}
-      <div className="flex justify-center gap-1.5 flex-wrap px-5 py-3 shrink-0">
+      <div className="flex justify-start gap-1.5 flex-wrap px-5 py-3 shrink-0">
         {participants.map((p) => {
           const isMe = p.id === participant?.id;
           const color = participantColor(p.name);
@@ -1036,6 +1095,122 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
       <div className="h-24 shrink-0" />
     </div>
+
+    {/* ShortlistOverlay during swipe phase — the version in the matchList block only
+        renders on the tie/match screen. This one covers the active swiping phase so
+        the host can trigger a vote before any unanimous match has occurred. */}
+    {showShortlist && session && shortlistData && matchList.length === 0 && (
+      <ShortlistOverlay
+        films={shortlistData.films}
+        pinnedFilmIds={shortlistData.pinnedFilmIds}
+        sessionId={session.id}
+        participantId={participant?.id ?? ""}
+        isHost={isHost}
+        totalParticipants={participants.length}
+        sessionServices={session.streaming_services ?? []}
+        region={session.region ?? "AU"}
+        onComplete={async (winnerId) => {
+          if (isHost) {
+            await resolveMatch(session.id, winnerId);
+            const allMatches = await getMatches(session.id);
+            if (allMatches.length > 0) setMatchList(allMatches);
+          }
+          setShowShortlist(false);
+        }}
+      />
+    )}
+
+    {/* ── Late-joiner hints modal ───────────────────────────────────────── */}
+    {showLateModal && (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center px-4"
+        style={{ background: "rgba(12,12,14,0.75)", backdropFilter: "blur(4px)" }}>
+        <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-5"
+          style={{ background: "var(--surface)" }}>
+          <div className="flex items-center justify-center gap-2">
+            <Logo size="sm" showText={false} />
+            <p className="text-lg font-light tracking-[0.15em] uppercase leading-tight" style={{ color: "var(--text)" }}>Filmclub</p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-medium uppercase tracking-wider"
+              style={{ color: "var(--text-muted)" }}>How to</p>
+            {[
+              { icon: <Search size={16} />, text: "Search to add films to the pool" },
+              { icon: <Trophy size={16} />, text: "See everyone's results as you go" },
+              { icon: <Clock size={16} />, text: "Press and hold any film for more info" },
+            ].map(({ icon, text }) => (
+              <div key={text} className="flex items-center gap-3">
+                <span className="shrink-0" style={{ color: "var(--accent)" }}>{icon}</span>
+                <span className="text-xs font-medium" style={{ color: "var(--text)" }}>{text}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-medium uppercase tracking-wider"
+              style={{ color: "var(--text-muted)" }}>How it&apos;s decided</p>
+            <div className="flex items-center gap-3">
+              <span className="shrink-0" style={{ color: "var(--accent)" }}><Zap size={16} /></span>
+              <span className="text-xs font-medium" style={{ color: "var(--text)" }}>Everyone swipes right → instant match</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-4 shrink-0 text-center text-[10px] font-bold" style={{ color: "var(--accent)" }}>OR</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="shrink-0" style={{ color: "var(--accent)" }}><Crown size={16} /></span>
+              <span className="text-xs font-medium" style={{ color: "var(--text)" }}>
+                {participants[0]?.name ?? "Host"} can call a shortlist vote at any time
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              sessionStorage.setItem(`filmclub-hints-${code}`, "1");
+              setShowLateModal(false);
+            }}
+            className="w-full py-3 rounded-xl text-sm font-semibold"
+            style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+            Got it
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* ── Shortlist Vote confirmation ───────────────────────────────────── */}
+    {showShortlistConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        style={{ background: "rgba(12,12,14,0.75)", backdropFilter: "blur(4px)" }}>
+        <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
+          style={{ background: "var(--surface)" }}>
+          <div>
+            <p className="text-sm font-semibold mb-1.5" style={{ color: "var(--text)" }}>
+              Start a shortlist vote?
+            </p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              All films with at least one like will go to a group vote.
+            </p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              Live swiping ends.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setShowShortlistConfirm(false)}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+              style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                setShowShortlistConfirm(false);
+                const likedIds = [...filmLikes.keys()];
+                openShortlist(session!.id, likedIds.length > 0 ? likedIds : []);
+              }}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+              Start Vote
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 }
@@ -1191,7 +1366,7 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortl
           {isHost && onShortlist && (
             <button onClick={onShortlist} className="flex-1 py-3 rounded-xl text-sm font-semibold border"
               style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
-              Shortlist
+              Shortlist Vote
             </button>
           )}
           {isHost && onRandomise && (

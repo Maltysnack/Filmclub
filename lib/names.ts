@@ -53,15 +53,15 @@ export const CHARACTER_COLORS: Record<string, string> = {
   "Dory":             "#1e40af", // deep ocean blue
   // Classics
   "Indiana Jones":    "#d97706", // warm sand amber
-  "James Bond":       "#374151", // dark suit grey
-  "Jack Sparrow":     "#44403c", // weathered dark brown
-  "The Terminator":   "#52525b", // metallic charcoal
+  "James Bond":       "#94a3b8", // silver (tuxedo / spy)
+  "Jack Sparrow":     "#a8937a", // weathered warm tan
+  "The Terminator":   "#a1a1aa", // metallic chrome
   "Forrest Gump":     "#d4a76a", // warm khaki
   "Katniss Everdeen": "#166534", // forest green
   "Neo":              "#22c55e", // matrix green
   "Morpheus":         "#581c87", // very deep purple
   "Shrek":            "#16a34a", // ogre green
-  "Batman":           "#1e1b4b", // near-black dark indigo
+  "Batman":           "#818cf8", // indigo-400 (dark knight, readable)
   "The Joker":        "#9333ea", // vibrant purple
   "Jack Dawson":      "#0369a1", // Titanic ocean blue
 };

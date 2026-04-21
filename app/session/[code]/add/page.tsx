@@ -3,11 +3,11 @@
 import { useState, useEffect, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Trophy, Layers, Lock, Clock } from "lucide-react";
+import { Search, Trophy, Layers } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
 import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
-import { addFilmToSession, getSession, getParticipantId, getSessionFilms, recordSwipe } from "@/lib/session";
+import { addFilmToSession, getSession, getParticipantId, getIsHost, getSessionFilms, recordSwipe } from "@/lib/session";
 import { TMDBMovie, Film } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
@@ -28,8 +28,6 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   const [likedByMe, setLikedByMe] = useState<Set<number>>(new Set());
   const [searching, setSearching] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionStarted, setSessionStarted] = useState(false);
-  const [sessionClosed, setSessionClosed] = useState(false);
   const [participantId, setParticipantIdState] = useState<string | null>(null);
   const [filmIdMap, setFilmIdMap] = useState<Map<number, string>>(new Map());
   const [sessionServices, setSessionServices] = useState<string[]>([]);
@@ -49,8 +47,6 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
       setSessionId(s.id);
       setParticipantIdState(pid);
       setSessionServices(s.streaming_services ?? []);
-      setSessionStarted(s.started);
-      setSessionClosed(s.status === "closed");
 
       const pool = await getSessionFilms(s.id);
       setAlreadyInPool(new Set(pool.map((f: Film) => f.tmdb_id)));
@@ -166,10 +162,25 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
     <div className="min-h-dvh" style={{ background: "var(--bg)" }}>
       <div className="flex flex-col min-h-dvh mx-auto" style={{ maxWidth: 480 }}>
         {/* Header */}
-        <header className="flex items-center gap-3 px-5 pt-5 pb-4 shrink-0">
-          <Logo size="sm" showText={false} />
-          <h1 className="flex-1 text-base font-semibold" style={{ color: "var(--text)" }}>Search</h1>
-          <div className="flex items-center gap-2">
+        <header className="flex items-center px-5 pt-5 pb-4 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            <Logo size="sm" showText={false} />
+            <div>
+              <p className="text-lg font-light tracking-[0.15em] uppercase leading-tight" style={{ color: "var(--text)" }}>Search</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>{code}</p>
+            </div>
+          </div>
+          <div className="flex-1" />
+          {getIsHost(code) && (
+            <button
+              onClick={() => router.push(`/session/${code}/results`)}
+              className="shrink-0 whitespace-nowrap px-5 py-1.5 rounded-lg text-xs font-semibold"
+              style={{ background: "var(--accent)", color: "#0c0c0e" }}>
+              Shortlist Vote
+            </button>
+          )}
+          <div className="flex-1" />
+          <div className="flex items-center gap-2 shrink-0">
             <button onClick={() => router.push(`/session/${code}`)}
               className="p-2 rounded-lg"
               style={{ background: "var(--surface)", color: "var(--accent)" }}>
@@ -180,14 +191,6 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
               style={{ background: "var(--surface)", color: "var(--accent)" }}>
               <Trophy size={18} />
             </button>
-            <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
-              style={{
-                background: (sessionStarted || sessionClosed) ? "rgba(74,222,128,0.1)" : "var(--surface)",
-                color: (sessionStarted || sessionClosed) ? "var(--like)" : "var(--text-muted)",
-              }}>
-              {sessionClosed ? <Lock size={11} /> : <Clock size={11} />}
-              {sessionClosed ? "Closed" : sessionStarted ? "Live" : "Waiting"}
-            </div>
           </div>
         </header>
 
