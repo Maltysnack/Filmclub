@@ -317,15 +317,15 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Always-open service grid — 4 columns, centred */}
-              <div className="grid gap-2 mx-auto" style={{ gridTemplateColumns: "repeat(4, 52px)" }}>
+              {/* Always-open service grid — 4 equal columns filling the form width */}
+              <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
                 {regionServices.map((svc) => {
                   const on = selectedServices.includes(svc.id);
                   return (
                     <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
-                      className="relative flex items-center justify-center rounded-xl transition-all"
+                      className="relative flex items-center justify-center rounded-xl transition-all overflow-hidden"
                       style={{
-                        width: 52, height: 52,
+                        aspectRatio: "1",
                         background: svc.color,
                         border: `2px solid ${on ? "var(--like)" : "transparent"}`,
                         boxShadow: on ? "0 0 0 2px var(--like)" : "none",
@@ -338,7 +338,7 @@ export default function Home() {
                           src={`https://image.tmdb.org/t/p/w45${svc.tmdbLogoPath}`}
                           alt={svc.name}
                           title={svc.name}
-                          className="absolute inset-0 w-full h-full rounded-xl object-cover"
+                          className="absolute inset-0 w-full h-full object-cover"
                           onError={e => { e.currentTarget.style.display = "none"; }}
                         />
                       )}
