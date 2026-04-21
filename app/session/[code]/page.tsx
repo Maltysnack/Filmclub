@@ -704,21 +704,21 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           </div>
 
           {/* How it works — main content while waiting */}
-          <div className="mb-8 flex flex-col gap-5">
+          <div className="flex flex-col gap-5">
             {[
-              { icon: <Search size={22} />, text: "Search to add films to the pool" },
-              { icon: <Clock size={22} />, text: "Hold any film to see more info" },
-              { icon: <Trophy size={22} />, text: "Swipe right to like, left to skip" },
+              { icon: <Search size={20} />, text: "Search to add films to the pool" },
+              { icon: <Trophy size={20} />, text: "See everyone's results as you go" },
+              { icon: <Clock size={20} />, text: "Press and hold any film for more info" },
             ].map(({ icon, text }) => (
               <div key={text} className="flex items-center gap-4">
                 <span className="shrink-0" style={{ color: "var(--accent)" }}>{icon}</span>
-                <span className="text-base font-medium" style={{ color: "var(--text)" }}>{text}</span>
+                <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{text}</span>
               </div>
             ))}
           </div>
 
           {/* CTA */}
-          <div className="mt-auto">
+          <div className="mt-auto pt-10">
             {isHost ? (
               <button
                 onClick={handleStart}
