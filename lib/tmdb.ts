@@ -124,5 +124,7 @@ export function tmdbToFilm(movie: TMDBMovieDetail): Omit<Film, "id"> {
     imdb_id: movie.imdb_id ?? null,
     imdb_rating: null, // populated separately via OMDb after upsert
     watch_providers_au: [],
+    collection_id: movie.belongs_to_collection?.id ?? null,
+    collection_name: movie.belongs_to_collection?.name ?? null,
   };
 }

@@ -82,6 +82,8 @@ export interface Film {
   imdb_id: string | null;
   imdb_rating: string | null;
   watch_providers_au: { serviceId: string; name: string; logoPath?: string | null; tmdbProviderId?: number | null }[];
+  collection_id?: number | null;
+  collection_name?: string | null;
 }
 
 export interface SessionFilm {
@@ -126,6 +128,7 @@ export interface TMDBMovieDetail extends TMDBMovie {
   runtime: number;
   imdb_id: string | null;
   genres: { id: number; name: string }[];
+  belongs_to_collection?: { id: number; name: string } | null;
   credits?: {
     cast: { name: string; character: string; profile_path: string | null }[];
   };

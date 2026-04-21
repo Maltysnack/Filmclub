@@ -189,10 +189,11 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
       !cached.imdb_id; // backfill imdb_id for films cached before this field existed
     if (needsRefresh) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-      // If imdb_id is missing, re-fetch the full TMDB detail to get it
+      // Fetch detail when imdb_id or collection info is missing
+      const needsDetail = !cached.imdb_id || cached.collection_id == null;
       const [fresh, detail] = await Promise.all([
         fetchWatchProvidersAU(tmdbId, apiKey),
-        !cached.imdb_id ? getFilmDetail(tmdbId) : Promise.resolve(null),
+        needsDetail ? getFilmDetail(tmdbId) : Promise.resolve(null),
       ]);
       const imdbId = detail?.imdb_id ?? cached.imdb_id ?? null;
       // Fetch OMDb rating if we now have an imdb_id but no rating yet
@@ -206,8 +207,19 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
       const updates: Record<string, unknown> = { watch_providers_au: providerUpdate };
       if (imdbId) updates.imdb_id = imdbId;
       if (imdbRating) updates.imdb_rating = imdbRating;
+      if (detail) {
+        updates.collection_id = detail.belongs_to_collection?.id ?? null;
+        updates.collection_name = detail.belongs_to_collection?.name ?? null;
+      }
       await supabase.from("films").update(updates).eq("id", cached.id);
-      return { ...cached, watch_providers_au: providerUpdate, imdb_id: imdbId, imdb_rating: imdbRating };
+      return {
+        ...cached,
+        watch_providers_au: providerUpdate,
+        imdb_id: imdbId,
+        imdb_rating: imdbRating,
+        collection_id: detail ? (detail.belongs_to_collection?.id ?? null) : cached.collection_id,
+        collection_name: detail ? (detail.belongs_to_collection?.name ?? null) : cached.collection_name,
+      };
     }
     // Backfill imdb_rating for cached films that have imdb_id but no rating yet
     if (!cached.imdb_rating && cached.imdb_id) {

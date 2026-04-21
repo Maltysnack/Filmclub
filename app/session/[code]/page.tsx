@@ -29,6 +29,25 @@ import ShortlistOverlay from "@/components/ShortlistOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
 
 
+// Returns the first index >= fromIdx that is not suppressed by a franchise block.
+// A film is suppressed if: it has a collection_id, that ID is blocked, and nobody
+// has liked it yet (filmLikes has no entries for it).
+function skipBlocked(
+  fromIdx: number,
+  queue: import("@/types").Film[],
+  blocked: Set<number>,
+  filmLikes: Map<string, string[]>,
+): number {
+  let idx = fromIdx;
+  while (idx < queue.length) {
+    const cid = queue[idx].collection_id;
+    if (!cid || !blocked.has(cid)) break;                      // not blocked
+    if ((filmLikes.get(queue[idx].id)?.length ?? 0) > 0) break; // someone liked it
+    idx++;
+  }
+  return idx;
+}
+
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
   const router = useRouter();
@@ -43,6 +62,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [showLateModal, setShowLateModal] = useState(false);
   const [showShortlistConfirm, setShowShortlistConfirm] = useState(false);
+  // Set of TMDB collection IDs the user has swiped no on — hides remaining
+  // films from that franchise unless another participant has already liked one.
+  const [blockedCollections, setBlockedCollections] = useState<Set<number>>(new Set());
   // Computed synchronously — avoids the flash where host briefly sees "Waiting..." before init
   const isHost = getIsHost(code);
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
@@ -581,8 +603,23 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       }
     }
 
-    const next = currentIndex + 1;
-    if (next >= queue.length) {
+    // Update franchise block list
+    const cid = film.collection_id ?? null;
+    let newBlocked = blockedCollections;
+    if (cid) {
+      if (!liked) {
+        // No on a franchise film — block the rest
+        newBlocked = new Set([...blockedCollections, cid]);
+        setBlockedCollections(newBlocked);
+      } else if (blockedCollections.has(cid)) {
+        // Yes on a previously blocked franchise — reopen it
+        newBlocked = new Set([...blockedCollections].filter(id => id !== cid));
+        setBlockedCollections(newBlocked);
+      }
+    }
+
+    const nextIdx = skipBlocked(currentIndex + 1, queue, newBlocked, filmLikes);
+    if (nextIdx >= queue.length) {
       // Final batch check — catches the case where this was the last voter
       if (s.started && s.mode === "live" && !isSolo) {
         let found = false;
@@ -599,8 +636,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setAllDone(true);
       setInfoFilm(null);
     } else {
-      setCurrentIndex(next);
-      if (infoFilm) setInfoFilm(queue[next]);
+      setCurrentIndex(nextIdx);
+      if (infoFilm) setInfoFilm(queue[nextIdx]);
     }
   }
 
@@ -849,7 +886,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   const currentFilm = queue[currentIndex];
-  const nextFilm = queue[currentIndex + 1];
+  const nextFilm = queue[skipBlocked(currentIndex + 1, queue, blockedCollections, filmLikes)];
 
   // Preload backdrops for the next 6 films from the current position in either mode.
   // Swipe mode uses currentIndex; scroll mode uses scrollIndexRef.
