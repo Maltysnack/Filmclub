@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo, use } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import Logo from "@/components/Logo";
 import SwipeCard from "@/components/SwipeCard";
 import FilmModal from "@/components/FilmModal";
@@ -134,6 +134,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const allSessionFilmsRef = useRef<Film[]>([]);
   // Per-user swipe history this session: film.id → liked. Used for second-chance ranking.
   const mySwipeHistoryRef = useRef<Map<string, boolean>>(new Map());
+  // Shared motion value: front SwipeCard writes its drag offset here each frame,
+  // back SwipeCard reads it to smoothly promote itself as the front card moves away.
+  // Resets to 0 when currentIndex advances so the new back card starts at rest.
+  const promotionMV = useMotionValue(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { promotionMV.set(0); }, [currentIndex]);
 
   // ── Clear snapshot when session ends so stale data isn't restored ─────────
   useEffect(() => {
@@ -692,78 +698,34 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     if (!session || !participant || currentIndex >= queue.length) return;
     const s = sessionRef.current ?? session; // always fresh — avoids stale closure
     const film = queue[currentIndex];
-    // Solo sessions (1 participant) never auto-match — only shortlist vote can resolve.
-    // This makes single-tab testing practical and supports solo "make a shortlist" use.
     const isSolo = participants.length <= 1;
-    await recordSwipe(s.id, participant.id, film.id, liked);
 
-    // Track this user's swipe history locally — used for second-chance end-of-deck pass
+    // ── Swipe history (synchronous) ───────────────────────────────────────────
     mySwipeHistoryRef.current.set(film.id, liked);
 
-    if (liked && s.started && !isSolo) {
-      const isMatch = await checkForMatch(s.id, film.id, s.threshold);
-      if (isMatch && s.mode === "live") {
-        await closeSession(s.id);
-        await new Promise((r) => setTimeout(r, 300));
-        const allMatches = await getMatches(s.id);
-        if (allMatches.length > 0) { setMatchList(allMatches); return; }
-      }
-    }
-
-    // ── Franchise block ───────────────────────────────────────────────────────
+    // ── Franchise block: apply synchronously for known collection_id ──────────
     // collection_id semantics:
-    //   null / undefined → not yet checked against TMDB (pre-migration cached film)
+    //   null / undefined → not yet checked (pre-migration cached film) — fetched async below
     //   0               → checked, confirmed no collection (sentinel)
     //   positive int    → belongs to that TMDB collection
     const cid = film.collection_id ?? null;
     let newBlocked = blockedCollections;
-    // workingQueue may be replaced with an enriched copy when we fetch on-demand
     let workingQueue = queue;
 
     if (!liked) {
-      if (cid === null) {
-        // Collection unknown — fetch TMDB detail on-demand so we can block correctly
-        const detail = await getFilmDetail(film.tmdb_id);
-        const detailCid = detail?.belongs_to_collection?.id ?? 0; // 0 = sentinel
-
-        if (detailCid) {
-          // Film is part of a franchise — find all sibling TMDB IDs
-          const colMemberIds = await fetchCollectionTmdbIds(detailCid);
-
-          // Patch collection_id into our local queue for this film and any franchise
-          // siblings that are still unchecked (collection_id == null).
-          // This lets skipBlocked suppress them for the rest of this session.
-          const enriched = fullQueue.map((f) =>
-            f.id === film.id || (colMemberIds.has(f.tmdb_id) && f.collection_id == null)
-              ? { ...f, collection_id: detailCid }
-              : f
-          );
-          setFullQueue(enriched);
-          workingQueue = enriched;
-
-          newBlocked = new Set([...blockedCollections, detailCid]);
-          setBlockedCollections(newBlocked);
-        } else {
-          // No collection — mark with sentinel 0 so we skip the fetch next time
-          setFullQueue((prev) =>
-            prev.map((f) => f.id === film.id ? { ...f, collection_id: 0 } : f)
-          );
-          // workingQueue stays as queue — nothing to block
-        }
-      } else if (cid) {
-        // Already have the collection_id — block it directly
+      if (cid) {
+        // Already have a real collection_id — block immediately, no await needed
         newBlocked = new Set([...blockedCollections, cid]);
         setBlockedCollections(newBlocked);
       }
+      // cid === null → unknown, handled async below after index has already advanced
     } else if (cid && blockedCollections.has(cid)) {
       // Yes on a previously blocked franchise — reopen it
       newBlocked = new Set([...blockedCollections].filter((id) => id !== cid));
       setBlockedCollections(newBlocked);
     }
 
-    // ── Continuous drip ───────────────────────────────────────────────────────
-    // Every 20 swipes, pull 10 films from the reserve into the active queue.
-    // workingQueue is also extended so skipBlocked sees the new films this render.
+    // ── Drip (synchronous) ────────────────────────────────────────────────────
     swipeCountRef.current += 1;
     if (swipeCountRef.current % 20 === 0 && reserveQueueRef.current.length > 0) {
       const drip = reserveQueueRef.current.slice(0, 20);
@@ -782,19 +744,63 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       });
     }
 
+    // ── Advance index immediately — don't wait for DB ─────────────────────────
+    // The card has already animated off-screen in SwipeCard before onLike/onDislike
+    // fires, so advancing here makes the next card appear with zero perceptible delay.
     const nextIdx = skipBlocked(currentIndex + 1, workingQueue, newBlocked, filmLikes);
+    if (nextIdx < workingQueue.length) {
+      setCurrentIndex(nextIdx);
+      if (infoFilm) setInfoFilm(workingQueue[nextIdx]);
+    }
+
+    // ── DB write — fire and forget ────────────────────────────────────────────
+    void recordSwipe(s.id, participant.id, film.id, liked);
+
+    // ── Async: on-demand franchise fetch for unknown collection_id ────────────
+    // Runs after index has advanced so the user never waits for this fetch.
+    if (!liked && cid === null) {
+      const detail = await getFilmDetail(film.tmdb_id);
+      const detailCid = detail?.belongs_to_collection?.id ?? 0;
+      if (detailCid) {
+        const colMemberIds = await fetchCollectionTmdbIds(detailCid);
+        const enriched = fullQueue.map((f) =>
+          f.id === film.id || (colMemberIds.has(f.tmdb_id) && f.collection_id == null)
+            ? { ...f, collection_id: detailCid }
+            : f
+        );
+        setFullQueue(enriched);
+        setBlockedCollections(new Set([...blockedCollections, detailCid]));
+      } else {
+        setFullQueue((prev) =>
+          prev.map((f) => f.id === film.id ? { ...f, collection_id: 0 } : f)
+        );
+      }
+    }
+
+    // ── Async: match check ────────────────────────────────────────────────────
+    if (liked && s.started && !isSolo) {
+      const isMatch = await checkForMatch(s.id, film.id, s.threshold);
+      if (isMatch && s.mode === "live") {
+        await closeSession(s.id);
+        await new Promise((r) => setTimeout(r, 300));
+        const allMatches = await getMatches(s.id);
+        if (allMatches.length > 0) { setMatchList(allMatches); return; }
+      }
+    }
+
+    // ── End-of-deck handling ──────────────────────────────────────────────────
     if (nextIdx >= workingQueue.length) {
-      // ── Layer 1: Drain remaining reserve ──────────────────────────────────
+      // Layer 1: drain remaining reserve
       if (reserveQueueRef.current.length > 0) {
         const refill = reserveQueueRef.current.slice(0, 20);
         reserveQueueRef.current = reserveQueueRef.current.slice(20);
         setFullQueue((prev) => [...prev, ...refill]);
-        setCurrentIndex(workingQueue.length); // first refill film
+        setCurrentIndex(workingQueue.length);
         if (infoFilm) setInfoFilm(refill[0]);
         return;
       }
 
-      // ── Layer 2: Second chance — films others liked that you said no to ────
+      // Layer 2: second chance — films others liked that you said no to
       const secondChance = allSessionFilmsRef.current
         .filter((f) => {
           const likers = filmLikes.get(f.id) ?? [];
@@ -809,11 +815,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         return;
       }
 
-      // ── Layer 3: Fetch a fresh batch from TMDB ────────────────────────────
-      // Fire-and-forget — subscription will extend the queue when films land.
-      if (s.watch_mode === "home" || s.watch_mode === "both") {
-        seedMoreHomePool(s);
-      }
+      // Layer 3: fetch a fresh batch from TMDB (fire-and-forget)
+      if (s.watch_mode === "home" || s.watch_mode === "both") seedMoreHomePool(s);
 
       // Final batch match check — catches the case where this was the last voter
       if (s.started && s.mode === "live" && !isSolo) {
@@ -830,9 +833,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       }
       setAllDone(true);
       setInfoFilm(null);
-    } else {
-      setCurrentIndex(nextIdx);
-      if (infoFilm) setInfoFilm(workingQueue[nextIdx]);
     }
   }
 
@@ -1290,7 +1290,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                         onLike={() => {}} onDislike={() => {}}
                         onInfo={() => setInfoFilm(nextFilm)} isTop={false}
                         dendyInfo={dendyMap.get(nextFilm.id)}
-                        sessionServices={session?.streaming_services ?? []} />
+                        sessionServices={session?.streaming_services ?? []}
+                        promotionMV={promotionMV} />
                     )}
                     {currentFilm && (
                       <motion.div key={currentFilm.id} className="absolute inset-0"
@@ -1309,7 +1310,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                           }}
                           participants={participants}
                           onDragStart={() => { swipeInProgress.current = true; }}
-                          onDragEnd={() => { swipeInProgress.current = false; }} />
+                          onDragEnd={() => { swipeInProgress.current = false; }}
+                          promotionMV={promotionMV} />
                       </motion.div>
                     )}
                   </>

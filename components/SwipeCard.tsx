@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from "framer-motion";
+import { animate, motion, AnimatePresence, useMotionValue, useTransform, PanInfo, MotionValue } from "framer-motion";
 import { Film } from "@/types";
 import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
@@ -25,26 +25,58 @@ interface SwipeCardProps {
   participants?: Participant[];
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  // Shared motion value: front card writes to it during drag, back card reads from it
+  // to smoothly promote itself as the front card moves away.
+  promotionMV?: MotionValue<number>;
 }
 
 const SWIPE_THRESHOLD = 80;
 
-export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dendyInfo, sessionServices = [], votePhase = 1, voteInfo, participants = [], onDragStart: onDragStartProp, onDragEnd: onDragEndProp }: SwipeCardProps) {
+export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dendyInfo, sessionServices = [], votePhase = 1, voteInfo, participants = [], onDragStart: onDragStartProp, onDragEnd: onDragEndProp, promotionMV }: SwipeCardProps) {
   const x = useMotionValue(0);
+  const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-18, 18]);
   const likeOpacity = useTransform(x, [20, 100], [0, 1]);
   const dislikeOpacity = useTransform(x, [-100, -20], [1, 0]);
 
+  // Back card promotion — driven by the front card's promotionMV.
+  // fallback keeps hook call count stable (hooks can't be conditional).
+  const promotionFallback = useMotionValue(0);
+  const effectivePMV = promotionMV ?? promotionFallback;
+  const backScale = useTransform(effectivePMV, [0, SWIPE_THRESHOLD], [0.98, 1.0]);
+  const backY = useTransform(effectivePMV, [0, SWIPE_THRESHOLD], [4, 0]);
+
   const [isDragging, setIsDragging] = useState(false);
   const { handlers: lpHandlers, cancel: cancelLongPress } = useLongPress(onInfo);
 
-  function handleDragEnd(_: unknown, info: PanInfo) {
+  async function handleDragEnd(_: unknown, info: PanInfo) {
     setIsDragging(false);
     onDragEndProp?.();
-    if (info.offset.x > SWIPE_THRESHOLD) {
+
+    const xAbs = Math.abs(info.offset.x);
+    const yAbs = Math.abs(info.offset.y);
+    // Block nearly-vertical drags where x drift is incidental rather than
+    // deliberate. x must be at least half of y (~63° from horizontal), so
+    // equal down+right (45°) registers as a swipe but an 80% vertical drag
+    // does not. Pure horizontal swipes always pass (yAbs is small or zero).
+    const isHorizontalEnough = xAbs * 2 > yAbs;
+
+    if (isHorizontalEnough && info.offset.x > SWIPE_THRESHOLD) {
+      // Fly off at the angle the card was dragged (capped to avoid extreme diagonals)
+      const yRatio = Math.max(-2, Math.min(2, info.offset.y / info.offset.x));
+      animate(y, 600 * yRatio, { duration: 0.2, ease: "easeOut" });
+      await animate(x, 600, { duration: 0.2, ease: "easeOut" });
       onLike();
-    } else if (info.offset.x < -SWIPE_THRESHOLD) {
+    } else if (isHorizontalEnough && info.offset.x < -SWIPE_THRESHOLD) {
+      const yRatio = Math.max(-2, Math.min(2, info.offset.y / Math.abs(info.offset.x)));
+      animate(y, 600 * yRatio, { duration: 0.2, ease: "easeOut" });
+      await animate(x, -600, { duration: 0.2, ease: "easeOut" });
       onDislike();
+    } else {
+      // Sub-threshold or vertical-dominant — spring everything back to centre
+      animate(x, 0, { type: "spring", stiffness: 500, damping: 35 });
+      animate(y, 0, { type: "spring", stiffness: 500, damping: 35 });
+      if (promotionMV) animate(promotionMV, 0, { type: "spring", stiffness: 500, damping: 35 });
     }
   }
 
@@ -53,15 +85,13 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
   return (
     <motion.div
       className="absolute inset-0 select-none"
-      style={{ x, rotate }}
-      drag={isTop ? "x" : false}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.7}
+      style={isTop ? { x, y, rotate } : { scale: backScale, y: backY }}
+      drag={isTop ? true : false}
+      dragMomentum={false}
+      onDrag={isTop ? (_e, info) => { promotionMV?.set(Math.abs(info.offset.x)); } : undefined}
       onDragStart={() => { setIsDragging(true); cancelLongPress(); onDragStartProp?.(); }}
       onDragEnd={handleDragEnd}
       whileTap={isTop ? { scale: 1.02 } : undefined}
-      initial={isTop ? false : { scale: 0.96, y: 12 }}
-      animate={isTop ? {} : { scale: 0.96, y: 12 }}
     >
       <div
         className="relative w-full h-full rounded-[28px] overflow-hidden shadow-2xl drag-card"
