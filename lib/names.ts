@@ -99,13 +99,52 @@ export function pickMysteryName(takenNames: string[]): string {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+// ── Colour lightness enforcement ──────────────────────────────────────────────
+// On a near-black background, colours below ~55% HSL lightness become hard to
+// read or look like inactive/disabled states. These helpers clamp any hex
+// colour up to the minimum without changing its hue or saturation.
+
+const MIN_LIGHTNESS = 0.55;
+
+function hexToHsl(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  let r = ((n >> 16) & 255) / 255;
+  let g = ((n >> 8) & 255) / 255;
+  let b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r)      h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else                h = ((r - g) / d + 4) / 6;
+  return [h * 360, s, l];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * c).toString(16).padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function ensureMinLightness(hex: string): string {
+  const [h, s, l] = hexToHsl(hex);
+  return l >= MIN_LIGHTNESS ? hex : hslToHex(h, s, MIN_LIGHTNESS);
+}
+
 export function participantColor(name: string): string {
   // Hardcoded overrides for special nicknames
-  if (name === "Red Rebel")   return "#ef4444";
-  if (name === "Blue Bandit") return "#3b82f6";
+  if (name === "Red Rebel")   return ensureMinLightness("#ef4444");
+  if (name === "Blue Bandit") return ensureMinLightness("#3b82f6");
 
-  // Use the brand colour for any known character
-  if (CHARACTER_COLORS[name]) return CHARACTER_COLORS[name];
+  // Use the brand colour for any known character (clamped to min lightness)
+  if (CHARACTER_COLORS[name]) return ensureMinLightness(CHARACTER_COLORS[name]);
 
   // Fallback: hash name to a hue via golden ratio (handles custom names)
   let h = 0;
@@ -114,7 +153,8 @@ export function participantColor(name: string): string {
     h |= 0;
   }
   const hue = ((Math.abs(h) * 0.618033988749895) % 1) * 360;
-  // hslToHex inline
+  // l = 0.62 already clears the threshold, but ensureMinLightness is applied
+  // for safety so any future changes to the fallback are automatically covered.
   const s = 0.68, l = 0.62;
   const a = s * Math.min(l, 1 - l);
   const f = (n: number) => {
@@ -122,5 +162,5 @@ export function participantColor(name: string): string {
     const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
     return Math.round(255 * c).toString(16).padStart(2, "0");
   };
-  return `#${f(0)}${f(8)}${f(4)}`;
+  return ensureMinLightness(`#${f(0)}${f(8)}${f(4)}`);
 }
