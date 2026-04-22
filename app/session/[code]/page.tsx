@@ -26,6 +26,7 @@ import { Film, Session, Participant, Match } from "@/types";
 import { Search, Trophy, Play, Copy, Check, Clock, Zap, Crown } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
+import SinglePlayerVoteOverlay from "@/components/SinglePlayerVoteOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
 
 
@@ -1059,21 +1060,35 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         )}
 
         {showShortlist && session && shortlistData && (
-          <ShortlistOverlay
-            films={shortlistData.films}
-            pinnedFilmIds={shortlistData.pinnedFilmIds}
-            sessionId={session.id}
-            participantId={participant?.id ?? ""}
-            isHost={isHost}
-            totalParticipants={participants.length}
-            sessionServices={session.streaming_services ?? []}
-            region={session.region ?? "AU"}
-            onComplete={async (winnerId) => {
-              if (isHost) await resolveMatch(session.id, winnerId);
-              setMatchList(prev => prev.filter(m => m.film_id === winnerId));
-              setShowShortlist(false);
-            }}
-          />
+          participants.length === 1 ? (
+            <SinglePlayerVoteOverlay
+              films={shortlistData.films}
+              sessionId={session.id}
+              sessionServices={session.streaming_services ?? []}
+              region={session.region ?? "AU"}
+              onComplete={async (winnerId) => {
+                await resolveMatch(session.id, winnerId);
+                setMatchList(prev => prev.filter(m => m.film_id === winnerId));
+                setShowShortlist(false);
+              }}
+            />
+          ) : (
+            <ShortlistOverlay
+              films={shortlistData.films}
+              pinnedFilmIds={shortlistData.pinnedFilmIds}
+              sessionId={session.id}
+              participantId={participant?.id ?? ""}
+              isHost={isHost}
+              totalParticipants={participants.length}
+              sessionServices={session.streaming_services ?? []}
+              region={session.region ?? "AU"}
+              onComplete={async (winnerId) => {
+                if (isHost) await resolveMatch(session.id, winnerId);
+                setMatchList(prev => prev.filter(m => m.film_id === winnerId));
+                setShowShortlist(false);
+              }}
+            />
+          )
         )}
       </div>
     );
@@ -1331,24 +1346,39 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         renders on the tie/match screen. This one covers the active swiping phase so
         the host can trigger a vote before any unanimous match has occurred. */}
     {showShortlist && session && shortlistData && matchList.length === 0 && (
-      <ShortlistOverlay
-        films={shortlistData.films}
-        pinnedFilmIds={shortlistData.pinnedFilmIds}
-        sessionId={session.id}
-        participantId={participant?.id ?? ""}
-        isHost={isHost}
-        totalParticipants={participants.length}
-        sessionServices={session.streaming_services ?? []}
-        region={session.region ?? "AU"}
-        onComplete={async (winnerId) => {
-          if (isHost) {
+      participants.length === 1 ? (
+        <SinglePlayerVoteOverlay
+          films={shortlistData.films}
+          sessionId={session.id}
+          sessionServices={session.streaming_services ?? []}
+          region={session.region ?? "AU"}
+          onComplete={async (winnerId) => {
             await resolveMatch(session.id, winnerId);
             const allMatches = await getMatches(session.id);
             if (allMatches.length > 0) setMatchList(allMatches);
-          }
-          setShowShortlist(false);
-        }}
-      />
+            setShowShortlist(false);
+          }}
+        />
+      ) : (
+        <ShortlistOverlay
+          films={shortlistData.films}
+          pinnedFilmIds={shortlistData.pinnedFilmIds}
+          sessionId={session.id}
+          participantId={participant?.id ?? ""}
+          isHost={isHost}
+          totalParticipants={participants.length}
+          sessionServices={session.streaming_services ?? []}
+          region={session.region ?? "AU"}
+          onComplete={async (winnerId) => {
+            if (isHost) {
+              await resolveMatch(session.id, winnerId);
+              const allMatches = await getMatches(session.id);
+              if (allMatches.length > 0) setMatchList(allMatches);
+            }
+            setShowShortlist(false);
+          }}
+        />
+      )
     )}
 
     {/* ── Late-joiner hints modal ───────────────────────────────────────── */}
