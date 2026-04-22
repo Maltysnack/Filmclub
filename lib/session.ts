@@ -440,6 +440,15 @@ export async function checkAllMatches(sessionId: string, threshold: number): Pro
 }
 
 export async function resolveMatch(sessionId: string, winnerFilmId: string) {
+  // Guard against double-calls (two UI paths can fire this simultaneously in solo sessions).
+  // If the session is already closed a previous call already resolved it — bail out.
+  const { data: current } = await supabase
+    .from("sessions")
+    .select("status")
+    .eq("id", sessionId)
+    .single();
+  if (current?.status === "closed") return;
+
   // Delete all non-winner matches then close — all devices pick up the single winner
   await supabase.from("matches").delete()
     .eq("session_id", sessionId)
@@ -480,7 +489,8 @@ async function recordSessionOutcome(
       .eq("session_id", sessionId),
   ]);
 
-  if (!session || !film) return;
+  // Skip solo sessions — they're almost always a single person testing
+  if (!session || !film || !groupSize || groupSize < 2) return;
 
   await supabase.from("session_outcomes").insert({
     tmdb_id: film.tmdb_id,
