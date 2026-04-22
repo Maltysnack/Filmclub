@@ -122,6 +122,7 @@ export interface TMDBMovie {
   vote_count: number;
   popularity: number;
   genre_ids: number[];
+  original_language: string;
 }
 
 export interface TMDBMovieDetail extends TMDBMovie {
