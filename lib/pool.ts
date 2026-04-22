@@ -5,11 +5,53 @@ import { Session } from "@/types";
 import { discoverFilmsByProviders, getTrendingFilms, getTopRatedFilms, getProviderList } from "./tmdb";
 import { addFilmToSession } from "./session";
 import { getServicesForRegion } from "./streaming";
+import { supabase } from "./supabase";
 
 // Regions where English is the primary language — non-English films are capped
 // at FOREIGN_LANG_CAP of the pool. All other regions get no language filtering.
 export const ENGLISH_PRIMARY_REGIONS = new Set(["AU", "US", "GB", "CA", "NZ", "IE", "ZA"]);
 export const FOREIGN_LANG_CAP = 0.15;
+
+// ── Provider pool cache ───────────────────────────────────────────────────────
+
+// Reads pre-fetched film IDs from the provider_pool_cache table, which the
+// refresh-pool-cache cron populates every 3 days. Returns null when the cache
+// is empty (first deployment, or between cron runs), so callers fall back to
+// live TMDB Discover.
+async function getPoolFromCache(
+  serviceIds: string[],
+  region: string
+): Promise<{ id: number; original_language: string }[] | null> {
+  if (serviceIds.length === 0) return null;
+
+  const { data, error } = await supabase
+    .from("provider_pool_cache")
+    .select("tmdb_id, original_language")
+    .in("provider_id", serviceIds)
+    .eq("region", region);
+
+  if (error || !data || data.length === 0) return null;
+
+  // Deduplicate across providers (a film on both Netflix and Stan should
+  // appear once). Order is arbitrary, so we shuffle before returning to
+  // give every provider equal representation across sessions.
+  const seen = new Set<number>();
+  const films: { id: number; original_language: string }[] = [];
+  for (const row of data) {
+    if (!seen.has(row.tmdb_id)) {
+      seen.add(row.tmdb_id);
+      films.push({ id: row.tmdb_id, original_language: row.original_language ?? "en" });
+    }
+  }
+
+  // Fisher-Yates shuffle
+  for (let i = films.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [films[i], films[j]] = [films[j], films[i]];
+  }
+
+  return films.length > 0 ? films : null;
+}
 
 export function sessionProviderTmdbIds(s: Session): number[] {
   const services = getServicesForRegion(s.region ?? "AU");
@@ -26,7 +68,8 @@ export function sessionProviderTmdbIds(s: Session): number[] {
 export async function seedHomePool(s: Session): Promise<void> {
   const region = s.region ?? "AU";
   const providerIds = sessionProviderTmdbIds(s);
-  console.log("[seed] region:", region, "services:", s.streaming_services, "→ providerIds:", providerIds);
+  const serviceIds = s.streaming_services ?? [];
+  console.log("[seed] region:", region, "services:", serviceIds, "→ providerIds:", providerIds);
   if (process.env.NODE_ENV === "development") {
     getProviderList(region).then((list) => {
       const relevant = list.filter((p) =>
@@ -35,6 +78,19 @@ export async function seedHomePool(s: Session): Promise<void> {
       console.log(`[TMDB ${region} providers]`, relevant.map(p => `${p.provider_name} (${p.provider_id})`));
     });
   }
+
+  // Try the pre-built cache first — avoids a live TMDB call at session start
+  if (serviceIds.length > 0) {
+    const cached = await getPoolFromCache(serviceIds, region);
+    if (cached && cached.length > 0) {
+      const initial = cached.slice(0, 10);
+      console.log("[seed] cache hit —", cached.length, "films available, seeding first", initial.length);
+      await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null)));
+      return;
+    }
+    console.log("[seed] cache miss — falling back to live TMDB");
+  }
+
   const films = providerIds.length > 0
     ? await discoverFilmsByProviders(providerIds, 1, region)
     : await getTrendingFilms(1);
@@ -54,29 +110,45 @@ export async function seedHomePool(s: Session): Promise<void> {
 export async function seedMoreHomePool(s: Session): Promise<void> {
   const region = s.region ?? "AU";
   const providerIds = sessionProviderTmdbIds(s);
+  const serviceIds = s.streaming_services ?? [];
   const serviceCount = Math.max(1, providerIds.length);
   const targetPool = 160 + (20 * serviceCount);
   console.log(`[pool] services: ${serviceCount} → target pool: ${targetPool} films`);
 
-  let raw: import("@/types").TMDBMovie[];
-  if (providerIds.length > 0) {
-    const halfPages = Math.ceil(targetPool / (20 * serviceCount * 2));
-    const [popularFilms, ratedFilms] = await Promise.all([
-      discoverFilmsByProviders(providerIds, halfPages, region, "popularity.desc"),
-      discoverFilmsByProviders(providerIds, halfPages, region, "vote_average.desc", 1000),
-    ]);
-    const mixSeen = new Set<number>();
-    raw = [];
-    const maxLen = Math.max(popularFilms.length, ratedFilms.length);
-    for (let i = 0; i < maxLen; i++) {
-      for (const film of [popularFilms[i], ratedFilms[i]]) {
-        if (film && !mixSeen.has(film.id)) { mixSeen.add(film.id); raw.push(film); }
-      }
-    }
+  let raw: { id: number; original_language: string }[];
+
+  // ── Try cache first ────────────────────────────────────────────────────────
+  const cached = serviceIds.length > 0 ? await getPoolFromCache(serviceIds, region) : null;
+
+  if (cached && cached.length > 0) {
+    console.log(`[pool] cache hit — ${cached.length} films available`);
+    raw = cached;
   } else {
-    const halfPages = Math.ceil(targetPool / 40);
-    raw = await Promise.all([getTrendingFilms(halfPages), getTopRatedFilms(halfPages)])
-      .then(([a, b]) => [...a, ...b]);
+    // ── Fall back to live TMDB Discover ────────────────────────────────────
+    if (cached !== null) {
+      console.log("[pool] cache miss — falling back to live TMDB");
+    }
+    let liveRaw: import("@/types").TMDBMovie[];
+    if (providerIds.length > 0) {
+      const halfPages = Math.ceil(targetPool / (20 * serviceCount * 2));
+      const [popularFilms, ratedFilms] = await Promise.all([
+        discoverFilmsByProviders(providerIds, halfPages, region, "popularity.desc"),
+        discoverFilmsByProviders(providerIds, halfPages, region, "vote_average.desc", 1000),
+      ]);
+      const mixSeen = new Set<number>();
+      liveRaw = [];
+      const maxLen = Math.max(popularFilms.length, ratedFilms.length);
+      for (let i = 0; i < maxLen; i++) {
+        for (const film of [popularFilms[i], ratedFilms[i]]) {
+          if (film && !mixSeen.has(film.id)) { mixSeen.add(film.id); liveRaw.push(film); }
+        }
+      }
+    } else {
+      const halfPages = Math.ceil(targetPool / 40);
+      liveRaw = await Promise.all([getTrendingFilms(halfPages), getTopRatedFilms(halfPages)])
+        .then(([a, b]) => [...a, ...b]);
+    }
+    raw = liveRaw;
   }
 
   const seen = new Set<number>();
@@ -112,7 +184,7 @@ export async function seedMoreHomePool(s: Session): Promise<void> {
     console.log(`[pool] language filter skipped — region ${region} is not English-primary`);
   }
 
-  console.log(`[pool] fetched ${raw.length} raw → ${deduped.length} deduped → ${filtered.length} after language filter, seeding now...`);
+  console.log(`[pool] ${cached ? "cache" : "live"}: ${raw.length} raw → ${deduped.length} deduped → ${filtered.length} after language filter, seeding now...`);
   const BATCH = 8;
   for (let i = 0; i < filtered.length; i += BATCH) {
     await Promise.all(filtered.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));

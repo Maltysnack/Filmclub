@@ -445,6 +445,55 @@ export async function resolveMatch(sessionId: string, winnerFilmId: string) {
     .eq("session_id", sessionId)
     .neq("film_id", winnerFilmId);
   await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
+  // Record outcome for analytics — fire-and-forget, production only
+  recordSessionOutcome(sessionId, winnerFilmId).catch((e) =>
+    console.error("[outcome] failed to record:", e)
+  );
+}
+
+// ── Session outcomes ──────────────────────────────────────────────────────────
+
+// Records what film a group picked, for long-term analytics.
+// Skipped entirely outside production so localhost sessions don't pollute the data.
+async function recordSessionOutcome(
+  sessionId: string,
+  winnerFilmId: string
+): Promise<void> {
+  if (process.env.NODE_ENV !== "production") return;
+
+  const [
+    { data: session },
+    { data: film },
+    { count: groupSize },
+  ] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("region, watch_mode, streaming_services")
+      .eq("id", sessionId)
+      .single(),
+    supabase
+      .from("films")
+      .select("tmdb_id, title, genres, release_year")
+      .eq("id", winnerFilmId)
+      .single(),
+    supabase
+      .from("participants")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId),
+  ]);
+
+  if (!session || !film) return;
+
+  await supabase.from("session_outcomes").insert({
+    tmdb_id: film.tmdb_id,
+    film_title: film.title,
+    genres: film.genres ?? null,
+    release_year: film.release_year ?? null,
+    group_size: groupSize ?? null,
+    region: session.region ?? null,
+    watch_mode: session.watch_mode ?? null,
+    service_ids: session.streaming_services ?? null,
+  });
 }
 
 export async function getMatches(sessionId: string): Promise<Match[]> {

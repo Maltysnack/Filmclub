@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/cleanup-sessions",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-pool-cache",
+      "schedule": "0 3 */3 * *"
     }
   ]
 }
