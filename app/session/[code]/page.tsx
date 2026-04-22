@@ -30,6 +30,14 @@ import SinglePlayerVoteOverlay from "@/components/SinglePlayerVoteOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
 
 
+// Lobby participant grid: 1 column for ≤3 people (names get full width),
+// 2 columns for 4–8, 3 columns for 9+.
+function lobbyGridCols(n: number): number {
+  if (n <= 3) return 1;
+  if (n <= 8) return 2;
+  return 3;
+}
+
 // Regions where English is the primary language — non-English films are capped
 // at FOREIGN_LANG_CAP of the pool. All other regions get no language filtering.
 const ENGLISH_PRIMARY_REGIONS = new Set(["AU", "US", "GB", "CA", "NZ", "IE", "ZA"]);
@@ -952,7 +960,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               style={{ color: "var(--text-muted)" }}>
               {participants.length === 0 ? "Waiting for people to join…" : `${participants.length} in the room`}
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${lobbyGridCols(participants.length)}, minmax(0, 1fr))`, maxWidth: participants.length <= 3 ? "50%" : undefined }}>
               {participants.map((p) => {
                 const color = participantColor(p.name);
                 const isMe = p.id === participant?.id;
