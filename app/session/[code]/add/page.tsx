@@ -7,6 +7,7 @@ import { Search, Trophy, Layers } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
 import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
+import { fetchOmdbRating } from "@/lib/omdb";
 import { addFilmToSession, getSession, getParticipantId, getIsHost, getSessionFilms, recordSwipe } from "@/lib/session";
 import { TMDBMovie, Film } from "@/types";
 import Logo from "@/components/Logo";
@@ -147,12 +148,15 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
     };
     setInfoFilm(provisional);
 
-    // Fetch full detail + providers in background, then update the open overlay
+    // Fetch full detail + providers + rating in background, then update the open overlay
     const detail = await getFilmDetail(movie.id);
     if (detail) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-      const providers = await fetchWatchProvidersAU(movie.id, apiKey);
-      setInfoFilm({ ...tmdbToFilm(detail), id: String(movie.id), watch_providers_au: providers });
+      const [providers, imdbRating] = await Promise.all([
+        fetchWatchProvidersAU(movie.id, apiKey),
+        detail.imdb_id ? fetchOmdbRating(detail.imdb_id) : Promise.resolve(null),
+      ]);
+      setInfoFilm({ ...tmdbToFilm(detail), id: String(movie.id), watch_providers_au: providers, imdb_rating: imdbRating });
     }
   }
 

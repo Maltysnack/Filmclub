@@ -196,9 +196,26 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }, [blockedCollections, code]);
 
   // ── Persist queue + index to sessionStorage so returning from + / results is instant ──
+  // Large pools (160–360 films) can exceed the 5MB sessionStorage quota when full Film
+  // objects are serialised. Strategy: try full data first; fall back to stripping the two
+  // heaviest fields (overview ~400 chars, film_cast ~1500 chars per film); if even that
+  // fails, clear the snapshot so the next visit does a fresh load instead of crashing.
+  // loadFilms runs immediately in the background after a snapshot restore, so slim data
+  // is replaced with full Film objects within ~200ms — before the user can open the panel.
   useEffect(() => {
     if (fullQueue.length > 0 && !loading) {
-      sessionStorage.setItem(`filmclub-queue-${code}`, JSON.stringify(fullQueue));
+      try {
+        sessionStorage.setItem(`filmclub-queue-${code}`, JSON.stringify(fullQueue));
+      } catch {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const slim = fullQueue.map(({ overview: _ov, film_cast: _fc, ...rest }) => rest);
+          sessionStorage.setItem(`filmclub-queue-${code}`, JSON.stringify(slim));
+        } catch {
+          sessionStorage.removeItem(`filmclub-queue-${code}`);
+          sessionStorage.removeItem(`filmclub-index-${code}`);
+        }
+      }
     }
   }, [fullQueue, loading, code]);
   useEffect(() => {

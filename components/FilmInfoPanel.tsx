@@ -18,8 +18,7 @@ interface FilmInfoPanelProps {
 export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionServices }: FilmInfoPanelProps) {
   const providers: { serviceId: string; logoPath?: string | null }[] = film.watch_providers_au ?? [];
   const availableProviders = providers.filter((p) => sessionServices.includes(p.serviceId));
-  const hasExternalLinks = !!(film.imdb_id || film.tmdb_id);
-  const showWhere = dendyInfo || availableProviders.length > 0 || hasExternalLinks;
+  const showWhere = !!(dendyInfo || availableProviders.length > 0);
 
   return (
     <div className="flex flex-col h-full">
@@ -62,6 +61,13 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
           <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
             style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>New</span>
         ) : null}
+        {film.tmdb_id && (
+          <a href={`https://letterboxd.com/tmdb/${film.tmdb_id}/`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex items-center transition-opacity hover:opacity-70">
+            <img src="/letterboxd-logo.png" alt="Letterboxd" className="h-5 w-5 rounded" />
+          </a>
+        )}
         {film.genres?.slice(0, 2).map((g) => (
           <span key={g.id} className="text-xs px-1.5 py-0.5 rounded-full"
             style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
@@ -70,10 +76,9 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
         ))}
       </div>
 
-      {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-3 space-y-3 pb-2">
-        {/* Where to watch */}
-        {showWhere && (
+      {/* Where to watch — static, only shown when there are services or Dendy */}
+      {showWhere && (
+        <div className="shrink-0 px-3 pb-2">
           <div className="p-2.5 rounded-xl space-y-2" style={{ background: "var(--surface-2)" }}>
             {dendyInfo && (
               <div>
@@ -92,8 +97,7 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
                 </div>
               </div>
             )}
-            {/* Streaming logos (left) + IMDb/Letterboxd links (right) */}
-            <div className="flex items-center justify-between gap-2">
+            {availableProviders.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap">
                 {availableProviders.map((p) => {
                   const svc = getService(p.serviceId);
@@ -111,58 +115,44 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
                   );
                 })}
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {film.imdb_id && (
-                  <a href={`https://www.imdb.com/title/${film.imdb_id}/`}
-                    target="_blank" rel="noopener noreferrer">
-                    <img src="/imdb-logo.png" alt="IMDb" className="h-4" />
-                  </a>
-                )}
-                {film.tmdb_id && (
-                  <a href={`https://letterboxd.com/tmdb/${film.tmdb_id}/`}
-                    target="_blank" rel="noopener noreferrer">
-                    <img src="/letterboxd-logo.png" alt="Letterboxd" className="h-5 w-5 rounded" />
-                  </a>
-                )}
-              </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Overview */}
-        {film.overview && (
-          <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
-            {film.overview}
-          </p>
-        )}
+      {/* Overview — static, clamped so it doesn't crowd cast */}
+      {film.overview && (
+        <p className="shrink-0 px-3 pb-3 text-xs leading-relaxed line-clamp-4" style={{ color: "var(--text-muted)" }}>
+          {film.overview}
+        </p>
+      )}
 
-        {/* Cast */}
-        {film.film_cast && film.film_cast.length > 0 && (
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider mb-1.5"
-              style={{ color: "var(--text-muted)" }}>Cast</p>
-            <div className="space-y-1.5">
-              {film.film_cast.slice(0, 6).map((member, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-medium"
-                    style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
-                    {member.profile_path
-                      ? <img src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
-                          alt={member.name} className="w-full h-full object-cover" />
-                      : member.name.charAt(0)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs truncate" style={{ color: "var(--text)" }}>{member.name}</p>
-                    {member.character && (
-                      <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{member.character}</p>
-                    )}
-                  </div>
+      {/* Cast — only this section scrolls */}
+      {film.film_cast && film.film_cast.length > 0 && (
+        <div className="flex-1 overflow-y-auto px-3 pb-2 min-h-0">
+          <p className="text-xs font-medium uppercase tracking-wider mb-1.5"
+            style={{ color: "var(--text-muted)" }}>Cast</p>
+          <div className="space-y-1.5">
+            {film.film_cast.slice(0, 6).map((member, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-medium"
+                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+                  {member.profile_path
+                    ? <img src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
+                        alt={member.name} className="w-full h-full object-cover" />
+                    : member.name.charAt(0)}
                 </div>
-              ))}
-            </div>
+                <div className="min-w-0">
+                  <p className="text-xs truncate" style={{ color: "var(--text)" }}>{member.name}</p>
+                  {member.character && (
+                    <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{member.character}</p>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
 
       {/* Action buttons */}

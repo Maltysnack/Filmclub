@@ -102,7 +102,7 @@ export default function InfoPanel({ open, onClose }: Props) {
       </div>
 
       {/* Centred content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-16">
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-sm flex flex-col gap-8">
 
           {sent ? (
@@ -219,6 +219,20 @@ export default function InfoPanel({ open, onClose }: Props) {
             </>
           )}
         </div>
+      </div>
+
+      {/* Letterboxd link — fixed to bottom, clear of the form */}
+      <div className="flex justify-center pb-10">
+        <a
+          href="https://letterboxd.com/maltysnack/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2.5 transition-opacity hover:opacity-60"
+          style={{ color: "var(--text-muted)" }}
+        >
+          <img src="/letterboxd-logo.png" alt="Letterboxd" className="h-5 w-5 rounded" />
+          <span className="text-xs">follow me on letterboxd</span>
+        </a>
       </div>
     </div>
   );
