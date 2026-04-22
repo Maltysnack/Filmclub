@@ -30,6 +30,11 @@ import SinglePlayerVoteOverlay from "@/components/SinglePlayerVoteOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
 
 
+// Regions where English is the primary language — non-English films are capped
+// at FOREIGN_LANG_CAP of the pool. All other regions get no language filtering.
+const ENGLISH_PRIMARY_REGIONS = new Set(["AU", "US", "GB", "CA", "NZ", "IE", "ZA"]);
+const FOREIGN_LANG_CAP = 0.15;
+
 // Deterministic shuffle using a seeded LCG PRNG — same result for the same
 // participantId across page refreshes, giving each user a stable personal deck.
 function seededShuffle<T>(arr: T[], seed: number): T[] {
@@ -314,13 +319,39 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       return true;
     }).slice(0, targetPool);
 
-    console.log(`[pool] fetched ${raw.length} raw → ${deduped.length} deduped, seeding now...`);
-    const BATCH = 8;
-    for (let i = 0; i < deduped.length; i += BATCH) {
-      await Promise.all(deduped.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
-      if (i + BATCH < deduped.length) await new Promise((r) => setTimeout(r, 400));
+    // ── Language breakdown before filtering ───────────────────────────────────
+    const foreignBefore = deduped.filter((m) => m.original_language !== "en");
+    const langBreakdown = foreignBefore.reduce((acc, m) => {
+      acc[m.original_language] = (acc[m.original_language] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const pctBefore = ((foreignBefore.length / deduped.length) * 100).toFixed(1);
+    console.log(`[pool] language breakdown — ${foreignBefore.length}/${deduped.length} non-English (${pctBefore}%):`, langBreakdown);
+
+    // ── Language cap (English-primary regions only) ────────────────────────────
+    let filtered = deduped;
+    if (ENGLISH_PRIMARY_REGIONS.has(region)) {
+      const cap = Math.round(deduped.length * FOREIGN_LANG_CAP);
+      let foreignCount = 0;
+      filtered = deduped.filter((m) => {
+        if (m.original_language === "en") return true;
+        if (foreignCount < cap) { foreignCount++; return true; }
+        return false;
+      });
+      const pctAfter = ((foreignCount / filtered.length) * 100).toFixed(1);
+      const suppressed = foreignBefore.length - foreignCount;
+      console.log(`[pool] language filter applied (${region}) — cap ${(FOREIGN_LANG_CAP * 100).toFixed(0)}% (${cap} films): kept ${foreignCount} non-English, suppressed ${suppressed} → ${foreignCount}/${filtered.length} non-English (${pctAfter}%)`);
+    } else {
+      console.log(`[pool] language filter skipped — region ${region} is not English-primary`);
     }
-    console.log(`[pool] seeding complete — ${deduped.length} films added to session`);
+
+    console.log(`[pool] fetched ${raw.length} raw → ${deduped.length} deduped → ${filtered.length} after language filter, seeding now...`);
+    const BATCH = 8;
+    for (let i = 0; i < filtered.length; i += BATCH) {
+      await Promise.all(filtered.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
+      if (i + BATCH < filtered.length) await new Promise((r) => setTimeout(r, 400));
+    }
+    console.log(`[pool] seeding complete — ${filtered.length} films added to session`);
   }
 
   // loadFilms fetches Dendy sessions itself and keeps the result as a local variable.
