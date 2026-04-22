@@ -23,7 +23,7 @@ import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Search, Trophy, Play, Copy, Check, Clock, Zap, Crown } from "lucide-react";
+import { Search, Trophy, Play, Copy, Check, Clock, Zap, Crown, Layers } from "lucide-react";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import SinglePlayerVoteOverlay from "@/components/SinglePlayerVoteOverlay";
@@ -990,14 +990,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             </div>
           </div>
 
-          {/* How it works + How it's decided — fills remaining space, centred between members and CTA */}
-          <div className="flex-1 flex flex-col justify-center gap-6">
+          {/* How it works + How it's decided — fills remaining space, pushed toward the CTA */}
+          <div className="flex-1 flex flex-col justify-end gap-6 pb-10">
 
             {/* How to play */}
             <div className="flex flex-col gap-3">
               <p className="text-xs font-medium uppercase tracking-wider"
                 style={{ color: "var(--text-muted)" }}>How to</p>
               {[
+                { icon: <Layers size={16} />, text: "Swipe right to like and left to pass" },
                 { icon: <Search size={16} />, text: "Search to add films to the pool" },
                 { icon: <Trophy size={16} />, text: "See everyone's results as you go" },
                 { icon: <Clock size={16} />, text: "Press and hold any film for more info" },
@@ -1010,12 +1011,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             </div>
 
             {/* How it's decided */}
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 mt-2">
               <p className="text-xs font-medium uppercase tracking-wider"
                 style={{ color: "var(--text-muted)" }}>How it&apos;s decided</p>
               <div className="flex items-center gap-3">
                 <span className="shrink-0" style={{ color: "var(--accent)" }}><Zap size={16} /></span>
-                <span className="text-xs font-medium" style={{ color: "var(--text)" }}>Everyone swipes right → instant match</span>
+                <span className="text-xs font-medium" style={{ color: "var(--text)" }}>Everyone swipes right is an instant match</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="w-4 shrink-0 text-center text-[10px] font-bold" style={{ color: "var(--accent)" }}>OR</span>
