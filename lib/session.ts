@@ -445,10 +445,8 @@ export async function resolveMatch(sessionId: string, winnerFilmId: string) {
     .eq("session_id", sessionId)
     .neq("film_id", winnerFilmId);
   await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
-  // Record outcome for analytics — fire-and-forget, production only
-  recordSessionOutcome(sessionId, winnerFilmId).catch((e) =>
-    console.error("[outcome] failed to record:", e)
-  );
+  // Record outcome for analytics — production only, awaited so errors surface in logs
+  await recordSessionOutcome(sessionId, winnerFilmId);
 }
 
 // ── Session outcomes ──────────────────────────────────────────────────────────
