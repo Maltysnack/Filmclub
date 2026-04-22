@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import DendyLogo from "@/components/DendyLogo";
-import InfoPanel from "@/components/InfoPanel";
 import { createSession, joinSession, getSession, getParticipants, setParticipantId, setIsHost } from "@/lib/session";
 import { getServicesForRegion, detectRegion, REGION_OPTIONS } from "@/lib/streaming";
-import { ChevronRight, ChevronDown, Users, Mail } from "lucide-react";
+import { ChevronRight, ChevronDown, Users } from "lucide-react";
+import MailButton from "@/components/MailButton";
+import { seedHomePool } from "@/lib/pool";
 import type { WatchMode, Region } from "@/types";
 
 type Tab = "create" | "join";
@@ -56,7 +57,6 @@ export default function Home() {
   // }, []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [infoOpen, setInfoOpen] = useState(false);
 
   // Create form
   // NAME_INPUT_HIDDEN: name state preserved for re-enable
@@ -177,6 +177,11 @@ export default function Home() {
 
     setParticipantId(session.code, participant.id);
     setIsHost(session.code);
+
+    // Fire-and-forget initial seed — starts fetching films immediately so they
+    // land in the DB while the lobby animation plays, hiding the loading latency.
+    void seedHomePool(session);
+
     router.push(`/session/${session.code}`);
   }
 
@@ -209,17 +214,7 @@ export default function Home() {
     <main className="min-h-dvh overflow-y-auto flex flex-col items-center justify-center px-5 py-12"
       style={{ background: "var(--bg)" }}>
 
-      {/* Three-dot button — top-right corner */}
-      <button
-        onClick={() => setInfoOpen(true)}
-        className="fixed top-4 right-4 z-40 flex items-center justify-center w-9 h-9 rounded-full transition-all"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
-        aria-label="Info"
-      >
-        <Mail size={15} />
-      </button>
-
-      <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} />
+      <MailButton />
 
       <div className="mb-10 text-center">
         <div className="flex justify-center mb-3">

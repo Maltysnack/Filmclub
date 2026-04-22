@@ -89,18 +89,20 @@ export default function InfoPanel({ open, onClose }: Props) {
       className="fixed inset-0 z-50 flex flex-col"
       style={{ background: "var(--bg)" }}
     >
-      {/* Close */}
-      <button
-        onClick={onClose}
-        className="absolute top-4 right-4 flex items-center justify-center w-9 h-9 rounded-full transition-all"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
-        aria-label="Close"
-      >
-        <X size={16} />
-      </button>
+      {/* Close button — inside the same max-width column as the content */}
+      <div className="mx-auto w-full flex justify-end px-5" style={{ maxWidth: 480, paddingTop: "50px" }}>
+        <button
+          onClick={onClose}
+          className="flex items-center justify-center w-9 h-9 rounded-full transition-all hover:brightness-125"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+      </div>
 
       {/* Centred content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-16">
         <div className="w-full max-w-sm flex flex-col gap-8">
 
           {sent ? (
