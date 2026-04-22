@@ -833,7 +833,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     return (
       <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
         <MailButton />
-        <div className="flex flex-col flex-1 mx-auto w-full px-5 py-10" style={{ maxWidth: 480 }}>
+        <div className="flex flex-col flex-1 mx-auto w-full px-5 pt-10" style={{ maxWidth: 480, paddingBottom: "max(calc(env(safe-area-inset-bottom) + 2rem), 6rem)" }}>
 
           {/* Logo — slides up from centre on mount */}
           <motion.div
