@@ -261,7 +261,7 @@ export default function Home() {
               {/* Label row with region selector on the right */}
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-medium uppercase tracking-wider"
-                  style={{ color: "var(--text-muted)" }}>Your streaming services</label>
+                  style={{ color: "var(--text-muted)" }}>Choose your streaming services</label>
                 {/* Region picker — pill shows current, click opens grid */}
                 <div className="relative">
                   {(() => {
