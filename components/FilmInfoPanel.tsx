@@ -13,9 +13,11 @@ interface FilmInfoPanelProps {
   onDislike?: () => void;
   dendyInfo?: DendyFilm;
   sessionServices: string[];
+  // Pass true from the mobile overlay — the X is already in the poster image
+  hideClose?: boolean;
 }
 
-export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionServices }: FilmInfoPanelProps) {
+export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionServices, hideClose = false }: FilmInfoPanelProps) {
   const providers: { serviceId: string; logoPath?: string | null }[] = film.watch_providers_au ?? [];
   const availableProviders = providers.filter((p) => sessionServices.includes(p.serviceId));
   const showWhere = !!(dendyInfo || availableProviders.length > 0);
@@ -27,10 +29,12 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
         <h2 className="text-sm font-semibold leading-snug" style={{ color: "var(--text)" }}>
           {film.title}
         </h2>
-        <button onClick={onClose} className="shrink-0 p-1.5 rounded-full mt-0.5"
-          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
-          <X size={13} />
-        </button>
+        {!hideClose && (
+          <button onClick={onClose} className="shrink-0 p-1.5 rounded-full mt-0.5"
+            style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+            <X size={13} />
+          </button>
+        )}
       </div>
 
       {/* Meta */}
@@ -120,40 +124,40 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
         </div>
       )}
 
-      {/* Overview — static, clamped so it doesn't crowd cast */}
-      {film.overview && (
-        <p className="shrink-0 px-3 pb-3 text-xs leading-relaxed line-clamp-4" style={{ color: "var(--text-muted)" }}>
-          {film.overview}
-        </p>
-      )}
+      {/* Overview + cast — single scroll area so the full synopsis is always readable */}
+      <div className="flex-1 overflow-y-auto px-3 pb-2 min-h-0 space-y-3">
+        {film.overview && (
+          <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            {film.overview}
+          </p>
+        )}
 
-      {/* Cast — only this section scrolls */}
-      {film.film_cast && film.film_cast.length > 0 && (
-        <div className="flex-1 overflow-y-auto px-3 pb-2 min-h-0">
-          <p className="text-xs font-medium uppercase tracking-wider mb-1.5"
-            style={{ color: "var(--text-muted)" }}>Cast</p>
-          <div className="space-y-1.5">
-            {film.film_cast.slice(0, 6).map((member, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-medium"
-                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
-                  {member.profile_path
-                    ? <img src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
-                        alt={member.name} className="w-full h-full object-cover" />
-                    : member.name.charAt(0)}
+        {film.film_cast && film.film_cast.length > 0 && (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider mb-1.5"
+              style={{ color: "var(--text-muted)" }}>Cast</p>
+            <div className="space-y-1.5">
+              {film.film_cast.slice(0, 6).map((member, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-medium"
+                    style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+                    {member.profile_path
+                      ? <img src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
+                          alt={member.name} className="w-full h-full object-cover" />
+                      : member.name.charAt(0)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs truncate" style={{ color: "var(--text)" }}>{member.name}</p>
+                    {member.character && (
+                      <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{member.character}</p>
+                    )}
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs truncate" style={{ color: "var(--text)" }}>{member.name}</p>
-                  {member.character && (
-                    <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{member.character}</p>
-                  )}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
-
+        )}
+      </div>
 
       {/* Action buttons */}
       {(onLike || onDislike) && (

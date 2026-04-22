@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useRef } from "react";
+import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { Film } from "@/types";
 import { DendyFilm } from "@/lib/dendy";
 import { posterUrl } from "@/lib/tmdb";
@@ -20,15 +20,36 @@ interface FilmInfoOverlayProps {
 export default function FilmInfoOverlay({
   film, onClose, onLike, onDislike, sessionServices, dendyInfo,
 }: FilmInfoOverlayProps) {
+  // Motion value drives the mobile sheet's vertical position.
+  // The poster area acts as a drag handle — dragging it moves the whole sheet.
+  // This avoids scroll conflicts with the cast list below.
+  const sheetY = useMotionValue(0);
+  const posterRef = useRef<HTMLDivElement>(null);
+
   // Lock body scroll while overlay is open
   useEffect(() => {
     if (film) {
       document.body.style.overflow = "hidden";
+      // Reset sheet position whenever a new film opens
+      sheetY.set(0);
     } else {
       document.body.style.overflow = "";
     }
     return () => { document.body.style.overflow = ""; };
-  }, [film]);
+  }, [film, sheetY]);
+
+  function handleDragEnd(_: unknown, info: { offset: { y: number }; velocity: { y: number } }) {
+    if (info.offset.y > 120 || info.velocity.y > 600) {
+      // Fly the sheet off-screen at natural velocity, then close
+      animate(sheetY, window.innerHeight, {
+        duration: 0.25,
+        ease: [0.32, 0, 0.67, 0],
+      }).then(() => onClose());
+    } else {
+      // Snap back
+      animate(sheetY, 0, { type: "spring", stiffness: 400, damping: 35 });
+    }
+  }
 
   return (
     <AnimatePresence>
@@ -44,26 +65,40 @@ export default function FilmInfoOverlay({
             onClick={onClose}
           />
 
-          {/* ── Mobile: full-screen vertical stack ───────────────────────── */}
+          {/* ── Mobile: full-screen sheet, slides up from bottom ─────────── */}
           <motion.div
             className="fixed inset-0 z-50 flex flex-col md:hidden"
-            style={{ background: "var(--surface)" }}
+            style={{ background: "var(--surface)", y: sheetY }}
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
           >
-            {/* Poster — top 45% */}
-            <div className="relative shrink-0 overflow-hidden" style={{ height: "45dvh" }}>
+            {/* Poster — the drag handle. dragConstraints={posterRef} self-constrains
+                so the poster element barely moves visually while the sheet (sheetY) slides. */}
+            <motion.div
+              ref={posterRef}
+              className="relative shrink-0 overflow-hidden"
+              style={{ height: "45dvh" }}
+              drag="y"
+              dragConstraints={posterRef}
+              dragElastic={{ top: 0, bottom: 0.4 }}
+              onDrag={(_: unknown, info: { offset: { y: number } }) => {
+                sheetY.set(Math.max(0, info.offset.y));
+              }}
+              onDragEnd={handleDragEnd}
+            >
               <img
                 src={posterUrl(film.backdrop_path ?? film.poster_path, "w1280")}
                 alt={film.title}
                 className="w-full h-full object-cover"
+                draggable={false}
               />
               <div
                 className="absolute inset-0"
                 style={{ background: "linear-gradient(to top, var(--surface) 0%, transparent 60%)" }}
               />
+              {/* X button — only one on mobile, lives here in the poster */}
               <button
                 onClick={onClose}
                 className="absolute top-4 right-4 p-2 rounded-full"
@@ -71,13 +106,13 @@ export default function FilmInfoOverlay({
               >
                 <X size={18} />
               </button>
-              {/* Drag handle */}
-              <div className="absolute top-3 left-0 right-0 flex justify-center">
-                <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
+              {/* Drag handle indicator */}
+              <div className="absolute top-3 left-0 right-0 flex justify-center pointer-events-none">
+                <div className="w-10 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.3)" }} />
               </div>
-            </div>
+            </motion.div>
 
-            {/* Info panel — scrollable bottom */}
+            {/* Info panel — hideClose removes the duplicate X button */}
             <div className="flex-1 overflow-hidden">
               <FilmInfoPanel
                 film={film}
@@ -86,6 +121,7 @@ export default function FilmInfoOverlay({
                 onDislike={onDislike}
                 sessionServices={sessionServices}
                 dendyInfo={dendyInfo}
+                hideClose={true}
               />
             </div>
           </motion.div>
@@ -104,7 +140,7 @@ export default function FilmInfoOverlay({
               style={{ maxWidth: 920, height: "min(calc(100dvh - 120px), 520px)" }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Poster card — let flex stretch control height, no explicit height: 100% */}
+              {/* Poster card */}
               <div
                 className="relative rounded-2xl overflow-hidden shrink-0"
                 style={{ width: "calc(60% - 6px)", position: "relative", zIndex: 1 }}
