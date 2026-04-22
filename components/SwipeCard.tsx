@@ -47,6 +47,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
   const backY = useTransform(effectivePMV, [0, SWIPE_THRESHOLD], [4, 0]);
 
   const [isDragging, setIsDragging] = useState(false);
+  const [posterLoaded, setPosterLoaded] = useState(false);
   const { handlers: lpHandlers, cancel: cancelLongPress } = useLongPress(onInfo);
 
   async function handleDragEnd(_: unknown, info: PanInfo) {
@@ -80,7 +81,8 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
     }
   }
 
-  const poster = posterUrl(film.poster_path, "original");
+  // w780 is indistinguishable from "original" at 480px display width and ~5-10x smaller
+  const poster = posterUrl(film.poster_path, "w780");
 
   return (
     <motion.div
@@ -98,13 +100,15 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
         style={{ background: "var(--surface-2)" }}
         {...lpHandlers}
       >
-        {/* Poster image */}
+        {/* Poster image — fades in once loaded so the dark placeholder feels intentional */}
         <div className="absolute inset-0 overflow-hidden">
           <img
             src={poster}
             alt={film.title}
-            className="w-full h-full object-cover pointer-events-none"
+            className="w-full h-full object-cover pointer-events-none transition-opacity duration-300"
+            style={{ opacity: posterLoaded ? 1 : 0 }}
             draggable={false}
+            onLoad={() => setPosterLoaded(true)}
           />
           {/* Gradient overlay at bottom */}
           <div

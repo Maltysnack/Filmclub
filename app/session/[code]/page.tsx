@@ -1059,19 +1059,25 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const currentFilm = queue[currentIndex];
   const nextFilm = queue[skipBlocked(currentIndex + 1, queue, blockedCollections, filmLikes)];
 
-  // Preload backdrops for the next 6 films from the current position in either mode.
-  // Swipe mode uses currentIndex; scroll mode uses scrollIndexRef.
-  // 6 films ≈ ~1MB of background requests — enough buffer without being wasteful.
+  // Preload the next 8 cards' posters (w780 — matches the display size on card) so they
+  // are cache-warm before the user swipes to them. Also keep 3 backdrops ahead for the
+  // info panel. Previously only backdrops were preloaded, so the visible card poster was
+  // never in cache — this was the root cause of blank cards on fast swiping.
   const preloadStart = viewMode === "scroll" ? scrollIndexRef.current : currentIndex;
-  const preloadBackdrops = queue
-    .slice(preloadStart, preloadStart + 6)
+  const preloadWindow = queue.slice(preloadStart, preloadStart + 8);
+  const preloadPosters = preloadWindow
+    .map((f) => f.poster_path ? posterUrl(f.poster_path, "w780") : null)
+    .filter(Boolean) as string[];
+  const preloadBackdrops = preloadWindow
+    .slice(0, 3)
     .map((f) => f.backdrop_path ? posterUrl(f.backdrop_path, "w1280") : null)
     .filter(Boolean) as string[];
+  const preloadUrls = [...new Set([...preloadPosters, ...preloadBackdrops])];
 
   return (
     <div className="h-dvh overflow-hidden" style={{ background: "var(--bg)" }}>
-    {/* Hidden preload images — browser fetches backdrop silently while user views card */}
-    {preloadBackdrops.map((url) => (
+    {/* Hidden preload images — posters (w780) for next 8 cards + backdrops for next 3 */}
+    {preloadUrls.map((url) => (
       <img key={url} src={url} alt="" aria-hidden className="hidden" />
     ))}
     <div className="flex flex-col h-dvh mx-auto overflow-hidden"
