@@ -475,7 +475,7 @@ async function recordSessionOutcome(
   ] = await Promise.all([
     supabase
       .from("sessions")
-      .select("region, watch_mode, streaming_services")
+      .select("region, streaming_services")
       .eq("id", sessionId)
       .single(),
     supabase
@@ -499,7 +499,6 @@ async function recordSessionOutcome(
     release_year: film.release_year ?? null,
     group_size: groupSize ?? null,
     region: session.region ?? null,
-    watch_mode: session.watch_mode ?? null,
     service_ids: session.streaming_services ?? null,
   });
 }
