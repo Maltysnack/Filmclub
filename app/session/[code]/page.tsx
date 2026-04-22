@@ -16,9 +16,11 @@ import {
   closeSession, startSession, resolveMatch, addFilmToSession, getSessionSwipeStats,
   removeParticipant, getShortlistData,
 } from "@/lib/session";
-import { getTrendingFilms, getTopRatedFilms, discoverFilmsByProviders, getProviderList, posterUrl, getFilmDetail, fetchCollectionTmdbIds } from "@/lib/tmdb";
+import { posterUrl, getFilmDetail, fetchCollectionTmdbIds } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
-import { getService, getServicesForRegion } from "@/lib/streaming";
+import { getService } from "@/lib/streaming";
+import { seedHomePool, seedMoreHomePool, sessionProviderTmdbIds, ENGLISH_PRIMARY_REGIONS, FOREIGN_LANG_CAP } from "@/lib/pool";
+import MailButton from "@/components/MailButton";
 import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
@@ -37,11 +39,6 @@ function lobbyGridCols(n: number): number {
   if (n <= 8) return 2;
   return 3;
 }
-
-// Regions where English is the primary language — non-English films are capped
-// at FOREIGN_LANG_CAP of the pool. All other regions get no language filtering.
-const ENGLISH_PRIMARY_REGIONS = new Set(["AU", "US", "GB", "CA", "NZ", "IE", "ZA"]);
-const FOREIGN_LANG_CAP = 0.15;
 
 // Deterministic shuffle using a seeded LCG PRNG — same result for the same
 // participantId across page refreshes, giving each user a stable personal deck.
@@ -243,124 +240,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [likedInScroll, setLikedInScroll] = useState<Set<string>>(new Set());
 
   const queue = fullQueue;
-
-  // Fast initial seed — just enough to show the first card immediately.
-  // Resolve session streaming_services (service IDs like "netflix") → TMDB provider IDs
-  function sessionProviderTmdbIds(s: Session): number[] {
-    const services = getServicesForRegion(s.region ?? "AU");
-    return (s.streaming_services ?? [])
-      .flatMap((sid) => {
-        const tmdbId = services.find((svc) => svc.id === sid)?.tmdbId;
-        return tmdbId != null ? [tmdbId] : [];
-      });
-  }
-
-  // session_films upsert is idempotent so re-adding later is safe.
-  async function seedHomePool(s: Session) {
-    const region = s.region ?? "AU";
-    const providerIds = sessionProviderTmdbIds(s);
-    console.log("[seed] region:", region, "services:", s.streaming_services, "→ providerIds:", providerIds);
-    // DEV: log the real TMDB provider list once to verify IDs
-    if (process.env.NODE_ENV === "development") {
-      getProviderList(region).then((list) => {
-        const relevant = list.filter((p) =>
-          /stan|binge|netflix|prime|disney|apple|paramount|foxtel|hulu|peacock|max|now|britbox|itvx|bbc/i.test(p.provider_name)
-        );
-        console.log(`[TMDB ${region} providers]`, relevant.map(p => `${p.provider_name} (${p.provider_id})`));
-      });
-    }
-    // When streaming services are selected, seed from TMDB Discover so only
-    // films actually available on those services are added.
-    // Fall back to trending when no services are specified.
-    const films = providerIds.length > 0
-      ? await discoverFilmsByProviders(providerIds, 1, region)
-      : await getTrendingFilms(1);
-    console.log("[seed] discover returned", films.length, "films, titles:", films.slice(0, 3).map(f => f.title));
-    const seen = new Set<number>();
-    const initial = films.filter((m) => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id);
-      return true;
-    }).slice(0, 10);
-    await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null)));
-  }
-
-  // Background expander — runs silently after the session page is shown.
-  // Pool size scales with service count: 160 base + 20 per service.
-  // Films land in batches via the realtime subscription, extending the reserve automatically.
-  async function seedMoreHomePool(s: Session) {
-    const region = s.region ?? "AU";
-    const providerIds = sessionProviderTmdbIds(s);
-    const serviceCount = Math.max(1, providerIds.length);
-    const targetPool = 160 + (20 * serviceCount);
-    console.log(`[pool] services: ${serviceCount} → target pool: ${targetPool} films`);
-
-    let raw: import("@/types").TMDBMovie[];
-    if (providerIds.length > 0) {
-      // Fetch two equal halves in parallel: popularity-sorted and rating-sorted (min 1000 votes).
-      // halfPages covers half the target across all services (each TMDB page = 20 films per provider).
-      const halfPages = Math.ceil(targetPool / (20 * serviceCount * 2));
-      const [popularFilms, ratedFilms] = await Promise.all([
-        discoverFilmsByProviders(providerIds, halfPages, region, "popularity.desc"),
-        discoverFilmsByProviders(providerIds, halfPages, region, "vote_average.desc", 1000),
-      ]);
-      // Interleave popular[i] and rated[i] so neither half dominates the final pool.
-      const mixSeen = new Set<number>();
-      raw = [];
-      const maxLen = Math.max(popularFilms.length, ratedFilms.length);
-      for (let i = 0; i < maxLen; i++) {
-        for (const film of [popularFilms[i], ratedFilms[i]]) {
-          if (film && !mixSeen.has(film.id)) { mixSeen.add(film.id); raw.push(film); }
-        }
-      }
-    } else {
-      // No services — split target between trending and top-rated (already quality content)
-      const halfPages = Math.ceil(targetPool / 40);
-      raw = await Promise.all([getTrendingFilms(halfPages), getTopRatedFilms(halfPages)])
-        .then(([a, b]) => [...a, ...b]);
-    }
-
-    const seen = new Set<number>();
-    const deduped = raw.filter((m) => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id);
-      return true;
-    }).slice(0, targetPool);
-
-    // ── Language breakdown before filtering ───────────────────────────────────
-    const foreignBefore = deduped.filter((m) => m.original_language !== "en");
-    const langBreakdown = foreignBefore.reduce((acc, m) => {
-      acc[m.original_language] = (acc[m.original_language] ?? 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    const pctBefore = ((foreignBefore.length / deduped.length) * 100).toFixed(1);
-    console.log(`[pool] language breakdown — ${foreignBefore.length}/${deduped.length} non-English (${pctBefore}%):`, langBreakdown);
-
-    // ── Language cap (English-primary regions only) ────────────────────────────
-    let filtered = deduped;
-    if (ENGLISH_PRIMARY_REGIONS.has(region)) {
-      const cap = Math.round(deduped.length * FOREIGN_LANG_CAP);
-      let foreignCount = 0;
-      filtered = deduped.filter((m) => {
-        if (m.original_language === "en") return true;
-        if (foreignCount < cap) { foreignCount++; return true; }
-        return false;
-      });
-      const pctAfter = ((foreignCount / filtered.length) * 100).toFixed(1);
-      const suppressed = foreignBefore.length - foreignCount;
-      console.log(`[pool] language filter applied (${region}) — cap ${(FOREIGN_LANG_CAP * 100).toFixed(0)}% (${cap} films): kept ${foreignCount} non-English, suppressed ${suppressed} → ${foreignCount}/${filtered.length} non-English (${pctAfter}%)`);
-    } else {
-      console.log(`[pool] language filter skipped — region ${region} is not English-primary`);
-    }
-
-    console.log(`[pool] fetched ${raw.length} raw → ${deduped.length} deduped → ${filtered.length} after language filter, seeding now...`);
-    const BATCH = 8;
-    for (let i = 0; i < filtered.length; i += BATCH) {
-      await Promise.all(filtered.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
-      if (i + BATCH < filtered.length) await new Promise((r) => setTimeout(r, 400));
-    }
-    console.log(`[pool] seeding complete — ${filtered.length} films added to session`);
-  }
 
   // loadFilms fetches Dendy sessions itself and keeps the result as a local variable.
   // This avoids the stale-closure bug where useCallback captures the initial empty dendyMap
@@ -926,16 +805,40 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // ── Lobby — shown to new joiners until the host starts the session ──────────
   // Skip lobby if the user has a snapshot (returning from search/results) to
   // avoid a flash of the lobby before the snapshot is restored.
-  if (!hasSnapshot.current && session !== null && !session.started) {
+  // Blank screen while session loads — prevents a flash of the swipe UI
+  // before the lobby animation plays on first join.
+  if (!session || !participant) {
+    return <div className="min-h-dvh" style={{ background: "var(--bg)" }} />;
+  }
+
+  if (session !== null && !session.started) {
     const hostParticipant = participants[0]; // creator always joins first
     return (
       <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
+        <MailButton />
         <div className="flex flex-col flex-1 mx-auto w-full px-5 py-10" style={{ maxWidth: 480 }}>
 
-          {/* Logo */}
-          <div className="flex justify-center mb-10">
-            <Logo size="md" />
-          </div>
+          {/* Logo — slides up from centre on mount */}
+          <motion.div
+            className="flex justify-center mb-10"
+            initial={{ y: 160, opacity: 0 }}
+            animate={{ y: [160, 160, 0], opacity: [0, 1, 1] }}
+            transition={{
+              duration: 1.4,
+              times: [0, 0.22, 1],
+              ease: ["easeOut", [0.4, 0, 0.2, 1]],
+            }}
+          >
+            <Logo size="lg" />
+          </motion.div>
+
+          {/* Rest of lobby fades in after logo settles */}
+          <motion.div
+            className="flex flex-col flex-1"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.2, duration: 0.4 }}
+          >
 
           {/* Session code */}
           <div className="mb-8 text-center">
@@ -1051,6 +954,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               </div>
             )}
           </div>
+
+          </motion.div>
         </div>
       </div>
     );
