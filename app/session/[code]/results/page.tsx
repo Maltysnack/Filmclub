@@ -14,6 +14,7 @@ import { Film, Session, Participant } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
+import ParticipantPill from "@/components/ParticipantPill";
 
 interface FilmScore {
   film: Film;
@@ -202,18 +203,14 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
           {/* Participants */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
             {participants.map((p) => {
-              const color = participantColor(p.name);
               const canRemove = isHost && p.id !== myParticipantId;
               return (
-                <button key={p.id}
-                  onClick={() => canRemove && setConfirmRemoveId(p.id)}
-                  className="text-xs px-2.5 py-1 rounded-full font-medium"
-                  style={{
-                    background: `${color}22`, color, border: `1px solid ${color}55`,
-                    cursor: canRemove ? "pointer" : "default",
-                  }}>
-                  {p.name}{p.id === myParticipantId ? " (you)" : ""}
-                </button>
+                <ParticipantPill
+                  key={p.id}
+                  name={p.name}
+                  isMe={p.id === myParticipantId}
+                  onClick={canRemove ? () => setConfirmRemoveId(p.id) : undefined}
+                />
               );
             })}
           </div>
