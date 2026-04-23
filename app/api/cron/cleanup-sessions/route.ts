@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Use service role key so deletes bypass RLS and always succeed.
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-
 export async function GET(req: NextRequest) {
   const secret = req.headers.get("x-cron-secret");
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Use service role key so deletes bypass RLS and always succeed.
+  // Created inside the handler so env vars are available at request time, not build time.
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
 
   const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
