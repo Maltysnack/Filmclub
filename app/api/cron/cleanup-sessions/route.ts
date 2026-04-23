@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
+
+// Use service role key so deletes bypass RLS and always succeed.
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
 
 export async function GET(req: NextRequest) {
   const secret = req.headers.get("x-cron-secret");
@@ -9,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
-  const { count, error } = await supabase
+  const { count, error } = await supabaseAdmin
     .from("sessions")
     .delete({ count: "exact" })
     .lt("created_at", cutoff);

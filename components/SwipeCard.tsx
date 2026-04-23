@@ -3,12 +3,10 @@
 import { useState } from "react";
 import { animate, motion, AnimatePresence, useMotionValue, useTransform, PanInfo, MotionValue } from "framer-motion";
 import { Film } from "@/types";
-import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
 import { posterUrl } from "@/lib/tmdb";
 import { Heart, X } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
-import DendyLogo from "./DendyLogo";
 import ParticipantPill from "./ParticipantPill";
 import { Participant } from "@/types";
 
@@ -18,7 +16,6 @@ interface SwipeCardProps {
   onDislike: () => void;
   onInfo: () => void;
   isTop: boolean;
-  dendyInfo?: DendyFilm;
   sessionServices?: string[];
   votePhase?: 1 | 2 | 3;
   voteInfo?: { count: number; participantIds: string[] };
@@ -32,7 +29,7 @@ interface SwipeCardProps {
 
 const SWIPE_THRESHOLD = 80;
 
-export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dendyInfo, sessionServices = [], votePhase = 1, voteInfo, participants = [], onDragStart: onDragStartProp, onDragEnd: onDragEndProp, promotionMV }: SwipeCardProps) {
+export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sessionServices = [], votePhase = 1, voteInfo, participants = [], onDragStart: onDragStartProp, onDragEnd: onDragEndProp, promotionMV }: SwipeCardProps) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-18, 18]);
@@ -161,55 +158,32 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
 
         {/* Film info at bottom */}
         <div className="absolute bottom-0 left-0 right-0 p-5">
-          {/* Where-to-watch badges — streaming logos left, Dendy right */}
+          {/* Streaming service logos */}
           {(() => {
             const providers = film.watch_providers_au ?? [];
             const available = providers.filter((p) => sessionServices.includes(p.serviceId));
-            if (!dendyInfo && available.length === 0) return null;
+            if (available.length === 0) return null;
             return (
-              <div className="flex items-start gap-3 mb-2">
-                {/* Streaming service logos — only if film is on a selected service */}
-                {available.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {available.slice(0, 4).map((p) => {
-                      const svc = getService(p.serviceId);
-                      if (!svc) return null;
-                      // Use per-film logoPath, fall back to service's static logo
-                      const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
-                      return logo ? (
-                        <img
-                          key={p.serviceId}
-                          src={`https://image.tmdb.org/t/p/w45${logo}`}
-                          alt={svc.name}
-                          title={svc.name}
-                          className="w-6 h-6 rounded object-cover"
-                        />
-                      ) : (
-                        <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded font-bold"
-                          style={{ background: `${svc.color}30`, color: svc.color, border: `1px solid ${svc.color}50` }}>
-                          {svc.abbrev}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-                {/* Dendy label + session times */}
-                {dendyInfo && (
-                  <div className={`flex flex-col gap-1 shrink-0 ${available.length > 0 ? "items-end ml-auto" : "items-start"}`}>
-                    <span className="flex items-center gap-1 leading-none">
-                      <DendyLogo height={12} />
-                      {dendyInfo.tmdbMatch === "low" && <span style={{ color: "var(--accent)" }}>⚠️</span>}
+              <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                {available.slice(0, 4).map((p) => {
+                  const svc = getService(p.serviceId);
+                  if (!svc) return null;
+                  const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
+                  return logo ? (
+                    <img
+                      key={p.serviceId}
+                      src={`https://image.tmdb.org/t/p/w45${logo}`}
+                      alt={svc.name}
+                      title={svc.name}
+                      className="w-6 h-6 rounded object-cover"
+                    />
+                  ) : (
+                    <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded font-bold"
+                      style={{ background: `${svc.color}30`, color: svc.color, border: `1px solid ${svc.color}50` }}>
+                      {svc.abbrev}
                     </span>
-                    <div className="flex gap-1 flex-wrap">
-                      {dendyInfo.sessionTimes.slice(0, 4).map((t) => (
-                        <span key={t} className="text-xs px-1.5 py-0.5 rounded font-medium"
-                          style={{ background: "rgba(232,184,109,0.2)", color: "var(--accent)", border: "1px solid rgba(232,184,109,0.3)" }}>
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  );
+                })}
               </div>
             );
           })()}
