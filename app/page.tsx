@@ -237,16 +237,15 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Equal-height container — both forms live here so the CTA button always
-          sits at the same Y position regardless of which tab is active.
-          min-h accommodates the tallest form (create + service grid).
-          The join form uses flex-1 spacer to push its button to the same bottom. */}
-      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "22rem" }}>
+      {/* Form container — the code panel on the join tab is sized to match the
+          service grid on the create tab, so both buttons naturally land at the
+          same Y position without any spacer tricks. */}
+      <div className="w-full max-w-sm">
 
         {tab === "create" && (
           <form
             onSubmit={(e) => e.preventDefault()}
-            className="flex-1 flex flex-col gap-5">
+            className="flex flex-col gap-5">
 
             {/* CINEMA_HIDDEN: "Watching at" field removed — re-enable when cinema returns */}
 
@@ -347,9 +346,6 @@ export default function Home() {
 
             {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
 
-            {/* Spacer pushes the CTA to the bottom of the shared container */}
-            <div className="flex-1" />
-
             {selectedServices.length === 0 ? (
               /* Disabled hint — visible only until a service is selected */
               <button
@@ -379,15 +375,33 @@ export default function Home() {
         )}
 
         {tab === "join" && (
-          <form onSubmit={handleJoin} className="flex-1 flex flex-col gap-5">
-            <Field label="Code">
-              <input type="text" placeholder="WOLF-42" value={joinCode}
-                onChange={handleJoinCodeChange}
-                maxLength={7}
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none tracking-widest font-mono"
-                style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--accent)" }}
-                autoFocus />
-            </Field>
+          <form onSubmit={handleJoin} className="flex flex-col gap-5">
+
+            {/* Code panel — mirrors the service grid's visual weight and height
+                so both tabs have naturally equal content and the buttons align */}
+            <div className="space-y-3">
+              <label className="block text-xs font-medium uppercase tracking-wider"
+                style={{ color: "var(--text-muted)" }}>Code</label>
+              <div
+                className="w-full rounded-xl flex items-center justify-center"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  minHeight: "10.5rem",
+                }}>
+                <input
+                  type="text"
+                  placeholder="WOLF-42"
+                  value={joinCode}
+                  onChange={handleJoinCodeChange}
+                  maxLength={7}
+                  autoFocus
+                  className="w-full bg-transparent outline-none text-center font-mono font-bold tracking-[0.25em] placeholder:opacity-20 px-6"
+                  style={{ fontSize: "2.25rem", color: "var(--accent)" }}
+                />
+              </div>
+            </div>
+
             {/* NAME_INPUT_HIDDEN: name field removed — random character assigned automatically
             <Field label="Your name">
               <input type="text" placeholder={namePlaceholder} value={joinName}
@@ -398,9 +412,6 @@ export default function Home() {
             */}
 
             {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
-
-            {/* Spacer — matches the create tab's spacer so Join button sits at the same Y */}
-            <div className="flex-1" />
 
             <button type="submit" disabled={loading}
               className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-opacity"
