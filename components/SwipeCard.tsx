@@ -9,8 +9,8 @@ import { posterUrl } from "@/lib/tmdb";
 import { Heart, X } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import DendyLogo from "./DendyLogo";
+import ParticipantPill from "./ParticipantPill";
 import { Participant } from "@/types";
-import { participantColor } from "@/lib/names";
 
 interface SwipeCardProps {
   film: Film;
@@ -227,14 +227,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, dend
                   {voteInfo.participantIds.map((id) => {
                     const p = participants.find((pt) => pt.id === id);
                     if (!p) return null;
-                    const color = participantColor(p.name);
-                    return (
-                      <span key={id}
-                        className="text-xs px-2 py-0.5 rounded-full font-medium"
-                        style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}>
-                        {p.name}
-                      </span>
-                    );
+                    return <ParticipantPill key={id} name={p.name} size="sm" />;
                   })}
                 </div>
               )}
