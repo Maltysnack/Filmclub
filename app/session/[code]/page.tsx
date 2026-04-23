@@ -25,7 +25,8 @@ import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Search, Trophy, Play, Copy, Check, Clock, Zap, Crown, Layers } from "lucide-react";
+import { Search, Trophy, Play, Clock, Zap, Crown, Layers } from "lucide-react";
+import { CodeDisplay } from "@/components/CodeBox";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import SinglePlayerVoteOverlay from "@/components/SinglePlayerVoteOverlay";
@@ -874,17 +875,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           <div className="mb-8 text-center">
             <p className="text-xs font-medium uppercase tracking-wider mb-3"
               style={{ color: "var(--text-muted)" }}>Join code</p>
-            <button
-              onClick={handleShare}
-              className="inline-flex items-center gap-4 px-7 py-5 rounded-3xl transition-all"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-              <span className="font-mono font-bold text-4xl tracking-widest" style={{ color: "var(--accent)" }}>
-                {code}
-              </span>
-              {copied
-                ? <Check size={22} style={{ color: "var(--like)" }} />
-                : <Copy size={22} style={{ color: "var(--text-muted)" }} />}
-            </button>
+            <CodeDisplay code={code} onClick={handleShare} copied={copied} />
           </div>
 
           {/* Participants */}

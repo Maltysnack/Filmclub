@@ -44,6 +44,7 @@ function formatCinema(dateStr: string, from: string, to: string): string {
 }
 
 import { pickMysteryName } from "@/lib/names";
+import { CodeInput } from "@/components/CodeBox";
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
@@ -253,7 +254,7 @@ export default function Home() {
       {/* Fixed-height flex container — both forms are flex-1 inside it, so they
           always fill the same height and the CTA buttons land at the same Y.
           min-h-[24rem] comfortably accommodates the tallest service grid. */}
-      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "13rem" }}>
+      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "14rem" }}>
 
         {tab === "create" && (
           <form
@@ -323,11 +324,11 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Always-open service grid — always 2 rows (Math.ceil/2 gives 5 cols for AU's 9,
-                    4 cols for all 8-service regions). Same row count = same grid height = buttons align. */}
-                <div className="grid gap-2" style={{
-                  gridTemplateColumns: `repeat(${Math.ceil(regionServices.length / 2)}, 1fr)`,
-                }}>
+                {/* Service grid — all regions now have 8 services (4×2).
+                    max-w-[248px] gives 56px square tiles → grid height = 120px,
+                    matching the CodeBox height (py-10 + text-4xl line-height). */}
+                <div className="mx-auto" style={{ maxWidth: "248px" }}>
+                <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
                   {regionServices.map((svc) => {
                     const on = selectedServices.includes(svc.id);
                     return (
@@ -354,6 +355,7 @@ export default function Home() {
                       </button>
                     );
                   })}
+                </div>
                 </div>
               </div>
             )}
@@ -399,23 +401,13 @@ export default function Home() {
             <label className="block text-xs font-medium uppercase tracking-wider"
               style={{ color: "var(--text-muted)" }}>Code</label>
 
-            {/* Code box directly under label — matches lobby code box styling */}
+            {/* Code input — same CodeBox component as lobby, ensuring visual parity */}
             <div className="flex justify-center">
-              <input
-                type="text"
-                placeholder="WOLF-42"
+              <CodeInput
                 value={joinCode}
                 onChange={handleJoinCodeChange}
                 maxLength={7}
                 autoFocus
-                className="font-mono font-bold text-4xl tracking-widest text-center outline-none placeholder:opacity-25 px-7 py-5 rounded-3xl"
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  color: "var(--accent)",
-                  width: "auto",
-                  minWidth: "12rem",
-                }}
               />
             </div>
 

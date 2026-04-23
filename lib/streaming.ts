@@ -12,7 +12,6 @@ const AU_SERVICES = [
   { id: "stan",                 name: "Stan",                  abbrev: "S",    tmdbId: 21,   color: "#0069C1", tmdbLogoPath: "/sSfxJXq7s8oHf3XWd0FtqagPDsF.jpg" },
   { id: "binge",                name: "Binge",                 abbrev: "B",    tmdbId: 385,  color: "#FF5C35", tmdbLogoPath: "/7QX5OdsQZrXGNBKq9SPzoPV9OYQ.jpg" },
   { id: "paramount_plus",       name: "Paramount+",            abbrev: "P+",   tmdbId: 531,  color: "#0064FF", tmdbLogoPath: "/h5DcR0J2EESLitnhR8xLG1QymTE.jpg" },
-  { id: "foxtel_now",           name: "Foxtel Now",            abbrev: "Fx",   tmdbId: 134,  color: "#444444", tmdbLogoPath: "/fejdSG7TwNQ5E0p6u7A6LVs280R.jpg" },
   { id: "max",                  name: "Max",                   abbrev: "M",    tmdbId: 1899, color: "#002BE7", tmdbLogoPath: "/jbe4gVSfRlbPTdESXhEKpornsfu.jpg" },
 ] as const;
 
