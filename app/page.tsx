@@ -254,7 +254,7 @@ export default function Home() {
       {/* Fixed-height flex container — both forms are flex-1 inside it, so they
           always fill the same height and the CTA buttons land at the same Y.
           min-h-[24rem] comfortably accommodates the tallest service grid. */}
-      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "14rem" }}>
+      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "10rem" }}>
 
         {tab === "create" && (
           <form
@@ -324,25 +324,23 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Service grid — all regions now have 8 services (4×2).
-                    max-w-[248px] gives 56px square tiles → grid height = 120px,
-                    matching the CodeBox height (py-10 + text-4xl line-height). */}
-                <div className="mx-auto" style={{ maxWidth: "248px" }}>
-                <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+                {/* Service grid — all 8 services in one row, h-11 (44px) tiles.
+                    Height matches the CodeBox (text-3xl line-height 36px + py-1 × 2 = 44px). */}
+                <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(8, 1fr)" }}>
                   {regionServices.map((svc) => {
                     const on = selectedServices.includes(svc.id);
                     return (
                       <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
-                        className="relative flex items-center justify-center rounded-xl transition-all overflow-hidden"
+                        className="relative flex items-center justify-center rounded-lg transition-all overflow-hidden"
                         style={{
-                          aspectRatio: "1",
+                          height: "44px",
                           background: svc.color,
                           border: `2px solid ${on ? "var(--like)" : "transparent"}`,
                           boxShadow: on ? "0 0 0 2px var(--like)" : "none",
                           outline: "none",
                           opacity: on ? 1 : 0.45,
                         }}>
-                        <span className="text-[9px] font-bold" style={{ color: "#fff" }}>{svc.abbrev}</span>
+                        <span className="text-[8px] font-bold" style={{ color: "#fff" }}>{svc.abbrev}</span>
                         {svc.tmdbLogoPath && (
                           <img
                             src={`https://image.tmdb.org/t/p/w92${svc.tmdbLogoPath}`}
@@ -355,7 +353,6 @@ export default function Home() {
                       </button>
                     );
                   })}
-                </div>
                 </div>
               </div>
             )}

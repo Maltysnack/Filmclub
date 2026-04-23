@@ -3,13 +3,12 @@
 import { Copy, Check } from "lucide-react";
 
 // ── Shared visual constants ────────────────────────────────────────────────────
-// py-10 (40px each side) + text-4xl line-height (40px) = 120px total box height.
-// The home-page service grid is constrained to max-w-[248px] so its tiles are
-// 56px each (2 rows × 56px + 8px gap = 120px) — matching this height exactly.
+// text-3xl line-height (36px) + py-1 (4px × 2) = 44px total box height.
+// The home-page service grid is a single row of h-11 (44px) tiles — same height.
 // Change these constants and both the lobby display and join-page input update.
 
-const SHELL = "px-7 py-10 rounded-3xl";
-const TEXT  = "font-mono font-bold text-4xl tracking-widest";
+const SHELL = "px-6 py-1 rounded-2xl";
+const TEXT  = "font-mono font-bold text-3xl tracking-widest";
 const BOX_STYLE = {
   background: "var(--surface)",
   border: "1px solid var(--border)",
