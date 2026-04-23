@@ -19,7 +19,7 @@ import {
   advanceToNextRound, completeShortlist, markSpinning,
 } from "@/lib/shortlist";
 
-type UiPhase = "loading" | "nominate" | "veto" | "vote" | "three_film" | "host_decision" | "two_film" | "narrowing" | "winner";
+type UiPhase = "loading" | "nominate" | "veto" | "vote" | "three_film" | "host_decision" | "two_film" | "winner";
 
 interface Props {
   films: Film[];
@@ -185,15 +185,14 @@ export default function ShortlistOverlay({
         setRound(r);
 
         if (payload.eventType === "INSERT" && r.round_number > 1) {
-          // New round — show narrowing transition then sync
+          // New round — reset local state and sync immediately
           setMyVeto(null); setPendingVeto(null);
           setMyVotes(null); setPendingVotes([]);
           setPendingFavourite(null); setPendingLeast(null);
           setVetoes([]); setVotes([]);
           setVetoExclusion(null);
           advancedRef.current = false;
-          setUiPhase("narrowing");
-          setTimeout(() => syncPhase(r), 2000);
+          syncPhase(r);
         } else {
           syncPhase(r);
         }
@@ -576,16 +575,6 @@ export default function ShortlistOverlay({
     );
   }
 
-  // ── Render: narrowing transition ──────────────────────────────────────────
-  if (uiPhase === "narrowing") {
-    return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3" style={{ background: "var(--bg)" }}>
-        <Logo size="sm" showText />
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Narrowing it down…</p>
-      </div>
-    );
-  }
-
   // ── Render: 2-film spin wheel ─────────────────────────────────────────────
   if (uiPhase === "two_film") {
     if (!spinWinnerId) {
@@ -735,10 +724,7 @@ export default function ShortlistOverlay({
           </span>
         </div>
         <div className="px-5 mb-5">
-          <p className="text-lg font-bold" style={{ color: "var(--text)" }}>Keep going or spin?</p>
-          <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Another round, or let fate decide with what's left.
-          </p>
+          <p className="text-lg font-bold" style={{ color: "var(--text)" }}>Vote again or spin?</p>
         </div>
         <div className="flex-1 overflow-y-auto px-5">
           <div className="grid gap-3 pb-8" style={{ gridTemplateColumns: `repeat(${gridCols(decisionFilmObjs.length)}, minmax(0, 1fr))` }}>
@@ -760,15 +746,15 @@ export default function ShortlistOverlay({
         <div className="shrink-0 px-5 pb-8 flex flex-row gap-3">
           <button
             onClick={() => advanceToNextRound(sessionId, (round?.round_number ?? 0) + 1, decisionFilms)}
-            className="flex-1 py-4 rounded-2xl text-sm font-semibold"
-            style={{ background: "var(--surface)", color: "var(--text)" }}>
-            Shortlist
+            className="flex-1 py-4 rounded-2xl text-sm font-semibold flex items-center justify-center"
+            style={{ background: "rgba(232,184,109,0.12)", color: "var(--accent)" }}>
+            Vote
           </button>
           <button
             onClick={() => broadcastSpin(decisionFilms)}
-            className="flex-1 py-4 rounded-2xl text-sm font-semibold"
-            style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-            Randomise
+            className="flex-1 py-4 rounded-2xl text-sm font-semibold flex items-center justify-center"
+            style={{ background: "rgba(232,184,109,0.12)", color: "var(--accent)" }}>
+            Spin
           </button>
         </div>
       </div>
