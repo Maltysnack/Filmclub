@@ -323,9 +323,10 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Always-open service grid — AU has 9 services (3×3), all others have 8 (4×2) */}
+                {/* Always-open service grid — always 2 rows (Math.ceil/2 gives 5 cols for AU's 9,
+                    4 cols for all 8-service regions). Same row count = same grid height = buttons align. */}
                 <div className="grid gap-2" style={{
-                  gridTemplateColumns: `repeat(${regionServices.length === 9 ? 3 : 4}, 1fr)`,
+                  gridTemplateColumns: `repeat(${Math.ceil(regionServices.length / 2)}, 1fr)`,
                 }}>
                   {regionServices.map((svc) => {
                     const on = selectedServices.includes(svc.id);
