@@ -714,9 +714,9 @@ export default function ShortlistOverlay({
     const decisionFilmObjs = films.filter(f => decisionFilms.includes(f.id));
     return (
       <>
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center" style={{ background: "var(--bg)" }}>
-      <div className="w-full flex flex-col mx-auto" style={{ maxWidth: 480 }}>
-        <div className="flex items-center justify-between px-5 pb-4">
+      <div className="fixed inset-0 z-50 flex flex-col items-center" style={{ background: "var(--bg)" }}>
+      <div className="w-full flex flex-col flex-1 min-h-0 mx-auto" style={{ maxWidth: 480 }}>
+        <div className="flex items-center justify-between px-5 pt-10 pb-4">
           <Logo size="sm" showText />
           <span className="text-xs px-2.5 py-1 rounded-full"
             style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
@@ -726,8 +726,8 @@ export default function ShortlistOverlay({
         <div className="px-5 mb-5">
           <p className="text-lg font-bold" style={{ color: "var(--text)" }}>Vote again or spin?</p>
         </div>
-        <div className="overflow-y-auto px-5" style={{ maxHeight: "45vh" }}>
-          <div className="grid gap-3 pb-4" style={{ gridTemplateColumns: `repeat(${gridCols(decisionFilmObjs.length)}, minmax(0, 1fr))` }}>
+        <div className="flex-1 overflow-y-auto px-5">
+          <div className="grid gap-3 pb-8" style={{ gridTemplateColumns: `repeat(${gridCols(decisionFilmObjs.length)}, minmax(0, 1fr))` }}>
             {decisionFilmObjs.map(film => (
               <DisplayCard key={film.id} onInfo={() => setInfoFilm(film)}
                 className="relative rounded-xl overflow-hidden"
@@ -743,7 +743,7 @@ export default function ShortlistOverlay({
             ))}
           </div>
         </div>
-        <div className="px-5 pt-5 flex flex-row gap-3">
+        <div className="shrink-0 px-5 pb-8 flex flex-row gap-3">
           <button
             onClick={() => advanceToNextRound(sessionId, (round?.round_number ?? 0) + 1, decisionFilms)}
             className="flex-1 py-4 rounded-2xl text-sm font-semibold flex items-center justify-center"
