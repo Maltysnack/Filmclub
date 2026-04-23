@@ -206,8 +206,8 @@ export default function Home() {
 
   return (
     <main
-      className="min-h-dvh overflow-y-auto flex flex-col items-center px-5 pb-12"
-      style={{ background: "var(--bg)", paddingTop: "clamp(3rem, 12dvh, 6rem)" }}>
+      className="min-h-dvh overflow-y-auto flex flex-col items-center justify-center px-5 py-12"
+      style={{ background: "var(--bg)" }}>
 
       <MailButton />
 
@@ -237,15 +237,15 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Form container — the code panel on the join tab is sized to match the
-          service grid on the create tab, so both buttons naturally land at the
-          same Y position without any spacer tricks. */}
-      <div className="w-full max-w-sm">
+      {/* Fixed-height flex container — both forms are flex-1 inside it, so they
+          always fill the same height and the CTA buttons land at the same Y.
+          min-h-[24rem] comfortably accommodates the tallest service grid. */}
+      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "24rem" }}>
 
         {tab === "create" && (
           <form
             onSubmit={(e) => e.preventDefault()}
-            className="flex flex-col gap-5">
+            className="flex-1 flex flex-col gap-5">
 
             {/* CINEMA_HIDDEN: "Watching at" field removed — re-enable when cinema returns */}
 
@@ -346,6 +346,8 @@ export default function Home() {
 
             {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
 
+            <div className="flex-1" />
+
             {selectedServices.length === 0 ? (
               /* Disabled hint — visible only until a service is selected */
               <button
@@ -375,31 +377,30 @@ export default function Home() {
         )}
 
         {tab === "join" && (
-          <form onSubmit={handleJoin} className="flex flex-col gap-5">
+          <form onSubmit={handleJoin} className="flex-1 flex flex-col gap-5">
 
-            {/* Code panel — mirrors the service grid's visual weight and height
-                so both tabs have naturally equal content and the buttons align */}
-            <div className="space-y-3">
-              <label className="block text-xs font-medium uppercase tracking-wider"
-                style={{ color: "var(--text-muted)" }}>Code</label>
-              <div
-                className="w-full rounded-xl flex items-center justify-center"
+            {/* Label at top */}
+            <label className="block text-xs font-medium uppercase tracking-wider"
+              style={{ color: "var(--text-muted)" }}>Code</label>
+
+            {/* flex-1 centres the code input in the remaining space */}
+            <div className="flex-1 flex items-center justify-center">
+              <input
+                type="text"
+                placeholder="WOLF-42"
+                value={joinCode}
+                onChange={handleJoinCodeChange}
+                maxLength={7}
+                autoFocus
+                className="px-6 py-4 rounded-2xl font-mono font-bold tracking-widest text-center outline-none placeholder:opacity-25"
                 style={{
+                  fontSize: "1.875rem",
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
-                  minHeight: "10.5rem",
-                }}>
-                <input
-                  type="text"
-                  placeholder="WOLF-42"
-                  value={joinCode}
-                  onChange={handleJoinCodeChange}
-                  maxLength={7}
-                  autoFocus
-                  className="w-full bg-transparent outline-none text-center font-mono font-bold tracking-[0.25em] placeholder:opacity-20 px-6"
-                  style={{ fontSize: "2.25rem", color: "var(--accent)" }}
-                />
-              </div>
+                  color: "var(--accent)",
+                  width: "13rem",
+                }}
+              />
             </div>
 
             {/* NAME_INPUT_HIDDEN: name field removed — random character assigned automatically
@@ -411,7 +412,7 @@ export default function Home() {
             </Field>
             */}
 
-            {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
+            {error && <p className="text-sm text-center" style={{ color: "var(--dislike)" }}>{error}</p>}
 
             <button type="submit" disabled={loading}
               className="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-opacity"
