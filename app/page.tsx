@@ -266,7 +266,7 @@ export default function Home() {
             {showStreaming && (
               <div className="space-y-3">
                 {/* Label row with region selector on the right */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between">
                   <label className="block text-xs font-medium uppercase tracking-wider"
                     style={{ color: "var(--text-muted)" }}>Choose your streaming services</label>
                   {/* Region picker */}
@@ -323,38 +323,36 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Always-open service grid — slightly smaller square tiles via constrained width */}
-                <div style={{ maxWidth: "270px", margin: "0 auto" }}>
-                  <div className="grid gap-2" style={{
-                    gridTemplateColumns: `repeat(${Math.ceil(regionServices.length / 2)}, 1fr)`,
-                  }}>
-                    {regionServices.map((svc) => {
-                      const on = selectedServices.includes(svc.id);
-                      return (
-                        <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
-                          className="relative flex items-center justify-center rounded-xl transition-all overflow-hidden"
-                          style={{
-                            aspectRatio: "1",
-                            background: svc.color,
-                            border: `2px solid ${on ? "var(--like)" : "transparent"}`,
-                            boxShadow: on ? "0 0 0 2px var(--like)" : "none",
-                            outline: "none",
-                            opacity: on ? 1 : 0.45,
-                          }}>
-                          <span className="text-[9px] font-bold" style={{ color: "#fff" }}>{svc.abbrev}</span>
-                          {svc.tmdbLogoPath && (
-                            <img
-                              src={`https://image.tmdb.org/t/p/w92${svc.tmdbLogoPath}`}
-                              alt={svc.name}
-                              title={svc.name}
-                              className="absolute inset-0 w-full h-full object-cover"
-                              onError={e => { e.currentTarget.style.display = "none"; }}
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                {/* Always-open service grid — AU has 9 services (3×3), all others have 8 (4×2) */}
+                <div className="grid gap-2" style={{
+                  gridTemplateColumns: `repeat(${regionServices.length === 9 ? 3 : 4}, 1fr)`,
+                }}>
+                  {regionServices.map((svc) => {
+                    const on = selectedServices.includes(svc.id);
+                    return (
+                      <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
+                        className="relative flex items-center justify-center rounded-xl transition-all overflow-hidden"
+                        style={{
+                          aspectRatio: "1",
+                          background: svc.color,
+                          border: `2px solid ${on ? "var(--like)" : "transparent"}`,
+                          boxShadow: on ? "0 0 0 2px var(--like)" : "none",
+                          outline: "none",
+                          opacity: on ? 1 : 0.45,
+                        }}>
+                        <span className="text-[9px] font-bold" style={{ color: "#fff" }}>{svc.abbrev}</span>
+                        {svc.tmdbLogoPath && (
+                          <img
+                            src={`https://image.tmdb.org/t/p/w92${svc.tmdbLogoPath}`}
+                            alt={svc.name}
+                            title={svc.name}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            onError={e => { e.currentTarget.style.display = "none"; }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
