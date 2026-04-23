@@ -555,9 +555,32 @@ export async function getShortlistData(
   sessionId: string,
   matchedFilmIds: string[]
 ): Promise<{ films: Film[]; pinnedFilmIds: string[] }> {
-  const scores = await getFilmScores(sessionId);
+  const [scores, { count: groupSize }] = await Promise.all([
+    getFilmScores(sessionId),
+    supabase.from("participants").select("*", { count: "exact", head: true }).eq("session_id", sessionId),
+  ]);
+
+  const films = scores.map(s => s.film);
+  const min = groupSize ?? 1;
+
+  // Start with matched films as pinned
+  const pinnedIds = new Set<string>(matchedFilmIds);
+
+  // If the pinned set is smaller than the group, expand it.
+  // Find the score at rank group_size in the sorted list, then include
+  // every film at or above that score — never splitting a tied group.
+  // e.g. 3 people, 1 matched film, non-matched: [2,2,1,1,1,1] →
+  //   rank 3 score = 2 → pin all three 2-like films, leaving the 1-likes nominatable.
+  if (pinnedIds.size < min && scores.length > 0) {
+    const cutoffIndex = Math.min(min - 1, scores.length - 1);
+    const cutoffScore = scores[cutoffIndex].score;
+    for (const s of scores) {
+      if (s.score >= cutoffScore) pinnedIds.add(s.film.id);
+    }
+  }
+
   return {
-    films: scores.map(s => s.film),
-    pinnedFilmIds: matchedFilmIds,
+    films,
+    pinnedFilmIds: [...pinnedIds],
   };
 }
