@@ -18,7 +18,7 @@ import {
 } from "@/lib/session";
 import { posterUrl, getFilmDetail, fetchCollectionTmdbIds } from "@/lib/tmdb";
 import { getDendySessions, DendyFilm } from "@/lib/dendy";
-import { getService } from "@/lib/streaming";
+import { getService, TMDB_GENRES } from "@/lib/streaming";
 import { seedHomePool, seedMoreHomePool, sessionProviderTmdbIds, ENGLISH_PRIMARY_REGIONS, FOREIGN_LANG_CAP } from "@/lib/pool";
 import MailButton from "@/components/MailButton";
 import { getCurrentRound } from "@/lib/shortlist";
@@ -55,23 +55,83 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
   return result;
 }
 
-// Returns the first index >= fromIdx that is not suppressed by a franchise block.
-// A film is suppressed if: it has a collection_id, that ID is blocked, and nobody
-// has liked it yet (filmLikes has no entries for it).
+// ── Genre scoring constants ───────────────────────────────────────────────────
+// Thresholds and look-ahead window for the genre scoring system (issue #23).
+// All three are the only knobs needed to tune the behaviour:
+//   GENRE_BLOCK_THRESHOLD  — score at-or-below this → genre is suppressed
+//   GENRE_PRIORITY_THRESHOLD — score at-or-above this → pull matching films forward
+//   GENRE_PRIORITY_WINDOW  — how many unseen cards ahead to scan for a priority film
+const GENRE_BLOCK_THRESHOLD    = -3;
+const GENRE_PRIORITY_THRESHOLD =  3;
+const GENRE_PRIORITY_WINDOW    = 10;
+
+// Human-readable genre name lookup — built from the same TMDB_GENRES list used
+// everywhere else in the codebase. Only used for console logging.
+const GENRE_NAME: Record<number, string> = Object.fromEntries(
+  TMDB_GENRES.map(({ id, name }) => [id, name])
+);
+
+// Returns the first index >= fromIdx that passes BOTH the franchise block and
+// the genre block checks. A film is genre-blocked if ALL of its genres are
+// blocked AND nobody (from filmLikes) has already liked it.
 function skipBlocked(
   fromIdx: number,
   queue: import("@/types").Film[],
   blocked: Set<number>,
   filmLikes: Map<string, string[]>,
+  blockedGenres?: Set<number>,
 ): number {
   let idx = fromIdx;
   while (idx < queue.length) {
-    const cid = queue[idx].collection_id;
-    if (!cid || !blocked.has(cid)) break;                      // not blocked
-    if ((filmLikes.get(queue[idx].id)?.length ?? 0) > 0) break; // someone liked it
-    idx++;
+    const film = queue[idx];
+
+    // ── Franchise block check ─────────────────────────────────────────────────
+    const cid = film.collection_id;
+    const franchiseBlocked = !!cid && blocked.has(cid);
+    if (franchiseBlocked && (filmLikes.get(film.id)?.length ?? 0) === 0) { idx++; continue; }
+
+    // ── Genre block check ─────────────────────────────────────────────────────
+    // Suppressed if: blockedGenres is provided, the film has genres, ALL of them
+    // are blocked, and nobody has liked it. A film with no genres is never blocked.
+    if (blockedGenres && blockedGenres.size > 0 && film.genres.length > 0) {
+      const allBlocked = film.genres.every((g) => blockedGenres.has(g.id));
+      if (allBlocked && (filmLikes.get(film.id)?.length ?? 0) === 0) { idx++; continue; }
+    }
+
+    break;
   }
   return idx;
+}
+
+// Scans the look-ahead window [fromIdx, fromIdx + GENRE_PRIORITY_WINDOW) for the
+// first film that has at least one priority genre AND is not genre-blocked AND is
+// not franchise-blocked (unless someone liked it). Returns -1 if none found.
+function findPriorityFilmInWindow(
+  fromIdx: number,
+  queue: import("@/types").Film[],
+  priorityGenres: Set<number>,
+  blockedGenres: Set<number>,
+  blockedCollections: Set<number>,
+  filmLikes: Map<string, string[]>,
+): number {
+  const end = Math.min(fromIdx + GENRE_PRIORITY_WINDOW, queue.length);
+  for (let i = fromIdx; i < end; i++) {
+    const film = queue[i];
+
+    // Skip franchise-blocked films nobody liked
+    const cid = film.collection_id;
+    if (cid && blockedCollections.has(cid) && (filmLikes.get(film.id)?.length ?? 0) === 0) continue;
+
+    // Skip genre-blocked films (all genres blocked, nobody liked)
+    if (film.genres.length > 0) {
+      const allBlocked = film.genres.every((g) => blockedGenres.has(g.id));
+      if (allBlocked && (filmLikes.get(film.id)?.length ?? 0) === 0) continue;
+    }
+
+    // Check if it has any priority genre
+    if (film.genres.some((g) => priorityGenres.has(g.id))) return i;
+  }
+  return -1;
 }
 
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
@@ -94,6 +154,16 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     try { const s = sessionStorage.getItem(`filmclub-blocked-${code}`); return s ? new Set<number>(JSON.parse(s)) : new Set(); }
     catch { return new Set(); }
   });
+  // ── Genre scoring (issue #23) ─────────────────────────────────────────────
+  // Per-person, client-side only. Persisted to sessionStorage so it survives
+  // page refreshes. Record<genreId, score>: +1 per like, -1 per dislike.
+  const [genreScores, setGenreScores] = useState<Record<number, number>>(() => {
+    try {
+      const s = sessionStorage.getItem(`filmclub-genres-${code}`);
+      return s ? (JSON.parse(s) as Record<number, number>) : {};
+    } catch { return {}; }
+  });
+
   // Computed synchronously — avoids the flash where host briefly sees "Waiting..." before init
   const isHost = getIsHost(code);
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
@@ -210,6 +280,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     sessionStorage.setItem(`filmclub-blocked-${code}`, JSON.stringify([...blockedCollections]));
   }, [blockedCollections, code]);
 
+  useEffect(() => {
+    sessionStorage.setItem(`filmclub-genres-${code}`, JSON.stringify(genreScores));
+  }, [genreScores, code]);
+
   // ── Persist queue + index to sessionStorage so returning from + / results is instant ──
   // Large pools (160–360 films) can exceed the 5MB sessionStorage quota when full Film
   // objects are serialised. Strategy: try full data first; fall back to stripping the two
@@ -261,6 +335,25 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     return 1;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSwipeCount, groupLikeCount, participants.length]);
+
+  // Derived sets from genreScores — recomputed whenever scores change.
+  // blockedGenres:  genres at or below GENRE_BLOCK_THRESHOLD (score ≤ -3)
+  // priorityGenres: genres at or above GENRE_PRIORITY_THRESHOLD (score ≥ +3)
+  const blockedGenres = useMemo(() => {
+    return new Set(
+      Object.entries(genreScores)
+        .filter(([, score]) => score <= GENRE_BLOCK_THRESHOLD)
+        .map(([id]) => Number(id))
+    );
+  }, [genreScores]);
+
+  const priorityGenres = useMemo(() => {
+    return new Set(
+      Object.entries(genreScores)
+        .filter(([, score]) => score >= GENRE_PRIORITY_THRESHOLD)
+        .map(([id]) => Number(id))
+    );
+  }, [genreScores]);
 
   // SCROLL_HIDDEN: scroll mode deprecated — swipe is always active.
   // ScrollView code preserved below in case scroll mode is re-enabled later.
@@ -675,6 +768,67 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setBlockedCollections(newBlocked);
     }
 
+    // ── Genre scoring (issue #23) ─────────────────────────────────────────────
+    // Update scores synchronously — +1 per genre on like, -1 per genre on dislike.
+    // Then derive new blocked/priority sets for use by skipBlocked and the priority swap.
+    let newGenreScores = genreScores;
+    let newBlockedGenres = blockedGenres;
+    let newPriorityGenres = priorityGenres;
+
+    if (film.genres.length > 0) {
+      const delta = liked ? 1 : -1;
+      newGenreScores = { ...genreScores };
+      for (const { id: gid } of film.genres) {
+        newGenreScores[gid] = (newGenreScores[gid] ?? 0) + delta;
+      }
+      setGenreScores(newGenreScores);
+
+      console.log(
+        "[genre:scores]",
+        Object.entries(newGenreScores)
+          .sort(([, a], [, b]) => b - a)
+          .map(([id, score]) => `${GENRE_NAME[Number(id)] ?? id}:${score > 0 ? "+" : ""}${score}`)
+          .join("  ")
+      );
+
+      // Recompute derived sets from the NEW scores (can't use state — hasn't flushed yet)
+      newBlockedGenres = new Set(
+        Object.entries(newGenreScores)
+          .filter(([, s]) => s <= GENRE_BLOCK_THRESHOLD)
+          .map(([id]) => Number(id))
+      );
+      newPriorityGenres = new Set(
+        Object.entries(newGenreScores)
+          .filter(([, s]) => s >= GENRE_PRIORITY_THRESHOLD)
+          .map(([id]) => Number(id))
+      );
+
+      // Log newly blocked genres (weren't blocked before, are now)
+      for (const gid of newBlockedGenres) {
+        if (!blockedGenres.has(gid)) {
+          console.log(`[genre:block] "${GENRE_NAME[gid] ?? gid}" blocked (score: ${newGenreScores[gid]})`);
+        }
+      }
+      // Log newly unblocked genres (were blocked before, aren't now)
+      for (const gid of blockedGenres) {
+        if (!newBlockedGenres.has(gid)) {
+          console.log(`[genre:unblock] "${GENRE_NAME[gid] ?? gid}" unblocked (score: ${newGenreScores[gid]})`);
+        }
+      }
+      // Log newly priority genres
+      for (const gid of newPriorityGenres) {
+        if (!priorityGenres.has(gid)) {
+          console.log(`[genre:priority] "${GENRE_NAME[gid] ?? gid}" prioritised (score: ${newGenreScores[gid]})`);
+        }
+      }
+      // Log newly de-prioritised genres
+      for (const gid of priorityGenres) {
+        if (!newPriorityGenres.has(gid)) {
+          console.log(`[genre:depriority] "${GENRE_NAME[gid] ?? gid}" deprioritised (score: ${newGenreScores[gid]})`);
+        }
+      }
+    }
+
     // ── Drip (synchronous) ────────────────────────────────────────────────────
     swipeCountRef.current += 1;
     if (swipeCountRef.current % 20 === 0 && reserveQueueRef.current.length > 0) {
@@ -694,10 +848,46 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       });
     }
 
+    // ── Genre priority swap ───────────────────────────────────────────────────
+    // If there are priority genres, scan the look-ahead window for a matching film
+    // and swap it to currentIndex + 1 so the user sees it on the very next card.
+    // Uses film IDs inside the functional setFullQueue update to avoid index-drift
+    // from the concurrent drip splice above.
+    if (newPriorityGenres.size > 0) {
+      const swapIdx = findPriorityFilmInWindow(
+        currentIndex + 1,
+        workingQueue,
+        newPriorityGenres,
+        newBlockedGenres,
+        newBlocked,
+        filmLikes,
+      );
+      if (swapIdx > currentIndex + 1) {
+        const targetFilmId = workingQueue[swapIdx].id;
+        console.log(
+          `[genre:swap] "${workingQueue[swapIdx].title}" (${workingQueue[swapIdx].genres.map((g) => g.name).join(", ")}) → position ${currentIndex + 2}`
+        );
+        workingQueue = [...workingQueue];
+        // Perform the swap in workingQueue for nextIdx computation below
+        [workingQueue[currentIndex + 1], workingQueue[swapIdx]] =
+          [workingQueue[swapIdx], workingQueue[currentIndex + 1]];
+        // Perform the same swap in fullQueue using film IDs (safe against drip index drift)
+        setFullQueue((prev) => {
+          const next = [...prev];
+          const aIdx = next.findIndex((f) => f.id === workingQueue[currentIndex + 1].id);
+          const bIdx = next.findIndex((f) => f.id === targetFilmId);
+          if (aIdx !== -1 && bIdx !== -1 && aIdx !== bIdx) {
+            [next[aIdx], next[bIdx]] = [next[bIdx], next[aIdx]];
+          }
+          return next;
+        });
+      }
+    }
+
     // ── Advance index immediately — don't wait for DB ─────────────────────────
     // The card has already animated off-screen in SwipeCard before onLike/onDislike
     // fires, so advancing here makes the next card appear with zero perceptible delay.
-    const nextIdx = skipBlocked(currentIndex + 1, workingQueue, newBlocked, filmLikes);
+    const nextIdx = skipBlocked(currentIndex + 1, workingQueue, newBlocked, filmLikes, newBlockedGenres);
     if (nextIdx < workingQueue.length) {
       setCurrentIndex(nextIdx);
       if (infoFilm) setInfoFilm(workingQueue[nextIdx]);
@@ -1062,7 +1252,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   }
 
   const currentFilm = queue[currentIndex];
-  const nextFilm = queue[skipBlocked(currentIndex + 1, queue, blockedCollections, filmLikes)];
+  const nextFilm = queue[skipBlocked(currentIndex + 1, queue, blockedCollections, filmLikes, blockedGenres)];
 
   // Preload the next 8 cards' posters (w780 — matches the display size on card) so they
   // are cache-warm before the user swipes to them. Also keep 3 backdrops ahead for the
