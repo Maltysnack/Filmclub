@@ -30,6 +30,7 @@ import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import SinglePlayerVoteOverlay from "@/components/SinglePlayerVoteOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
+import ParticipantPill from "@/components/ParticipantPill";
 
 
 // Lobby participant grid: 1 column for ≤3 people (names get full width),
@@ -1119,17 +1120,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
       {/* Participants */}
       <div className="flex justify-start gap-1.5 flex-wrap px-5 py-3 shrink-0">
-        {participants.map((p) => {
-          const isMe = p.id === participant?.id;
-          const color = participantColor(p.name);
-          return (
-            <span key={p.id}
-              className="text-xs px-2.5 py-1 rounded-full font-medium"
-              style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}>
-              {p.name}{isMe ? " (you)" : ""}
-            </span>
-          );
-        })}
+        {participants.map((p) => (
+          <ParticipantPill key={p.id} name={p.name} isMe={p.id === participant?.id} />
+        ))}
       </div>
 
       {/* REMOVE_PARTICIPANT_HIDDEN: re-enable to allow host to remove members

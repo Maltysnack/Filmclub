@@ -21,7 +21,7 @@ export const CHARACTER_COLORS: Record<string, string> = {
   // Star Wars
   "Luke Skywalker":   "#38bdf8", // sky blue (lightsaber / hope)
   "Darth Vader":      "#dc2626", // sith red
-  "Han Solo":         "#a16207", // leather amber
+  "Han Solo":         "#7b8fcf", // slate blue (Millennium Falcon)
   "Yoda":             "#84cc16", // yellow-green (same concept as Shrek → conflict group)
   "Leia Organa":      "#c084fc", // soft lavender (royalty / Force)
   "Obi-Wan Kenobi":   "#60a5fa", // calm blue (wisdom)
@@ -38,25 +38,25 @@ export const CHARACTER_COLORS: Record<string, string> = {
   "Ron Weasley":      "#ea580c", // Weasley orange
   "Dumbledore":       "#7c3aed", // deep wizard purple
   // Marvel
-  "Tony Stark":       "#f59e0b", // gold (Iron Man)
+  "Tony Stark":       "#f43f5e", // Iron Man red (suit)
   "Spider-Man":       "#ef4444", // bright red (mask)
   "Thor":             "#2563eb", // electric blue (lightning)
   "Black Widow":      "#be123c", // dark crimson
   "Captain America":  "#1d4ed8", // shield navy
   "Thanos":           "#a855f7", // infinity-gauntlet purple (lighter than Dumbledore)
   // Disney / Pixar
-  "Simba":            "#fbbf24", // golden lion
+  "Simba":            "#f47c7c", // savanna sunset red
   "Buzz Lightyear":   "#312e81", // deep space indigo
   "Woody":            "#f97316", // cowboy orange-amber
   "Elsa":             "#bae6fd", // ice blue
   "Moana":            "#0891b2", // ocean cyan
   "Dory":             "#1e40af", // deep ocean blue
   // Classics
-  "Indiana Jones":    "#d97706", // warm sand amber
+  "Indiana Jones":    "#6aaf7a", // jungle green
   "James Bond":       "#94a3b8", // silver (tuxedo / spy)
-  "Jack Sparrow":     "#a8937a", // weathered warm tan
+  "Jack Sparrow":     "#5a8ab8", // deep sea blue
   "The Terminator":   "#a1a1aa", // metallic chrome
-  "Forrest Gump":     "#d4a76a", // warm khaki
+  "Forrest Gump":     "#5bbfb5", // muted teal
   "Katniss Everdeen": "#166534", // forest green
   "Neo":              "#22c55e", // matrix green
   "Morpheus":         "#581c87", // very deep purple
@@ -72,7 +72,6 @@ export const CHARACTER_COLORS: Record<string, string> = {
 export const COLOR_GROUPS: string[][] = [
   ["Shrek", "Yoda"],               // both are famous for BEING green
   ["Dumbledore", "Morpheus"],      // both deep, near-identical purple
-  ["Han Solo", "Indiana Jones"],   // both warm amber-brown adventurers
 ];
 
 // Pick a mystery name that isn't taken AND doesn't clash with a taken colour group
