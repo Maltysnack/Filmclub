@@ -177,6 +177,12 @@ export default function Home() {
     // land in the DB while the lobby animation plays, hiding the loading latency.
     void seedHomePool(session);
 
+    // Store logo position so the lobby animation can start from exactly here
+    try {
+      const el = document.getElementById("home-logo");
+      if (el) sessionStorage.setItem("filmclub-logo-y", String(el.getBoundingClientRect().top));
+    } catch { /* ignore */ }
+
     router.push(`/session/${session.code}`);
   }
 
@@ -198,6 +204,13 @@ export default function Home() {
     if (!participant) { setLoading(false); return setError("Something went wrong. Try again."); }
 
     setParticipantId(session.code, participant.id);
+
+    // Store logo position so the lobby animation can start from exactly here
+    try {
+      const el = document.getElementById("home-logo");
+      if (el) sessionStorage.setItem("filmclub-logo-y", String(el.getBoundingClientRect().top));
+    } catch { /* ignore */ }
+
     router.push(`/session/${session.code}`);
   }
 
@@ -213,7 +226,7 @@ export default function Home() {
 
       {/* Logo + tagline — anchored at a fixed offset from top, never moves */}
       <div className="mb-10 text-center">
-        <div className="flex justify-center mb-3">
+        <div id="home-logo" className="flex justify-center mb-3">
           <Logo size="lg" />
         </div>
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
@@ -240,12 +253,12 @@ export default function Home() {
       {/* Fixed-height flex container — both forms are flex-1 inside it, so they
           always fill the same height and the CTA buttons land at the same Y.
           min-h-[24rem] comfortably accommodates the tallest service grid. */}
-      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "24rem" }}>
+      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "13rem" }}>
 
         {tab === "create" && (
           <form
             onSubmit={(e) => e.preventDefault()}
-            className="flex-1 flex flex-col gap-5">
+            className="flex-1 flex flex-col gap-3">
 
             {/* CINEMA_HIDDEN: "Watching at" field removed — re-enable when cinema returns */}
 
@@ -310,15 +323,18 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Always-open service grid — always exactly 2 rows */}
-                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.ceil(regionServices.length / 2)}, 1fr)` }}>
+                {/* Always-open service grid — fixed height matches the lobby code box */}
+                <div className="grid gap-2" style={{
+                  gridTemplateColumns: `repeat(${Math.ceil(regionServices.length / 2)}, 1fr)`,
+                  gridTemplateRows: "repeat(2, 1fr)",
+                  height: "5rem",
+                }}>
                   {regionServices.map((svc) => {
                     const on = selectedServices.includes(svc.id);
                     return (
                       <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
                         className="relative flex items-center justify-center rounded-xl transition-all overflow-hidden"
                         style={{
-                          aspectRatio: "1",
                           background: svc.color,
                           border: `2px solid ${on ? "var(--like)" : "transparent"}`,
                           boxShadow: on ? "0 0 0 2px var(--like)" : "none",
@@ -377,13 +393,14 @@ export default function Home() {
         )}
 
         {tab === "join" && (
-          <form onSubmit={handleJoin} className="flex-1 flex flex-col gap-5">
+          <form onSubmit={handleJoin} className="flex-1 flex flex-col gap-3">
 
-            {/* Label at top */}
+            {/* Label at top — same style as streaming label */}
             <label className="block text-xs font-medium uppercase tracking-wider"
               style={{ color: "var(--text-muted)" }}>Code</label>
 
-            {/* flex-1 centres the code input in the remaining space */}
+            {/* flex-1 centres the code input in the remaining space.
+                Input matches the lobby code box exactly (text-4xl px-7 py-5 rounded-3xl). */}
             <div className="flex-1 flex items-center justify-center">
               <input
                 type="text"
@@ -392,13 +409,13 @@ export default function Home() {
                 onChange={handleJoinCodeChange}
                 maxLength={7}
                 autoFocus
-                className="px-6 py-4 rounded-2xl font-mono font-bold tracking-widest text-center outline-none placeholder:opacity-25"
+                className="font-mono font-bold text-4xl tracking-widest text-center outline-none placeholder:opacity-25 px-7 py-5 rounded-3xl"
                 style={{
-                  fontSize: "1.875rem",
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
                   color: "var(--accent)",
-                  width: "13rem",
+                  width: "auto",
+                  minWidth: "12rem",
                 }}
               />
             </div>
