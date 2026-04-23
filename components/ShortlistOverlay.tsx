@@ -358,6 +358,44 @@ export default function ShortlistOverlay({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [votes.length, uiPhase, round?.id]);
 
+  // ── Non-host fallback: poll DB when all vetoes counted ───────────────────
+  // Supabase realtime delivers shortlist_rounds UPDATE events on a best-effort
+  // basis. If the event is missed, the non-host UI deadlocks on "Waiting…".
+  // When vetoes.length reaches totalParticipants we know the host is about to
+  // write the phase change — wait 2 s then fetch the round directly.
+  // If the subscription fires first, round?.phase changes and the cleanup
+  // function cancels the timer before it fires (self-cancelling fallback).
+  useEffect(() => {
+    if (isHost || vetoes.length < totalParticipants || round?.phase !== "veto") return;
+    const timer = setTimeout(async () => {
+      const latest = await getCurrentRound(sessionId);
+      if (latest && latest.phase !== roundRef.current?.phase) {
+        setRound(latest);
+        await loadSubmissions(latest);
+        syncPhase(latest);
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vetoes.length, round?.phase]);
+
+  // ── Non-host fallback: poll DB when all votes counted ────────────────────
+  // Same pattern as above — covers both the regular vote phase and the
+  // three-film mechanic (both use round.phase === "vote").
+  useEffect(() => {
+    if (isHost || votes.length < totalParticipants || round?.phase !== "vote") return;
+    const timer = setTimeout(async () => {
+      const latest = await getCurrentRound(sessionId);
+      if (latest && latest.phase !== roundRef.current?.phase) {
+        setRound(latest);
+        await loadSubmissions(latest);
+        syncPhase(latest);
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [votes.length, round?.phase]);
+
   // Winner screen is dismissed manually via the Done button — no auto-dismiss.
 
   // ── Handlers ──────────────────────────────────────────────────────────────
