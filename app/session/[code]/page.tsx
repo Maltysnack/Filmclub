@@ -9,7 +9,6 @@ import FilmModal from "@/components/FilmModal";
 import FilmInfoPanel from "@/components/FilmInfoPanel";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
 import ScrollView, { ScrollViewHandle } from "@/components/ScrollView";
-import DendyLogo from "@/components/DendyLogo";
 import {
   getSession, getParticipantId, getIsHost, getParticipants, getSessionFilmsWithMeta,
   getMySwipes, getMyLikes, recordSwipe, checkForMatch, checkAllMatches, getMatches,
@@ -17,7 +16,6 @@ import {
   removeParticipant, getShortlistData,
 } from "@/lib/session";
 import { posterUrl, getFilmDetail, fetchCollectionTmdbIds } from "@/lib/tmdb";
-import { getDendySessions, DendyFilm } from "@/lib/dendy";
 import { getService, TMDB_GENRES } from "@/lib/streaming";
 import { seedHomePool, seedMoreHomePool, sessionProviderTmdbIds, ENGLISH_PRIMARY_REGIONS, FOREIGN_LANG_CAP } from "@/lib/pool";
 import MailButton from "@/components/MailButton";
@@ -193,8 +191,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   });
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
-  // Map from film.id -> dendy session info
-  const [dendyMap, setDendyMap] = useState<Map<string, DendyFilm>>(new Map());
   // Debounce timer so background batch-inserts don't hammer loadFilms
   const queueRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref so handleSwipe always sees the latest session without stale closure
@@ -358,48 +354,19 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // SCROLL_HIDDEN: scroll mode deprecated — swipe is always active.
   // ScrollView code preserved below in case scroll mode is re-enabled later.
   const viewMode = "swipe" as "swipe" | "scroll";
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  function toggleViewMode() { /* SCROLL_HIDDEN */ }
 
   // Liked film IDs for scroll mode (starts empty, populated from swipe history + new likes)
   const [likedInScroll, setLikedInScroll] = useState<Set<string>>(new Set());
 
   const queue = fullQueue;
 
-  // loadFilms fetches Dendy sessions itself and keeps the result as a local variable.
-  // This avoids the stale-closure bug where useCallback captures the initial empty dendyMap
-  // state and never sees updates from setDendyMap.
   const loadFilms = useCallback(async (s: Session, participantId: string, isInitial = false) => {
     let poolWithMeta = await getSessionFilmsWithMeta(s.id);
-
-    // ── Fetch Dendy sessions early so we have the map locally ─────────────────
-    // dendyTmdbMap is keyed by String(tmdbId) and lives only in this call's scope.
-    const dendyTmdbMap = new Map<string, DendyFilm>();
-    if (s.watch_mode !== "home" && s.cinema_date) {
-      const dendySessions = await getDendySessions(
-        s.cinema_date,
-        s.cinema_time_from ?? undefined,
-        s.cinema_time_to ?? undefined
-      );
-      for (const df of dendySessions) {
-        if (df.tmdbId) dendyTmdbMap.set(String(df.tmdbId), df);
-      }
-    }
 
     // ── Seed pool if empty ────────────────────────────────────────────────────
     // Use === 0 so that background-loaded batches don't re-trigger seeding.
     if (poolWithMeta.length === 0) {
-      if (s.watch_mode === "cinema" || s.watch_mode === "both") {
-        // Add every Dendy film we already fetched
-        await Promise.all(
-          [...dendyTmdbMap.values()].map((df) =>
-            df.tmdbId ? addFilmToSession(s.id, df.tmdbId, null) : Promise.resolve(false)
-          )
-        );
-      }
-      if (s.watch_mode === "home" || s.watch_mode === "both") {
-        await seedHomePool(s);
-      }
+      await seedHomePool(s);
       poolWithMeta = await getSessionFilmsWithMeta(s.id);
     }
 
@@ -461,16 +428,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       return arr;
     }
     shuffle(userAdded);
-
-    // ── Resolve tmdbId-keyed map → DB film.id-keyed map ──────────────────────
-    if (s.watch_mode !== "home") {
-      const newMap = new Map<string, DendyFilm>();
-      for (const { film } of poolWithMeta) {
-        const df = dendyTmdbMap.get(String(film.tmdb_id));
-        if (df) newMap.set(film.id, df);
-      }
-      setDendyMap(newMap);
-    }
 
     // ── Update queue ─────────────────────────────────────────────────────────
     const INITIAL_SLICE = 40;
@@ -1180,7 +1137,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           <MatchScreen
             matches={matchList}
             session={session!}
-            dendyMap={dendyMap}
             isHost={isHost}
             onRandomise={(winnerFilmId: string) => {
               // Set local state immediately and broadcast to all participants
@@ -1379,7 +1335,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                   films={queue}
                   likedIds={likedInScroll}
                   sessionServices={session?.streaming_services ?? []}
-                  dendyMap={dendyMap}
                   onLike={handleScrollLike}
                   onUnlike={handleScrollUnlike}
                   onInfo={(film) => setInfoFilm(film)}
@@ -1419,7 +1374,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               }
             } : undefined}
             sessionServices={session?.streaming_services ?? []}
-            dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
           />
         </>
       ) : (
@@ -1444,7 +1398,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                       <SwipeCard key={`${nextFilm.id}-next`} film={nextFilm}
                         onLike={() => {}} onDislike={() => {}}
                         onInfo={() => setInfoFilm(nextFilm)} isTop={false}
-                        dendyInfo={dendyMap.get(nextFilm.id)}
                         sessionServices={session?.streaming_services ?? []}
                         promotionMV={promotionMV} />
                     )}
@@ -1456,7 +1409,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                           onDislike={() => handleSwipe(false)}
                           onInfo={() => setInfoFilm(currentFilm)}
                           isTop={true}
-                          dendyInfo={dendyMap.get(currentFilm.id)}
                           sessionServices={session?.streaming_services ?? []}
                           votePhase={votePhase}
                           voteInfo={{
@@ -1489,7 +1441,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               const next = queue[currentIndex + 1] ?? null;
               setInfoFilm(next);
             } : undefined}
-            dendyInfo={infoFilm ? dendyMap.get(infoFilm.id) : undefined}
             sessionServices={session?.streaming_services ?? []}
           />
         </>
@@ -1695,10 +1646,9 @@ function AllDoneScreen({ mode, watchMode, neverHadFilms, onResults, onSearch, on
   );
 }
 
-function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortlist }: {
+function MatchScreen({ matches, session, isHost, onRandomise, onShortlist }: {
   matches: Match[];
   session: Session;
-  dendyMap: Map<string, DendyFilm>;
   isHost: boolean;
   onRandomise?: (winnerFilmId: string) => void;
   onShortlist?: () => void;
@@ -1807,75 +1757,3 @@ function MatchScreen({ matches, session, dendyMap, isHost, onRandomise, onShortl
   );
 }
 
-function WatchOptions({ film, dendy, session, compact = false }: {
-  film: Film;
-  dendy?: DendyFilm;
-  session: Session;
-  compact?: boolean;
-}) {
-  type Provider = { serviceId: string; logoPath?: string | null };
-  const providers: Provider[] = (film.watch_providers_au ?? []) as Provider[];
-  const sessionServices = session.streaming_services ?? [];
-  const availableProviders = providers.filter((p) => sessionServices.includes(p.serviceId));
-
-  if (!dendy && !availableProviders.length) return null;
-
-  function ServiceLogo({ p }: { p: Provider }) {
-    const svc = getService(p.serviceId, session.region ?? "AU");
-    if (!svc) return null;
-    const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath?: string | null }).tmdbLogoPath;
-    return logo ? (
-      <img src={`https://image.tmdb.org/t/p/w45${logo}`} alt={svc.name} title={svc.name}
-        className="w-7 h-7 rounded object-cover" />
-    ) : (
-      <span className="text-xs px-1.5 py-0.5 rounded font-bold"
-        style={{ background: `${svc.color}22`, color: svc.color, border: `1px solid ${svc.color}44` }}>
-        {svc.abbrev}
-      </span>
-    );
-  }
-
-  if (compact) {
-    return (
-      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-        {dendy && (
-          <span className="text-xs px-1.5 py-0.5 rounded"
-            style={{ background: "rgba(232,184,109,0.15)", color: "var(--accent)" }}>
-            🎬 Dendy
-          </span>
-        )}
-        {availableProviders.slice(0, 3).map((p) => <ServiceLogo key={p.serviceId} p={p} />)}
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full mb-4">
-      {dendy && (
-        <div className="p-3 rounded-xl mb-2" style={{ background: "rgba(232,184,109,0.08)", border: "1px solid rgba(232,184,109,0.2)" }}>
-          <div className="mb-1.5"><DendyLogo height={13} /></div>
-          <div className="flex flex-wrap gap-1.5">
-            {dendy.sessionTimes.map((t) => (
-              <a key={t} href={dendy.bookingUrls[t] ?? "#"} target="_blank" rel="noopener noreferrer"
-                className="text-xs px-2.5 py-1 rounded-lg font-medium"
-                style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-                {t}
-              </a>
-            ))}
-          </div>
-          {dendy.tmdbMatch === "low" && (
-            <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
-              ⚠️ Title match may not be exact
-            </p>
-          )}
-        </div>
-      )}
-      {availableProviders.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>Available on</p>
-          {availableProviders.map((p) => <ServiceLogo key={p.serviceId} p={p} />)}
-        </div>
-      )}
-    </div>
-  );
-}

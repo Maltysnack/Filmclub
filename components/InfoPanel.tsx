@@ -21,14 +21,6 @@ function CameraIcon() {
   );
 }
 
-// ── Changelog (hidden for now, re-enable when needed) ─────────────────────────
-// const CHANGELOG = [
-//   { version: "0.4", date: "Mar 2026", notes: ["Regions worldwide", "Streaming services per region", "Feedback panel"] },
-//   { version: "0.3", date: "Mar 2026", notes: ["Shortlist mode", "Nominate, veto, vote", "Host can remove members"] },
-//   { version: "0.2", date: "Feb 2026", notes: ["Real-time sync", "Streaming service filter", "Match reveal screen"] },
-//   { version: "0.1", date: "Jan 2026", notes: ["Create a club, share a code, swipe together"] },
-// ];
-
 const TAGS = [
   { value: "feature", label: "Feature request" },
   { value: "bug",     label: "Bug report"       },

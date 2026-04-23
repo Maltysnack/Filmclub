@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
-import DendyLogo from "@/components/DendyLogo";
 import { createSession, joinSession, getSession, getParticipants, setParticipantId, setIsHost } from "@/lib/session";
 import { getServicesForRegion, detectRegion, REGION_OPTIONS } from "@/lib/streaming";
 import { ChevronRight, ChevronDown, Users } from "lucide-react";
@@ -12,36 +11,6 @@ import { seedHomePool } from "@/lib/pool";
 import type { WatchMode, Region } from "@/types";
 
 type Tab = "create" | "join";
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function dateStrFromOffset(offset: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return d.toISOString().slice(0, 10);
-}
-
-function ordinal(n: number): string {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
-
-function fmtTime(time: string): string {
-  const [hStr, mStr] = time.split(":");
-  const h = parseInt(hStr), m = parseInt(mStr);
-  const period = h < 12 ? "am" : "pm";
-  const dh = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return m === 0 ? `${dh}${period}` : `${dh}:${String(m).padStart(2, "0")}${period}`;
-}
-
-function formatCinema(dateStr: string, from: string, to: string): string {
-  if (!dateStr || !from || !to) return "";
-  const d = new Date(dateStr + "T12:00:00");
-  const weekday = d.toLocaleDateString("en-AU", { weekday: "long" });
-  const month   = d.toLocaleDateString("en-AU", { month: "long" });
-  return `${weekday} ${ordinal(d.getDate())} ${month} ${fmtTime(from)} – ${fmtTime(to)}`;
-}
 
 import { pickMysteryName } from "@/lib/names";
 import { CodeInput } from "@/components/CodeBox";
@@ -56,9 +25,7 @@ export default function Home() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   // Create form
-  // NAME_INPUT_HIDDEN: random name only — re-enable these to let users type their own name
   const [threshold] = useState(100);
-  // CINEMA_HIDDEN: watchMode locked to "home" until cinema feature is re-enabled
   const watchMode: WatchMode = "home";
   const [region, setRegion] = useState<Region>("AU");
   const [regionOpen, setRegionOpen] = useState(false);
@@ -68,11 +35,6 @@ export default function Home() {
     try { localStorage.setItem("filmclub_region", r); } catch { /* ignore */ }
   }
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
-
-  // CINEMA_HIDDEN: date/time state preserved for when cinema is re-enabled
-  // const [cinemaDateStr, setCinemaDateStr] = useState(() => dateStrFromOffset(0));
-  // const [cinemaFromTime, setCinemaFromTime] = useState("18:00");
-  // const [cinemaToTime, setCinemaToTime] = useState("20:00");
 
   // Restore saved region, or auto-detect on first ever visit
   useEffect(() => {
@@ -105,9 +67,6 @@ export default function Home() {
 
   // Join form
   const [joinCode, setJoinCode] = useState("");
-  // NAME_INPUT_HIDDEN: joinName preserved for re-enable
-  // const [joinName, setJoinName] = useState("");
-
   function handleJoinCodeChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.toUpperCase();
     const letters = raw.replace(/[^A-Z0-9]/g, "").slice(0, 6);
@@ -152,9 +111,9 @@ export default function Home() {
       threshold,
       watchMode,
       selectedServices,
-      null, // cinemaDateStr — CINEMA_HIDDEN
-      null, // cinemaFromTime — CINEMA_HIDDEN
-      null, // cinemaToTime  — CINEMA_HIDDEN
+      null, // cinemaDateStr
+      null, // cinemaFromTime
+      null, // cinemaToTime
       "browse",
       region,
     );
@@ -215,9 +174,6 @@ export default function Home() {
     router.push(`/session/${session.code}`);
   }
 
-  // CINEMA_HIDDEN: showStreaming always true, showCinema always false
-  const showStreaming = true;
-
   return (
     <main
       className="min-h-dvh overflow-y-auto flex flex-col items-center justify-center px-5 py-12"
@@ -261,11 +217,8 @@ export default function Home() {
             onSubmit={(e) => e.preventDefault()}
             className="flex-1 flex flex-col gap-3">
 
-            {/* CINEMA_HIDDEN: "Watching at" field removed — re-enable when cinema returns */}
-
             {/* Streaming services + region picker */}
-            {showStreaming && (
-              <div className="space-y-3">
+            <div className="space-y-3">
                 {/* Label row with region selector on the right */}
                 <div className="flex items-start justify-between">
                   <label className="block text-xs font-medium uppercase tracking-wider"
@@ -354,12 +307,9 @@ export default function Home() {
                     );
                   })}
                 </div>
-              </div>
-            )}
+            </div>
 
-            {/* CINEMA_HIDDEN: CinemaDatePicker removed — re-enable when cinema returns */}
-
-            {error && <p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
+            {error &&<p className="text-sm" style={{ color: "var(--dislike)" }}>{error}</p>}
 
             <div className="flex-1" />
 
@@ -505,84 +455,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 
-function PickerShell({ label, summary, open, onToggle, children }: {
-  label: string; summary: string; open: boolean;
-  onToggle: () => void; children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <label className="block text-xs font-medium uppercase tracking-wider"
-        style={{ color: "var(--text-muted)" }}>{label}</label>
-      <button type="button" onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all"
-        style={{
-          background: "var(--surface)",
-          border: `1px solid ${open ? "var(--accent)" : "var(--border)"}`,
-        }}>
-        <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{summary}</span>
-        <ChevronDown size={14} style={{
-          color: "var(--text-muted)",
-          transform: open ? "rotate(180deg)" : "none",
-          transition: "transform 0.2s",
-          flexShrink: 0,
-        }} />
-      </button>
-      {open && <div className="space-y-2 px-1">{children}</div>}
-    </div>
-  );
-}
-
-function CinemaDatePicker({ dateStr, fromTime, toTime, onDateChange, onFromChange, onToChange }: {
-  dateStr: string; fromTime: string; toTime: string;
-  onDateChange: (v: string) => void; onFromChange: (v: string) => void; onToChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <PickerShell label="Cinema session times" summary={formatCinema(dateStr, fromTime, toTime)}
-      open={open} onToggle={() => setOpen(o => !o)}>
-      <DayPicker value={dateStr} onChange={onDateChange} />
-      <div className="flex items-center gap-3" style={{ maxWidth: "85%" }}>
-        <input type="time" value={fromTime} onChange={e => onFromChange(e.target.value)}
-          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl text-sm outline-none"
-          style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", colorScheme: "dark" }} />
-        <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>–</span>
-        <input type="time" value={toTime} onChange={e => onToChange(e.target.value)}
-          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl text-sm outline-none"
-          style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", colorScheme: "dark" }} />
-      </div>
-    </PickerShell>
-  );
-}
-
-function DayPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    const str     = d.toISOString().slice(0, 10);
-    const label   = i === 0 ? "Today" : i === 1 ? "Tomorrow"
-      : d.toLocaleDateString("en-AU", { weekday: "short" });
-    const dateNum = d.getDate();
-    return { str, label, dateNum };
-  });
-
-  return (
-    <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-      {days.map(({ str, label, dateNum }) => {
-        const active = value === str;
-        return (
-          <button key={str} type="button" onClick={() => onChange(str)}
-            className="flex-none flex flex-col items-center justify-center gap-0.5 rounded-xl border transition-all"
-            style={{
-              width: 64, height: 64,
-              background:  active ? "var(--accent)" : "var(--surface)",
-              borderColor: active ? "var(--accent)" : "var(--border)",
-              color:       active ? "#0c0c0e"       : "var(--text-muted)",
-            }}>
-            <span className="text-[11px] font-medium">{label}</span>
-            <span className="text-lg font-bold leading-none">{dateNum}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}

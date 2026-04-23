@@ -3,11 +3,9 @@
 import { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Film } from "@/types";
-import { DendyFilm } from "@/lib/dendy";
 import { posterUrl } from "@/lib/tmdb";
 import { getService } from "@/lib/streaming";
 import { Heart, Info } from "lucide-react";
-import DendyLogo from "./DendyLogo";
 import { Participant } from "@/types";
 import { participantColor } from "@/lib/names";
 
@@ -20,7 +18,6 @@ interface ScrollViewProps {
   films: Film[];
   likedIds: Set<string>;
   sessionServices: string[];
-  dendyMap: Map<string, DendyFilm>;
   onLike: (film: Film) => void;
   onUnlike: (film: Film) => void;
   onInfo: (film: Film) => void;
@@ -41,7 +38,7 @@ function easeInOutCubic(t: number) {
 }
 
 const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(function ScrollView({
-  films, likedIds, sessionServices, dendyMap, onLike, onUnlike, onInfo,
+  films, likedIds, sessionServices, onLike, onUnlike, onInfo,
   votePhase = 1, filmLikes, participants = [], myParticipantId, onIndexChange,
   initialIndex = 0,
 }, ref) {
@@ -192,7 +189,6 @@ const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(function Scroll
               film={film}
               liked={likedIds.has(film.id)}
               sessionServices={sessionServices}
-              dendyInfo={dendyMap.get(film.id)}
               onLike={() => onLike(film)}
               onUnlike={() => onUnlike(film)}
               onInfo={() => onInfo(film)}
@@ -210,13 +206,12 @@ const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(function Scroll
 export default ScrollView;
 
 function FilmScrollCard({
-  film, liked, sessionServices, dendyInfo, onLike, onUnlike, onInfo,
+  film, liked, sessionServices, onLike, onUnlike, onInfo,
   votePhase = 1, likedByIds = [], participants = [],
 }: {
   film: Film;
   liked: boolean;
   sessionServices: string[];
-  dendyInfo?: DendyFilm;
   onLike: () => void;
   onUnlike: () => void;
   onInfo: () => void;
@@ -299,43 +294,23 @@ function FilmScrollCard({
 
       {/* Bottom info — matches SwipeCard layout exactly */}
       <div className="absolute bottom-0 left-0 right-0 p-5 pointer-events-none">
-        {(providers.length > 0 || dendyInfo) && (
-          <div className="flex items-start gap-3 mb-2">
-            {providers.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {providers.slice(0, 4).map((p) => {
-                  const svc = getService(p.serviceId);
-                  if (!svc) return null;
-                  const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
-                  return logo ? (
-                    <img key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${logo}`}
-                      alt={svc.name} title={svc.name}
-                      className="w-6 h-6 rounded object-cover" />
-                  ) : (
-                    <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded font-bold"
-                      style={{ background: `${svc.color}30`, color: svc.color, border: `1px solid ${svc.color}50` }}>
-                      {svc.abbrev}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-            {dendyInfo && (
-              <div className={`flex flex-col gap-1 shrink-0 ${providers.length > 0 ? "items-end ml-auto" : "items-start"}`}>
-                <span className="flex items-center gap-1 leading-none">
-                  <DendyLogo height={12} />
-                  {dendyInfo.tmdbMatch === "low" && <span style={{ color: "var(--accent)" }}>⚠️</span>}
+        {providers.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+            {providers.slice(0, 4).map((p) => {
+              const svc = getService(p.serviceId);
+              if (!svc) return null;
+              const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
+              return logo ? (
+                <img key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${logo}`}
+                  alt={svc.name} title={svc.name}
+                  className="w-6 h-6 rounded object-cover" />
+              ) : (
+                <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded font-bold"
+                  style={{ background: `${svc.color}30`, color: svc.color, border: `1px solid ${svc.color}50` }}>
+                  {svc.abbrev}
                 </span>
-                <div className="flex gap-1 flex-wrap">
-                  {dendyInfo.sessionTimes.slice(0, 4).map((t) => (
-                    <span key={t} className="text-xs px-1.5 py-0.5 rounded font-medium"
-                      style={{ background: "rgba(232,184,109,0.2)", color: "var(--accent)", border: "1px solid rgba(232,184,109,0.3)" }}>
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         )}
 
