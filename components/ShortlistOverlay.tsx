@@ -661,7 +661,7 @@ export default function ShortlistOverlay({
           </p>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
             {submittedThree
-              ? waitingForThree > 0 ? `Waiting for ${waitingForThree} more…` : "All in — deciding…"
+              ? waitingForThree > 0 ? `Waiting for ${waitingForThree} more…` : "All votes in. Waiting for host"
               : "The remaining film gets the middle position"
             }
           </p>
@@ -806,7 +806,7 @@ export default function ShortlistOverlay({
         </p>
         {submitted && (
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            {waitingFor > 0 ? `Waiting for ${waitingFor} more…` : "All in — deciding…"}
+            {waitingFor > 0 ? `Waiting for ${waitingFor} more…` : "All votes in. Waiting for host"}
           </p>
         )}
       </div>
