@@ -694,12 +694,31 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               } else {
                 pendingPropagationsRef.current.push(newSwipe.film_id);
               }
+
+              // Belt-and-suspenders match re-check: fires when another participant
+              // likes a film we've also liked. Catches the simultaneous-swipe race
+              // where both handleSwipe checkForMatch calls ran before either write
+              // committed. By the time this subscription fires, the remote write is
+              // definitively in DB; our write was awaited earlier so it's also there.
+              const sess = sessionRef.current;
+              if (sess?.started && sess.mode === "live" &&
+                  mySwipeHistoryRef.current.get(newSwipe.film_id) === true) {
+                const isMatch = await checkForMatch(sess.id, newSwipe.film_id, sess.threshold);
+                if (isMatch) {
+                  await new Promise((r) => setTimeout(r, 300));
+                  const allMatches = await getMatches(sess.id);
+                  if (allMatches.length === 1) await resolveMatch(sess.id, allMatches[0].film_id);
+                  else if (allMatches.length > 1) await closeSession(sess.id);
+                  if (allMatches.length > 0) { setMatchList(allMatches); return; }
+                }
+              }
             }
           }
 
-          // Existing match check
-          const s = await getSession(code);
-          if (s?.started && s?.mode === "live" && s.status === "closed") {
+          // Fallback: if the session UPDATE subscription missed a close event,
+          // catch it here so the match screen still appears.
+          const latestSession = await getSession(code);
+          if (latestSession?.started && latestSession?.mode === "live" && latestSession.status === "closed") {
             const existing = await getMatches(session.id);
             if (existing.length > 0) setMatchList(existing);
           }
@@ -917,8 +936,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       if (infoFilm) setInfoFilm(workingQueue[nextIdx]);
     }
 
-    // ── DB write — fire and forget ────────────────────────────────────────────
-    void recordSwipe(s.id, participant.id, film.id, liked);
+    // ── DB write — awaited so checkForMatch below always sees our vote ───────
+    // Previously fire-and-forget (void), which caused a race: checkForMatch could
+    // query the DB before our swipe committed, missing the unanimous threshold.
+    await recordSwipe(s.id, participant.id, film.id, liked);
 
     // ── Async: on-demand franchise fetch for unknown collection_id ────────────
     // Runs after index has advanced so the user never waits for this fetch.
