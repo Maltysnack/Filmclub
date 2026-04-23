@@ -254,7 +254,7 @@ export default function Home() {
       {/* Fixed-height flex container — both forms are flex-1 inside it, so they
           always fill the same height and the CTA buttons land at the same Y.
           min-h-[24rem] comfortably accommodates the tallest service grid. */}
-      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "10rem" }}>
+      <div className="w-full max-w-sm flex flex-col" style={{ minHeight: "11rem" }}>
 
         {tab === "create" && (
           <form
@@ -396,7 +396,7 @@ export default function Home() {
 
             {/* Label at top — same style as streaming label */}
             <label className="block text-xs font-medium uppercase tracking-wider"
-              style={{ color: "var(--text-muted)" }}>Code</label>
+              style={{ color: "var(--text-muted)" }}>Join Code</label>
 
             {/* Code input — same CodeBox component as lobby, ensuring visual parity */}
             <div className="flex justify-center">
