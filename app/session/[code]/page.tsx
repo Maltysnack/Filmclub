@@ -463,9 +463,23 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       if (slot >= 0 && slot < 4) {
         // Non-overlapping slice: slot 0 = films 0–39, slot 1 = 40–79, slot 2 = 80–119, slot 3 = 120–159.
         const slotStart = slot * INITIAL_SLICE;
-        initialAuto = autoFilms.slice(slotStart, slotStart + autoSlice);
-        // Reserve = everything after this slot, shuffled so each participant drips in a different order.
-        reserveQueueRef.current = seededShuffle(autoFilms.slice(slotStart + INITIAL_SLICE), seed);
+        const slotEnd = slotStart + autoSlice;
+
+        if (autoFilms.length >= slotEnd) {
+          // Pool is large enough — use the non-overlapping slot for maximum group coverage.
+          initialAuto = autoFilms.slice(slotStart, slotEnd);
+          // Reserve = everything after this slot, shuffled per-participant so drip order varies.
+          reserveQueueRef.current = seededShuffle(autoFilms.slice(slotStart + INITIAL_SLICE), seed);
+        } else {
+          // Pool is too small for this participant's slot — seedMoreHomePool hasn't finished yet.
+          // Fall back to a seeded shuffle of whatever is available so the deck is never empty.
+          // The reserve fills via the session_films subscription as batches land.
+          // (Pre-slot behaviour: everyone shuffled the same available pool — works for any pool size.)
+          console.log(`[loadFilms] slot ${slot} undersized (need ${slotEnd}, have ${autoFilms.length}) — shuffle fallback`);
+          const shuffledAuto = seededShuffle(autoFilms, seed);
+          initialAuto = shuffledAuto.slice(0, autoSlice);
+          reserveQueueRef.current = shuffledAuto.slice(autoSlice);
+        }
       } else {
         // Participant 5+: seeded shuffle of the full pool (same behaviour as before).
         const shuffledAuto = seededShuffle(autoFilms, seed);
