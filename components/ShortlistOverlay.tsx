@@ -746,13 +746,13 @@ export default function ShortlistOverlay({
         <div className="shrink-0 px-5 pb-8 flex flex-row gap-3">
           <button
             onClick={() => advanceToNextRound(sessionId, (round?.round_number ?? 0) + 1, decisionFilms)}
-            className="flex-1 py-4 rounded-2xl text-sm font-semibold"
+            className="flex-1 py-4 rounded-2xl text-sm font-semibold flex items-center justify-center"
             style={{ background: "rgba(232,184,109,0.12)", color: "var(--accent)" }}>
             Vote
           </button>
           <button
             onClick={() => broadcastSpin(decisionFilms)}
-            className="flex-1 py-4 rounded-2xl text-sm font-semibold"
+            className="flex-1 py-4 rounded-2xl text-sm font-semibold flex items-center justify-center"
             style={{ background: "rgba(232,184,109,0.12)", color: "var(--accent)" }}>
             Spin
           </button>
