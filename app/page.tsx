@@ -323,37 +323,38 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Always-open service grid — fixed height matches the lobby code box */}
-                <div className="grid gap-2" style={{
-                  gridTemplateColumns: `repeat(${Math.ceil(regionServices.length / 2)}, 1fr)`,
-                  gridTemplateRows: "repeat(2, 1fr)",
-                  height: "5rem",
-                }}>
-                  {regionServices.map((svc) => {
-                    const on = selectedServices.includes(svc.id);
-                    return (
-                      <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
-                        className="relative flex items-center justify-center rounded-xl transition-all overflow-hidden"
-                        style={{
-                          background: svc.color,
-                          border: `2px solid ${on ? "var(--like)" : "transparent"}`,
-                          boxShadow: on ? "0 0 0 2px var(--like)" : "none",
-                          outline: "none",
-                          opacity: on ? 1 : 0.45,
-                        }}>
-                        <span className="text-[9px] font-bold" style={{ color: "#fff" }}>{svc.abbrev}</span>
-                        {svc.tmdbLogoPath && (
-                          <img
-                            src={`https://image.tmdb.org/t/p/w92${svc.tmdbLogoPath}`}
-                            alt={svc.name}
-                            title={svc.name}
-                            className="absolute inset-0 w-full h-full object-cover"
-                            onError={e => { e.currentTarget.style.display = "none"; }}
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
+                {/* Always-open service grid — slightly smaller square tiles via constrained width */}
+                <div style={{ maxWidth: "270px", margin: "0 auto" }}>
+                  <div className="grid gap-2" style={{
+                    gridTemplateColumns: `repeat(${Math.ceil(regionServices.length / 2)}, 1fr)`,
+                  }}>
+                    {regionServices.map((svc) => {
+                      const on = selectedServices.includes(svc.id);
+                      return (
+                        <button key={svc.id} type="button" onClick={() => toggleService(svc.id)}
+                          className="relative flex items-center justify-center rounded-xl transition-all overflow-hidden"
+                          style={{
+                            aspectRatio: "1",
+                            background: svc.color,
+                            border: `2px solid ${on ? "var(--like)" : "transparent"}`,
+                            boxShadow: on ? "0 0 0 2px var(--like)" : "none",
+                            outline: "none",
+                            opacity: on ? 1 : 0.45,
+                          }}>
+                          <span className="text-[9px] font-bold" style={{ color: "#fff" }}>{svc.abbrev}</span>
+                          {svc.tmdbLogoPath && (
+                            <img
+                              src={`https://image.tmdb.org/t/p/w92${svc.tmdbLogoPath}`}
+                              alt={svc.name}
+                              title={svc.name}
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onError={e => { e.currentTarget.style.display = "none"; }}
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -399,9 +400,8 @@ export default function Home() {
             <label className="block text-xs font-medium uppercase tracking-wider"
               style={{ color: "var(--text-muted)" }}>Code</label>
 
-            {/* flex-1 centres the code input in the remaining space.
-                Input matches the lobby code box exactly (text-4xl px-7 py-5 rounded-3xl). */}
-            <div className="flex-1 flex items-center justify-center">
+            {/* Code box directly under label — matches lobby code box styling */}
+            <div className="flex justify-center">
               <input
                 type="text"
                 placeholder="WOLF-42"
@@ -428,6 +428,9 @@ export default function Home() {
                 style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }} />
             </Field>
             */}
+
+            {/* Spacer pushes button to bottom of container, matching the Start tab layout */}
+            <div className="flex-1" />
 
             {error && <p className="text-sm text-center" style={{ color: "var(--dislike)" }}>{error}</p>}
 
