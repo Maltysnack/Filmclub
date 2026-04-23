@@ -225,6 +225,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const allSessionFilmsRef = useRef<Film[]>([]);
   // Per-user swipe history this session: film.id → liked. Used for second-chance ranking.
   const mySwipeHistoryRef = useRef<Map<string, boolean>>(new Map());
+  // Synchronous-access mirror of filmLikes state — updated directly in the subscription
+  // callback before setFilmLikes so handleSwipe always reads the latest value even when
+  // the React state hasn't flushed yet (stale-closure fix for skipBlocked / priority swap).
+  const filmLikesRef = useRef<Map<string, string[]>>(new Map());
+  // Film IDs deferred during a drag (swipeInProgress = true) — flushed into propagateFilm
+  // when the drag ends so we never yank the card mid-swipe but don't lose the event either.
+  const pendingPropagationsRef = useRef<string[]>([]);
   // Shared motion value: front SwipeCard writes its drag offset here each frame,
   // back SwipeCard reads it to smoothly promote itself as the front card moves away.
   // Resets to 0 when currentIndex advances so the new back card starts at rest.
@@ -519,6 +526,50 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Like propagation helper ───────────────────────────────────────────────────
+  // Surfaces a film liked by another participant near the top of this user's unseen deck.
+  // Three tiers: (1) already in queue → move up, (2) in reserve → pull out, (3) in
+  // allSessionFilms but a different participant's slot → cross-slot injection.
+  // Reserve mutation is done OUTSIDE the functional updater to keep it pure (React
+  // StrictMode calls updaters twice; side-effecting refs inside updaters cause double-mutation).
+  const propagateFilm = useCallback((filmId: string) => {
+    const ci = currentIndexRef.current;
+
+    // Pre-resolve injection source before the updater runs.
+    const reserveIdx = reserveQueueRef.current.findIndex((f) => f.id === filmId);
+    let injectionFilm: Film | null = null;
+    if (reserveIdx !== -1) {
+      injectionFilm = reserveQueueRef.current[reserveIdx];
+      // Remove from reserve so it doesn't drip in as a duplicate later.
+      reserveQueueRef.current = reserveQueueRef.current.filter((_, i) => i !== reserveIdx);
+    } else if (!mySwipeHistoryRef.current.has(filmId)) {
+      // Cross-slot: only inject if user hasn't already swiped this film.
+      injectionFilm = allSessionFilmsRef.current.find((f) => f.id === filmId) ?? null;
+    }
+
+    setFullQueue((prev) => {
+      const filmIdx = prev.findIndex((f) => f.id === filmId);
+      if (filmIdx !== -1) {
+        // Already in queue — move it closer to the current card (original behaviour).
+        if (filmIdx <= ci) return prev;
+        const targetPos = Math.min(ci + 1 + Math.floor(Math.random() * 3), prev.length - 1);
+        if (filmIdx <= targetPos) return prev;
+        const next = [...prev];
+        const [film] = next.splice(filmIdx, 1);
+        next.splice(targetPos, 0, film);
+        return next;
+      }
+      // Inject from pre-resolved source (reserve pull or cross-slot).
+      if (injectionFilm) {
+        const next = [...prev];
+        next.splice(Math.min(ci + 1, next.length), 0, injectionFilm);
+        return next;
+      }
+      return prev;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     async function init() {
       const s = await getSession(code);
@@ -549,6 +600,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         const stats = await getSessionSwipeStats(s.id);
         setGroupSwipeCount(stats.totalSwipes);
         setGroupLikeCount(stats.totalLikes);
+        filmLikesRef.current = stats.filmLikes;
         setFilmLikes(stats.filmLikes);
         setLoading(false);
         loadFilms(s, pid);   // silent background refresh for new films
@@ -562,6 +614,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       const stats = await getSessionSwipeStats(s.id);
       setGroupSwipeCount(stats.totalSwipes);
       setGroupLikeCount(stats.totalLikes);
+      filmLikesRef.current = stats.filmLikes;
       setFilmLikes(stats.filmLikes);
 
       // Show a one-time "how it works" card to users who joined after the session started
@@ -610,30 +663,23 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           setGroupSwipeCount((c) => c + 1);
           if (newSwipe.liked) {
             setGroupLikeCount((c) => c + 1);
-            // Update per-film like map
-            setFilmLikes((prev) => {
-              const next = new Map(prev);
-              const ids = next.get(newSwipe.film_id) ?? [];
-              next.set(newSwipe.film_id, [...ids, newSwipe.participant_id]);
-              return next;
-            });
+            // Update per-film like map — write ref synchronously so handleSwipe always
+            // reads the latest value even before the React state flush renders.
+            const updatedLikes = new Map(filmLikesRef.current);
+            const existingIds = updatedLikes.get(newSwipe.film_id) ?? [];
+            updatedLikes.set(newSwipe.film_id, [...existingIds, newSwipe.participant_id]);
+            filmLikesRef.current = updatedLikes;
+            setFilmLikes(updatedLikes);
 
-            // Like propagation: someone else liked a film — surface it near top of our unseen queue.
-            // Skip the reorder if the user has a finger on the card mid-drag (Bug #4 fix).
-            if (newSwipe.participant_id !== participantRef.current?.id && !swipeInProgress.current) {
-              const ci = currentIndexRef.current;
-              setFullQueue((prev) => {
-                const filmIdx = prev.findIndex((f) => f.id === newSwipe.film_id);
-                // Not in queue, or already seen/currently showing — leave as is
-                if (filmIdx === -1 || filmIdx <= ci) return prev;
-                // Aim for position ci+1 to ci+3 (right behind current card)
-                const targetPos = Math.min(ci + 1 + Math.floor(Math.random() * 3), prev.length - 1);
-                if (filmIdx <= targetPos) return prev; // already near top
-                const next = [...prev];
-                const [film] = next.splice(filmIdx, 1);
-                next.splice(targetPos, 0, film);
-                return next;
-              });
+            // Like propagation: someone else liked a film — surface it near the top of
+            // this user's unseen deck. If a drag is in progress, defer until drag ends
+            // so we don't yank the card out from under the user's finger.
+            if (newSwipe.participant_id !== participantRef.current?.id) {
+              if (!swipeInProgress.current) {
+                propagateFilm(newSwipe.film_id);
+              } else {
+                pendingPropagationsRef.current.push(newSwipe.film_id);
+              }
             }
           }
 
@@ -817,9 +863,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         newPriorityGenres,
         newBlockedGenres,
         newBlocked,
-        filmLikes,
+        filmLikesRef.current,
       );
-      if (swapIdx > currentIndex + 1) {
+      // Don't displace a propagated film — if ci+1 is already liked by another participant,
+      // let it stay there and respect the social signal over personal genre preference.
+      const filmAtNext = workingQueue[currentIndex + 1];
+      const nextIsLikedByOther = !!filmAtNext &&
+        (filmLikesRef.current.get(filmAtNext.id) ?? []).some((id) => id !== participant?.id);
+      if (swapIdx > currentIndex + 1 && !nextIsLikedByOther) {
         const targetFilmId = workingQueue[swapIdx].id;
         console.log(
           `[genre:swap] "${workingQueue[swapIdx].title}" (${workingQueue[swapIdx].genres.map((g) => g.name).join(", ")}) → position ${currentIndex + 2}`
@@ -844,7 +895,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     // ── Advance index immediately — don't wait for DB ─────────────────────────
     // The card has already animated off-screen in SwipeCard before onLike/onDislike
     // fires, so advancing here makes the next card appear with zero perceptible delay.
-    const nextIdx = skipBlocked(currentIndex + 1, workingQueue, newBlocked, filmLikes, newBlockedGenres);
+    // Use filmLikesRef.current (not the stale filmLikes closure) so recently propagated
+    // films aren't incorrectly skipped by the franchise/genre block exemption check.
+    const nextIdx = skipBlocked(currentIndex + 1, workingQueue, newBlocked, filmLikesRef.current, newBlockedGenres);
     if (nextIdx < workingQueue.length) {
       setCurrentIndex(nextIdx);
       if (infoFilm) setInfoFilm(workingQueue[nextIdx]);
@@ -1429,7 +1482,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                           }}
                           participants={participants}
                           onDragStart={() => { swipeInProgress.current = true; }}
-                          onDragEnd={() => { swipeInProgress.current = false; }}
+                          onDragEnd={() => {
+                            swipeInProgress.current = false;
+                            // Flush any propagation events that arrived mid-drag.
+                            for (const fid of pendingPropagationsRef.current) propagateFilm(fid);
+                            pendingPropagationsRef.current = [];
+                          }}
                           promotionMV={promotionMV} />
                       </motion.div>
                     )}
