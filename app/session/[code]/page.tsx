@@ -138,7 +138,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   // Synchronous check on mount — prevents lobby flash for users returning from search/results
   // (they have a snapshot), while new joiners (no snapshot) correctly see the lobby.
-  const hasSnapshot = useRef(!!sessionStorage.getItem(`filmclub-queue-${code}`));
+  const hasSnapshot = useRef(typeof window !== "undefined" && !!sessionStorage.getItem(`filmclub-queue-${code}`));
 
   const [session, setSession] = useState<Session | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
