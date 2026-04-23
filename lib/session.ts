@@ -440,21 +440,25 @@ export async function checkAllMatches(sessionId: string, threshold: number): Pro
 }
 
 export async function resolveMatch(sessionId: string, winnerFilmId: string) {
-  // Guard against double-calls (two UI paths can fire this simultaneously in solo sessions).
-  // If the session is already closed a previous call already resolved it — bail out.
   const { data: current } = await supabase
     .from("sessions")
     .select("status")
     .eq("id", sessionId)
     .single();
-  if (current?.status === "closed") return;
 
-  // Delete all non-winner matches then close — all devices pick up the single winner
-  await supabase.from("matches").delete()
-    .eq("session_id", sessionId)
-    .neq("film_id", winnerFilmId);
-  await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
-  // Record outcome for analytics — production only, awaited so errors surface in logs
+  // Only run the DB mutations once — but always attempt outcome recording below.
+  // The old pattern of returning early here blocked recordSessionOutcome in the
+  // shortlist and spin-wheel paths (session was already closed by that point).
+  if (current?.status !== "closed") {
+    // Delete all non-winner matches then close — all devices pick up the single winner
+    await supabase.from("matches").delete()
+      .eq("session_id", sessionId)
+      .neq("film_id", winnerFilmId);
+    await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
+  }
+
+  // Record outcome for analytics — production only, awaited so errors surface in logs.
+  // Uses upsert with onConflict so simultaneous calls are safe — first write wins.
   await recordSessionOutcome(sessionId, winnerFilmId);
 }
 
@@ -492,7 +496,10 @@ async function recordSessionOutcome(
   // Skip solo sessions — they're almost always a single person testing
   if (!session || !film || !groupSize || groupSize < 2) return;
 
-  await supabase.from("session_outcomes").insert({
+  // Upsert on session_id — DB unique constraint ensures only one row per session
+  // regardless of how many times this function is called (race conditions, retries).
+  await supabase.from("session_outcomes").upsert({
+    session_id: sessionId,
     tmdb_id: film.tmdb_id,
     film_title: film.title,
     genres: film.genres ?? null,
@@ -500,7 +507,7 @@ async function recordSessionOutcome(
     group_size: groupSize ?? null,
     region: session.region ?? null,
     service_ids: session.streaming_services ?? null,
-  });
+  }, { onConflict: "session_id", ignoreDuplicates: true });
 }
 
 export async function getMatches(sessionId: string): Promise<Match[]> {

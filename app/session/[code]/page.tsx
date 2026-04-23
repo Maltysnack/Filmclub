@@ -878,9 +878,17 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     if (liked && s.started && !isSolo) {
       const isMatch = await checkForMatch(s.id, film.id, s.threshold);
       if (isMatch && s.mode === "live") {
-        await closeSession(s.id);
+        // Brief delay for DB consistency before reading matches
         await new Promise((r) => setTimeout(r, 300));
         const allMatches = await getMatches(s.id);
+        if (allMatches.length === 1) {
+          // Single winner — resolveMatch closes the session and records the outcome
+          await resolveMatch(s.id, allMatches[0].film_id);
+        } else if (allMatches.length > 1) {
+          // Multiple winners — close now so all devices see the match screen;
+          // shortlist will call resolveMatch with the final winner
+          await closeSession(s.id);
+        }
         if (allMatches.length > 0) { setMatchList(allMatches); return; }
       }
     }
@@ -922,9 +930,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           if (await checkForMatch(s.id, f.id, s.threshold)) found = true;
         }
         if (found) {
-          await closeSession(s.id);
           await new Promise((r) => setTimeout(r, 300));
           const allMatches = await getMatches(s.id);
+          if (allMatches.length === 1) {
+            await resolveMatch(s.id, allMatches[0].film_id);
+          } else if (allMatches.length > 1) {
+            await closeSession(s.id);
+          }
           if (allMatches.length > 0) { setMatchList(allMatches); return; }
         }
       }
@@ -1244,7 +1256,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         </div>
         <div className="flex-1" />
         {/* Centre: Shortlist Vote — flex spacers keep it centred in the gap */}
-        {isHost && session?.status !== "closed" && !allDone && filmLikes.size > 0 && (
+        {isHost && session?.status !== "closed" && !allDone && filmLikes.size >= 2 && (
           <button
             onClick={() => setShowShortlistConfirm(true)}
             className="shrink-0 whitespace-nowrap px-5 py-1.5 rounded-lg text-xs font-semibold"
