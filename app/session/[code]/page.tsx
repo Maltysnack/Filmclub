@@ -1124,7 +1124,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           const color = participantColor(p.name);
           return (
             <span key={p.id}
-              className="text-xs px-2.5 py-1 rounded-full font-medium"
+              className="text-xs px-2.5 py-1 rounded-md font-medium"
               style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}>
               {p.name}{isMe ? " (you)" : ""}
             </span>
