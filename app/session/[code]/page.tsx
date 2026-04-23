@@ -25,7 +25,8 @@ import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Search, Trophy, Play, Copy, Check, Clock, Zap, Crown, Layers } from "lucide-react";
+import { Search, Trophy, Play, Clock, Zap, Crown, Layers } from "lucide-react";
+import { CodeDisplay } from "@/components/CodeBox";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import SinglePlayerVoteOverlay from "@/components/SinglePlayerVoteOverlay";
@@ -107,6 +108,19 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const wheelChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [allDone, setAllDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Read home-page logo position stored just before navigation — used to
+  // start the lobby animation from exactly where the logo sat on the home page.
+  const [logoStartY] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem("filmclub-logo-y");
+      if (stored) {
+        sessionStorage.removeItem("filmclub-logo-y");
+        // Lobby logo destination is ~40px from top (pt-10 container).
+        return Math.max(0, parseFloat(stored) - 40);
+      }
+    } catch { /* ignore */ }
+    return 160; // fallback for direct navigation
+  });
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
   // Map from film.id -> dendy session info
@@ -836,11 +850,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         <MailButton />
         <div className="flex flex-col flex-1 mx-auto w-full px-5 pt-10" style={{ maxWidth: 480, paddingBottom: "max(calc(env(safe-area-inset-bottom) + 2rem), 6rem)" }}>
 
-          {/* Logo — slides up from centre on mount */}
+          {/* Logo — slides up from the position it held on the home page */}
           <motion.div
             className="flex justify-center mb-10"
-            initial={{ y: 160, opacity: 0 }}
-            animate={{ y: [160, 160, 0], opacity: [0, 1, 1] }}
+            initial={{ y: logoStartY, opacity: 0 }}
+            animate={{ y: [logoStartY, logoStartY, 0], opacity: [0, 1, 1] }}
             transition={{
               duration: 1.4,
               times: [0, 0.22, 1],
@@ -862,17 +876,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           <div className="mb-8 text-center">
             <p className="text-xs font-medium uppercase tracking-wider mb-3"
               style={{ color: "var(--text-muted)" }}>Join code</p>
-            <button
-              onClick={handleShare}
-              className="inline-flex items-center gap-3 px-6 py-4 rounded-2xl transition-all"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-              <span className="font-mono font-bold text-3xl tracking-widest" style={{ color: "var(--accent)" }}>
-                {code}
-              </span>
-              {copied
-                ? <Check size={18} style={{ color: "var(--like)" }} />
-                : <Copy size={18} style={{ color: "var(--text-muted)" }} />}
-            </button>
+            <CodeDisplay code={code} onClick={handleShare} copied={copied} />
           </div>
 
           {/* Participants */}
