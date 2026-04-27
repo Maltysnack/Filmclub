@@ -208,6 +208,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Like propagation (queue reorder) is deferred while a swipe is in progress
   // to prevent the card being yanked out from under the user's finger (Bug #4).
   const swipeInProgress = useRef(false);
+  // Guards handleSwipe against double-invocation on rapid taps. Holds the index
+  // of the last swipe that started processing. Resets naturally when currentIndex
+  // advances to the next film (new render → new closure → different value).
+  const swipingIndexRef = useRef(-1);
   // Ref to imperatively scroll ScrollView when switching from swipe → scroll
   const scrollViewRef = useRef<ScrollViewHandle>(null);
   // Tracks the last known scroll mode index so swipe can resume at the same position
@@ -784,6 +788,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   async function handleSwipe(liked: boolean) {
     if (!session || !participant || currentIndex >= queue.length) return;
+    if (swipingIndexRef.current === currentIndex) return;
+    swipingIndexRef.current = currentIndex;
     const s = sessionRef.current ?? session; // always fresh — avoids stale closure
     const film = queue[currentIndex];
     const isSolo = participants.length <= 1;
