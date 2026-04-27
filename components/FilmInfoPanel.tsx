@@ -1,26 +1,23 @@
 "use client";
 
 import { Film } from "@/types";
-import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
 import { X, Heart } from "lucide-react";
-import DendyLogo from "./DendyLogo";
 
 interface FilmInfoPanelProps {
   film: Film;
   onClose: () => void;
   onLike?: () => void;
   onDislike?: () => void;
-  dendyInfo?: DendyFilm;
   sessionServices: string[];
   // Pass true from the mobile overlay — the X is already in the poster image
   hideClose?: boolean;
 }
 
-export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyInfo, sessionServices, hideClose = false }: FilmInfoPanelProps) {
+export default function FilmInfoPanel({ film, onClose, onLike, onDislike, sessionServices, hideClose = false }: FilmInfoPanelProps) {
   const providers: { serviceId: string; logoPath?: string | null }[] = film.watch_providers_au ?? [];
   const availableProviders = providers.filter((p) => sessionServices.includes(p.serviceId));
-  const showWhere = !!(dendyInfo || availableProviders.length > 0);
+  const showWhere = availableProviders.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -80,27 +77,10 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, dendyI
         ))}
       </div>
 
-      {/* Where to watch — static, only shown when there are services or Dendy */}
+      {/* Where to watch — static, only shown when there are services */}
       {showWhere && (
         <div className="shrink-0 px-3 pb-2">
           <div className="p-2.5 rounded-xl space-y-2" style={{ background: "var(--surface-2)" }}>
-            {dendyInfo && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <DendyLogo height={13} />
-                  {dendyInfo.tmdbMatch === "low" && <span className="text-xs" style={{ color: "var(--accent)" }}>⚠️</span>}
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {dendyInfo.sessionTimes.map((t) => (
-                    <a key={t} href={dendyInfo.bookingUrls[t] ?? "#"} target="_blank" rel="noopener noreferrer"
-                      className="text-xs px-2 py-0.5 rounded font-medium"
-                      style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-                      {t}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
             {availableProviders.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap">
                 {availableProviders.map((p) => {

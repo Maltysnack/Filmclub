@@ -3,7 +3,7 @@
 import { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Trophy, Lock, Clock, Search, Layers } from "lucide-react";
+import { Trophy, Search, Layers } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, recordSwipe, removeParticipant } from "@/lib/session";
 import { getCurrentRound } from "@/lib/shortlist";
@@ -120,8 +120,6 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
     setClosing(false);
   }
 
-  const deadlineDate = session?.deadline ? new Date(session.deadline) : null;
-  const isPast = deadlineDate ? deadlineDate < new Date() : false;
   function gridCols(n: number): number {
     if (n <= 2) return n || 1;
     if (n === 4) return 2;
@@ -187,19 +185,6 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
 
       {!loading && (
         <div className="flex-1 overflow-y-auto px-5 pb-8">
-          {/* Deadline */}
-          {session?.mode === "planned" && deadlineDate && (
-            <div
-              className="mb-5 p-3 rounded-xl flex items-center gap-2 text-sm"
-              style={{ background: "var(--surface)", color: isPast ? "var(--like)" : "var(--text-muted)" }}
-            >
-              {isPast ? <Lock size={14} /> : <Clock size={14} />}
-              {isPast
-                ? "Deadline passed — these are the final results"
-                : `Closes ${deadlineDate.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}
-            </div>
-          )}
-
           {/* Participants */}
           <div className="flex items-center gap-2 mb-5 flex-wrap">
             {participants.map((p) => {

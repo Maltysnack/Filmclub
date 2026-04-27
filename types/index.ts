@@ -1,7 +1,6 @@
 export type SessionMode = "planned" | "live";
 export type SessionStatus = "active" | "closed";
 export type WatchMode = "home" | "cinema" | "both";
-export type SessionType = "browse" | "shortlist";
 export type ShortlistPhase = "nominate" | "veto" | "vote" | "spinning" | "complete";
 export type Region = "AU" | "BR" | "CA" | "DE" | "ES" | "FR" | "GB" | "IN" | "IT" | "JP" | "KR" | "MX" | "NL" | "NZ" | "US";
 
@@ -9,17 +8,12 @@ export interface Session {
   id: string;
   code: string;
   mode: SessionMode;
-  session_type: SessionType;
-  deadline: string | null;
   threshold: number;
   status: SessionStatus;
   started: boolean;
   watch_mode: WatchMode;
   streaming_services: string[];
   region: Region;
-  cinema_date: string | null;       // "2026-03-25"
-  cinema_time_from: string | null;  // "18:00"
-  cinema_time_to: string | null;    // "20:00"
   tiebreaker_film_ids: string[] | null;
   created_at: string;
 }
@@ -54,10 +48,6 @@ export interface ShortlistVote {
 
 export interface FilmWithMeta extends Film {
   watch_providers_au: { serviceId: string; name: string; logoPath?: string | null; tmdbProviderId?: number | null }[];
-  // Cinema session info — populated when film comes from Dendy pool
-  dendyTimes?: string[];
-  dendyBookingUrls?: Record<string, string>;
-  dendyMatch?: "high" | "low" | "none";
 }
 
 export interface Participant {

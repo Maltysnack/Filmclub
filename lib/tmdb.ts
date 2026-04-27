@@ -17,10 +17,6 @@ async function fetchPages(url: string, pages: number): Promise<TMDBMovie[]> {
   return results.flatMap((d) => d.results ?? []);
 }
 
-export async function getPopularFilms(pages = 1): Promise<TMDBMovie[]> {
-  return fetchPages(`${BASE}/movie/popular?`, pages);
-}
-
 export async function getTrendingFilms(pages = 1): Promise<TMDBMovie[]> {
   // Trending uses a slightly different URL structure
   if (pages === 1) {
@@ -88,9 +84,6 @@ export async function getProviderList(region: Region = "AU"): Promise<{ provider
     a.provider_name.localeCompare(b.provider_name)
   );
 }
-
-// Legacy AU alias
-export async function getAUProviderList() { return getProviderList("AU"); }
 
 export async function searchFilms(query: string): Promise<TMDBMovie[]> {
   if (!query.trim()) return [];

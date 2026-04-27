@@ -107,14 +107,9 @@ export default function Home() {
 
     const session = await createSession(
       "live",
-      null,
       threshold,
       watchMode,
       selectedServices,
-      null, // cinemaDateStr
-      null, // cinemaFromTime
-      null, // cinemaToTime
-      "browse",
       region,
     );
     if (!session) {

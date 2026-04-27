@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import { Film } from "@/types";
-import { DendyFilm } from "@/lib/dendy";
 import { posterUrl } from "@/lib/tmdb";
 import FilmInfoPanel from "./FilmInfoPanel";
 import { X } from "lucide-react";
@@ -14,11 +13,10 @@ interface FilmInfoOverlayProps {
   onLike?: () => void;
   onDislike?: () => void;
   sessionServices: string[];
-  dendyInfo?: DendyFilm;
 }
 
 export default function FilmInfoOverlay({
-  film, onClose, onLike, onDislike, sessionServices, dendyInfo,
+  film, onClose, onLike, onDislike, sessionServices,
 }: FilmInfoOverlayProps) {
   // Motion value drives the mobile sheet's vertical position.
   // The poster area acts as a drag handle — dragging it moves the whole sheet.
@@ -120,7 +118,6 @@ export default function FilmInfoOverlay({
                 onLike={onLike}
                 onDislike={onDislike}
                 sessionServices={sessionServices}
-                dendyInfo={dendyInfo}
                 hideClose={true}
               />
             </div>
@@ -175,7 +172,6 @@ export default function FilmInfoOverlay({
                   onLike={onLike}
                   onDislike={onDislike}
                   sessionServices={sessionServices}
-                  dendyInfo={dendyInfo}
                 />
               </div>
             </div>

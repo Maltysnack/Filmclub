@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { Session, Participant, Film, Match, WatchMode, SessionType, Region } from "@/types";
+import { Session, Participant, Film, Match, WatchMode, Region } from "@/types";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
 import { fetchOmdbRating } from "./omdb";
 import { fetchWatchProvidersAU, getService } from "./streaming";
@@ -54,14 +54,9 @@ export function getIsHost(sessionCode: string): boolean {
 
 export async function createSession(
   mode: "planned" | "live",
-  deadline: string | null,
   threshold: number,
   watchMode: WatchMode = "home",
   streamingServices: string[] = [],
-  cinemaDate: string | null = null,
-  cinemaTimeFrom: string | null = null,
-  cinemaTimeTo: string | null = null,
-  sessionType: SessionType = "browse",
   region: Region = "AU",
 ): Promise<Session | null> {
   let code = generateCode();
@@ -71,13 +66,9 @@ export async function createSession(
   const { data, error } = await supabase
     .from("sessions")
     .insert({
-      code, mode, deadline, threshold,
-      session_type: sessionType,
+      code, mode, threshold,
       watch_mode: watchMode,
       streaming_services: streamingServices,
-      cinema_date: cinemaDate,
-      cinema_time_from: cinemaTimeFrom,
-      cinema_time_to: cinemaTimeTo,
       region,
     })
     .select()

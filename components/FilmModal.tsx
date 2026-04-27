@@ -2,22 +2,19 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Film } from "@/types";
-import { DendyFilm } from "@/lib/dendy";
 import { getService } from "@/lib/streaming";
 import { posterUrl } from "@/lib/tmdb";
 import { X, Clock, Star } from "lucide-react";
-import DendyLogo from "./DendyLogo";
 
 interface FilmModalProps {
   film: Film | null;
   onClose: () => void;
   onLike?: () => void;
   onDislike?: () => void;
-  dendyInfo?: DendyFilm;
   sessionServices?: string[];
 }
 
-export default function FilmModal({ film, onClose, onLike, onDislike, dendyInfo, sessionServices = [] }: FilmModalProps) {
+export default function FilmModal({ film, onClose, onLike, onDislike, sessionServices = [] }: FilmModalProps) {
   return (
     <AnimatePresence>
       {film && (
@@ -109,25 +106,8 @@ export default function FilmModal({ film, onClose, onLike, onDislike, dendyInfo,
                 </div>
 
                 {/* Where to watch */}
-                {(dendyInfo || sessionServices.length > 0) && (
+                {sessionServices.length > 0 && (
                   <div className="mb-4 p-3 rounded-xl space-y-2" style={{ background: "var(--surface-2)" }}>
-                    {dendyInfo && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <DendyLogo height={13} />
-                          {dendyInfo.tmdbMatch === "low" && <span className="text-xs" style={{ color: "var(--accent)" }}>⚠️</span>}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {dendyInfo.sessionTimes.map((t) => (
-                            <a key={t} href={dendyInfo.bookingUrls[t] ?? "#"} target="_blank" rel="noopener noreferrer"
-                              className="text-xs px-2.5 py-1 rounded-lg font-medium"
-                              style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-                              {t}
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                     {sessionServices.length > 0 && (() => {
                       const providers = film.watch_providers_au ?? [];
                       const available = providers.filter((p) => sessionServices.includes(p.serviceId));
