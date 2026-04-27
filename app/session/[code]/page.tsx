@@ -15,13 +15,13 @@ import {
   closeSession, startSession, resolveMatch, addFilmToSession, getSessionSwipeStats,
   removeParticipant, getShortlistData,
 } from "@/lib/session";
-import { posterUrl, getFilmDetail, fetchCollectionTmdbIds } from "@/lib/tmdb";
+import { posterUrl, getFilmDetail, tmdbToFilm, fetchCollectionTmdbIds } from "@/lib/tmdb";
 import { getService, TMDB_GENRES } from "@/lib/streaming";
 import { seedHomePool, seedMoreHomePool, sessionProviderTmdbIds, ENGLISH_PRIMARY_REGIONS, FOREIGN_LANG_CAP } from "@/lib/pool";
 import MailButton from "@/components/MailButton";
 import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
-import { participantColor } from "@/lib/names";
+import { participantColor, getCharacterFilm } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
 import { Search, Trophy, Play, Clock, Zap, Crown, Layers } from "lucide-react";
 import { CodeDisplay } from "@/components/CodeBox";
@@ -169,6 +169,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [shortlistData, setShortlistData] = useState<{ films: import("@/types").Film[]; pinnedFilmIds: string[] } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
+  const [charInfoFilm, setCharInfoFilm] = useState<Film | null>(null);
   const [matchList, setMatchList] = useState<Match[]>([]);
   // Wheel state — lifted here so SpinWheel can overlay MatchScreen without flash
   const [wheelFilms, setWheelFilms] = useState<Match[] | null>(null);
@@ -786,6 +787,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setWheelWinnerId(newWinnerId);
   }
 
+  async function handleCharacterFilmClick(name: string) {
+    const charFilm = getCharacterFilm(name);
+    if (!charFilm) return;
+    const detail = await getFilmDetail(charFilm.tmdbId);
+    if (!detail) return;
+    setCharInfoFilm({ ...tmdbToFilm(detail), id: `char-${detail.id}` });
+  }
+
   async function handleSwipe(liked: boolean) {
     if (!session || !participant || currentIndex >= queue.length) return;
     if (swipingIndexRef.current === currentIndex) return;
@@ -1386,7 +1395,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       {/* Participants */}
       <div className="flex justify-start gap-1.5 flex-wrap px-5 py-3 shrink-0">
         {participants.map((p) => (
-          <ParticipantPill key={p.id} name={p.name} isMe={p.id === participant?.id} />
+          <ParticipantPill
+            key={p.id}
+            name={p.name}
+            isMe={p.id === participant?.id}
+            onFilmClick={getCharacterFilm(p.name) ? () => handleCharacterFilmClick(p.name) : undefined}
+          />
         ))}
       </div>
 
@@ -1566,6 +1580,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         </>
       )}
 
+      {/* Character source film — read-only, no like/dislike */}
+      <FilmInfoOverlay
+        film={charInfoFilm}
+        onClose={() => setCharInfoFilm(null)}
+        sessionServices={[]}
+      />
 
       <div className="h-24 shrink-0" />
     </div>

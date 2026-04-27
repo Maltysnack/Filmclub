@@ -8,8 +8,8 @@ import { useLongPress } from "@/hooks/useLongPress";
 import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, recordSwipe, removeParticipant } from "@/lib/session";
 import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
-import { posterUrl } from "@/lib/tmdb";
-import { participantColor } from "@/lib/names";
+import { posterUrl, getFilmDetail, tmdbToFilm } from "@/lib/tmdb";
+import { participantColor, getCharacterFilm } from "@/lib/names";
 import { Film, Session, Participant } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
@@ -31,6 +31,15 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
   const [scores, setScores] = useState<FilmScore[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
+  const [charInfoFilm, setCharInfoFilm] = useState<Film | null>(null);
+
+  async function handleCharacterFilmClick(name: string) {
+    const charFilm = getCharacterFilm(name);
+    if (!charFilm) return;
+    const detail = await getFilmDetail(charFilm.tmdbId);
+    if (!detail) return;
+    setCharInfoFilm({ ...tmdbToFilm(detail), id: `char-${detail.id}` });
+  }
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
   const [showShortlist, setShowShortlist] = useState(false);
@@ -195,6 +204,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                   name={p.name}
                   isMe={p.id === myParticipantId}
                   onClick={canRemove ? () => setConfirmRemoveId(p.id) : undefined}
+                  onFilmClick={getCharacterFilm(p.name) ? () => handleCharacterFilmClick(p.name) : undefined}
                 />
               );
             })}
@@ -349,6 +359,13 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         onLike={infoFilm && !scores.find(s => s.film.id === infoFilm.id)?.likedByIds.includes(myParticipantId) && session ? async () => {
           await recordSwipe(session.id, myParticipantId, infoFilm.id, true);
         } : undefined}
+      />
+
+      {/* Character source film — read-only, no like/dislike */}
+      <FilmInfoOverlay
+        film={charInfoFilm}
+        onClose={() => setCharInfoFilm(null)}
+        sessionServices={[]}
       />
 
       {showShortlist && session && (
