@@ -97,17 +97,23 @@ export async function closeSession(sessionId: string) {
   await supabase.from("sessions").update({ status: "closed" }).eq("id", sessionId);
 }
 
-/** Host only. Voids all shortlist submissions then removes the participant. */
+/** Host only. Voids all shortlist submissions and swipes then removes the participant. */
 export async function removeParticipant(sessionId: string, participantId: string): Promise<void> {
-  // Delete submissions first — so totalParticipants and vote counts drop together,
-  // preventing the host advancement effects from firing with stale counts.
+  // Clear all referencing rows first — including nulling added_by on session_films,
+  // which may have a FK constraint that would otherwise block the participant delete.
   await Promise.all([
     supabase.from("shortlist_vetoes")
       .delete().eq("session_id", sessionId).eq("participant_id", participantId),
     supabase.from("shortlist_votes")
       .delete().eq("session_id", sessionId).eq("participant_id", participantId),
+    supabase.from("swipes")
+      .delete().eq("session_id", sessionId).eq("participant_id", participantId),
+    supabase.from("session_films")
+      .update({ added_by: null }).eq("session_id", sessionId).eq("added_by", participantId),
   ]);
-  await supabase.from("participants").delete().eq("id", participantId).eq("session_id", sessionId);
+  const { data, error } = await supabase
+    .from("participants").delete().eq("id", participantId).eq("session_id", sessionId).select();
+  console.log("[removeParticipant] sessionId:", sessionId, "participantId:", participantId, "deleted:", data, "error:", error?.message);
 }
 
 export async function startSession(sessionId: string) {

@@ -318,7 +318,7 @@ export default function ShortlistOverlay({
 
     advanceToVotePhase(sessionId, round.round_number, remaining);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vetoes.length, isHost, round?.phase]);
+  }, [vetoes.length, isHost, round?.phase, totalParticipants]);
 
   // ── Host: tally votes when all in ─────────────────────────────────────────
   useEffect(() => {
@@ -358,7 +358,7 @@ export default function ShortlistOverlay({
       updateUiPhase("host_decision");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [votes.length, isHost, round?.phase]);
+  }, [votes.length, isHost, round?.phase, totalParticipants]);
 
   // ── Host: advance nomination → veto when all nominations are in ─────────
   useEffect(() => {
@@ -370,7 +370,7 @@ export default function ShortlistOverlay({
     const allFilmIds = [...new Set([...pinnedFilmIds, ...nominated])];
     advanceFromNomination(sessionId, round.id, allFilmIds);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [votes.length, uiPhase, round?.id]);
+  }, [votes.length, uiPhase, round?.id, totalParticipants]);
 
   // ── Non-host fallback: poll DB when all vetoes counted ───────────────────
   // Supabase realtime delivers shortlist_rounds UPDATE events on a best-effort

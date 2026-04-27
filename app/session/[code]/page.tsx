@@ -30,6 +30,7 @@ import ShortlistOverlay from "@/components/ShortlistOverlay";
 import SinglePlayerVoteOverlay from "@/components/SinglePlayerVoteOverlay";
 import FilmWinnerScreen from "@/components/FilmWinnerScreen";
 import ParticipantPill from "@/components/ParticipantPill";
+import KickedScreen from "@/components/KickedScreen";
 
 
 // Lobby participant grid: 1 column for ≤3 people (names get full width),
@@ -142,6 +143,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   const [session, setSession] = useState<Session | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
+  const [isKicked, setIsKicked] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [showLateModal, setShowLateModal] = useState(false);
@@ -164,6 +166,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   // Computed synchronously — avoids the flash where host briefly sees "Waiting..." before init
   const isHost = getIsHost(code);
+  const myParticipantId = getParticipantId(code) ?? "";
   const [fullQueue, setFullQueue] = useState<Film[]>([]);   // all films before genre filter
   const [showShortlist, setShowShortlist] = useState(false);
   const [shortlistData, setShortlistData] = useState<{ films: import("@/types").Film[]; pinnedFilmIds: string[] } | null>(null);
@@ -608,8 +611,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
       const allParticipants = await getParticipants(s.id);
       participantsRef.current = allParticipants; // set before loadFilms so slot calc sees correct list
-      setParticipant(allParticipants.find((p) => p.id === pid) ?? null);
       setParticipants(allParticipants);
+
+      if (!allParticipants.some(p => p.id === pid)) {
+        setIsKicked(true);
+        setLoading(false);
+        return;
+      }
+
+      setParticipant(allParticipants.find((p) => p.id === pid) ?? null);
 
       const { count: filmCount } = await supabase
         .from("session_films")
@@ -747,9 +757,37 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           }, 800);
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "participants", filter: `session_id=eq.${session.id}` },
-        async () => { setParticipants(await getParticipants(session.id)); })
+        (payload) => {
+          const p = payload.new as Participant;
+          setParticipants(prev => prev.some(x => x.id === p.id) ? prev : [...prev, p]);
+        })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    // Broadcast channel: receives kick events from the host so all clients
+    // update their pill list immediately.
+    const kicksCh = supabase
+      .channel(`kicks:${session.id}`)
+      .on("broadcast", { event: "participant_removed" }, ({ payload }) => {
+        const removedId = payload.id as string;
+        setParticipants(prev => prev.filter(p => p.id !== removedId));
+        if (removedId === myParticipantId) setIsKicked(true);
+      })
+      .subscribe();
+
+    // Belt-and-suspenders: PK-filter DELETE on own row — always delivered without REPLICA IDENTITY FULL.
+    const selfCh = supabase
+      .channel(`self-kick:${myParticipantId}`)
+      .on("postgres_changes", {
+        event: "DELETE", schema: "public", table: "participants",
+        filter: `id=eq.${myParticipantId}`,
+      }, () => setIsKicked(true))
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      supabase.removeChannel(kicksCh);
+      supabase.removeChannel(selfCh);
+    };
   }, [session, participant, loadFilms, code]);
 
   // ── Wheel broadcast channel — lets all participants see the spin ───────────
@@ -1251,6 +1289,16 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           </motion.div>
         </div>
       </div>
+    );
+  }
+
+  if (isKicked) {
+    return (
+      <KickedScreen
+        sessionCode={code}
+        sessionId={session?.id ?? ""}
+        takenNames={participants.map(p => p.name)}
+      />
     );
   }
 

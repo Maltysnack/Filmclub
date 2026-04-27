@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, use, useRef } from "react";
+import { useEffect, useState, use, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy, Search, Layers } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
-import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, recordSwipe, removeParticipant } from "@/lib/session";
+import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, recordSwipe, removeParticipant, checkAllMatches, resolveMatch } from "@/lib/session";
 import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { posterUrl, getFilmDetail, tmdbToFilm } from "@/lib/tmdb";
@@ -13,6 +13,7 @@ import { participantColor, getCharacterFilm } from "@/lib/names";
 import { Film, Session, Participant } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
+import KickedScreen from "@/components/KickedScreen";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
 import ParticipantPill from "@/components/ParticipantPill";
 
@@ -40,12 +41,15 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
     if (!detail) return;
     setCharInfoFilm({ ...tmdbToFilm(detail), id: `char-${detail.id}` });
   }
+  const [isKicked, setIsKicked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
+  const refreshScoresRef = useRef<(() => Promise<void>) | null>(null);
   const [showShortlist, setShowShortlist] = useState(false);
   const [showShortlistConfirm, setShowShortlistConfirm] = useState(false);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const resultSlCh = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const kicksChRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const scoresRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHost = getIsHost(code);
   const myParticipantId = getParticipantId(code) ?? "";
@@ -63,12 +67,20 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         getFilmScores(s.id),
         getParticipants(s.id),
       ]);
+
+      setParticipants(allParticipants);
+
+      if (!allParticipants.some(p => p.id === pid)) {
+        setIsKicked(true);
+        setLoading(false);
+        return;
+      }
+
       const tiebreakerIds = s.tiebreaker_film_ids?.length ? new Set(s.tiebreaker_film_ids) : null;
       const filtered = allScores
         .filter((fs) => fs.score > 0)
         .filter((fs) => !tiebreakerIds || tiebreakerIds.has(fs.film.id));
       setScores(filtered);
-      setParticipants(allParticipants);
       setLoading(false);
 
       // Auto-open shortlist overlay if a round is already active
@@ -96,6 +108,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         .filter((fs) => !tiebreakerIds || tiebreakerIds.has(fs.film.id));
       setScores(filtered);
     }
+    refreshScoresRef.current = refreshScores;
 
     const ch = supabase
       .channel(`results-sl:${session.id}`)
@@ -112,11 +125,46 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         if (scoresRefreshTimer.current) clearTimeout(scoresRefreshTimer.current);
         scoresRefreshTimer.current = setTimeout(refreshScores, 400);
       })
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "participants",
+        filter: `session_id=eq.${session.id}`,
+      }, (payload) => {
+        const p = payload.new as Participant;
+        setParticipants(prev => prev.some(x => x.id === p.id) ? prev : [...prev, p]);
+      })
       .subscribe();
     resultSlCh.current = ch;
+
+    // Broadcast channel: receives kick events from the host so all clients
+    // update their pill list immediately without relying on postgres_changes DELETE
+    // (which requires REPLICA IDENTITY FULL for unfiltered delivery).
+    const kicksCh = supabase
+      .channel(`kicks:${session.id}`)
+      .on("broadcast", { event: "participant_removed" }, ({ payload }) => {
+        const removedId = payload.id as string;
+        setParticipants(prev => prev.filter(p => p.id !== removedId));
+        refreshScores();
+        if (removedId === myParticipantId) setIsKicked(true);
+      })
+      .subscribe();
+    kicksChRef.current = kicksCh;
+
+    // Belt-and-suspenders: subscribe to own participant row deletion via PK filter.
+    // PK-filter DELETE events are always delivered without REPLICA IDENTITY FULL.
+    const selfCh = supabase
+      .channel(`self-kick:${myParticipantId}`)
+      .on("postgres_changes", {
+        event: "DELETE", schema: "public", table: "participants",
+        filter: `id=eq.${myParticipantId}`,
+      }, () => setIsKicked(true))
+      .subscribe();
+
     return () => {
       resultSlCh.current = null;
+      kicksChRef.current = null;
       supabase.removeChannel(ch);
+      supabase.removeChannel(kicksCh);
+      supabase.removeChannel(selfCh);
       if (scoresRefreshTimer.current) clearTimeout(scoresRefreshTimer.current);
     };
   }, [session?.id]);
@@ -146,6 +194,16 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
   const tiedFilms = scores.filter(s => s.score === topScore);
   const isTiedTop = tiedFilms.length > 1;
   const remainingFilms = isTiedTop ? scores.filter(s => s.score < topScore) : scores.slice(1);
+
+  if (isKicked) {
+    return (
+      <KickedScreen
+        sessionCode={code}
+        sessionId={session?.id ?? ""}
+        takenNames={participants.map(p => p.name)}
+      />
+    );
+  }
 
   // Long press for top film hero (single card, safe to call at component level)
   const topFilmLp = useLongPress(() => topFilm && setInfoFilm(topFilm.film));
@@ -320,14 +378,16 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         if (!target) return null;
         const col = participantColor(target.name);
         return (
-          <div className="fixed bottom-0 left-0 right-0 z-40 px-5 pb-8 pt-4"
-            style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
-            <div className="mx-auto max-w-sm p-4 rounded-2xl" style={{ background: "var(--surface)" }}>
+          <div className="fixed inset-0 z-40 flex items-center justify-center px-5"
+            style={{ background: "rgba(12,12,14,0.6)" }}
+            onClick={() => setConfirmRemoveId(null)}>
+            <div className="w-full max-w-sm p-4 rounded-2xl" style={{ background: "var(--surface)" }}
+              onClick={e => e.stopPropagation()}>
               <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>
                 Remove <span style={{ color: col }}>{target.name}</span>?
               </p>
               <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-                Their shortlist votes will be voided.
+                They can rejoin with a new name.
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setConfirmRemoveId(null)}
@@ -339,7 +399,17 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                   onClick={async () => {
                     const id = confirmRemoveId;
                     setConfirmRemoveId(null);
+                    // Optimistic update — host sees the pill vanish immediately
+                    setParticipants(prev => prev.filter(p => p.id !== id));
                     await removeParticipant(session.id, id);
+                    // Notify all clients so their pill lists update and the kicked
+                    // person sees KickedScreen without relying on postgres_changes DELETE
+                    kicksChRef.current?.send({ type: "broadcast", event: "participant_removed", payload: { id } });
+                    // Refresh scores with the new (lower) denominator
+                    await refreshScoresRef.current?.();
+                    // Check if any film now hits the match threshold
+                    const matched = await checkAllMatches(session.id, session.threshold);
+                    if (matched.length > 0) await resolveMatch(session.id, matched[0]);
                   }}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
                   style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>

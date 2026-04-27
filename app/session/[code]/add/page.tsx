@@ -375,7 +375,7 @@ function SearchFilmCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className="relative rounded-xl overflow-hidden"
-      style={{ aspectRatio: "2/3", background: "var(--surface)" }}
+      style={{ aspectRatio: "2/3", background: "var(--surface)", border: liked ? "2px solid var(--like)" : "2px solid transparent" }}
       {...handlers}
     >
       <img
@@ -398,10 +398,11 @@ function SearchFilmCard({
         )}
       </div>
 
-      {/* Status dot — top-left, shows when already added or liked */}
-      {(liked || inPool) && (
-        <div className="absolute top-1.5 left-1.5 w-2.5 h-2.5 rounded-full"
-          style={{ background: liked ? "var(--like)" : "rgba(255,255,255,0.3)" }} />
+      {liked && (
+        <div className="absolute inset-0 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.45)" }}>
+          <span className="text-white text-2xl font-bold">✓</span>
+        </div>
       )}
     </motion.div>
   );
