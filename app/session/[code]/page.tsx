@@ -176,6 +176,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const wheelChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [allDone, setAllDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sessionFilmCount, setSessionFilmCount] = useState(0);
+  const MIN_FILMS = 40;
   // Read home-page logo position stored just before navigation — used to
   // start the lobby animation from exactly where the logo sat on the home page.
   const [logoStartY] = useState(() => {
@@ -604,6 +606,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setParticipant(allParticipants.find((p) => p.id === pid) ?? null);
       setParticipants(allParticipants);
 
+      const { count: filmCount } = await supabase
+        .from("session_films")
+        .select("*", { count: "exact", head: true })
+        .eq("session_id", s.id);
+      setSessionFilmCount(filmCount ?? 0);
+
       // ── Snapshot restore: instant return from + / results pages ───────────
       const savedQueue = sessionStorage.getItem(`filmclub-queue-${code}`);
       const savedIndex = sessionStorage.getItem(`filmclub-index-${code}`);
@@ -725,6 +733,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "session_films", filter: `session_id=eq.${session.id}` },
         () => {
+          setSessionFilmCount((c) => c + 1);
           // Debounce: wait 800 ms after the last insert in a batch before refreshing.
           if (queueRefreshTimer.current) clearTimeout(queueRefreshTimer.current);
           queueRefreshTimer.current = setTimeout(async () => {
@@ -1206,15 +1215,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             {isHost ? (
               <button
                 onClick={handleStart}
-                disabled={starting || loading}
+                disabled={starting || loading || sessionFilmCount < MIN_FILMS}
                 className="w-full py-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
                 style={{
                   background: "var(--like)",
                   color: "#0c0c0e",
-                  opacity: (starting || loading) ? 0.55 : 1,
+                  opacity: (starting || loading || sessionFilmCount < MIN_FILMS) ? 0.55 : 1,
                 }}>
                 <Play size={14} fill="currentColor" />
-                {starting ? "Starting…" : loading ? "Loading films…" : `Start · ${participants.length} ${participants.length === 1 ? "person" : "people"}`}
+                {starting ? "Starting…" : (loading || sessionFilmCount < MIN_FILMS) ? "Loading films…" : `Start · ${participants.length} ${participants.length === 1 ? "person" : "people"}`}
               </button>
             ) : (
               <div className="w-full py-4 rounded-xl text-sm text-center"

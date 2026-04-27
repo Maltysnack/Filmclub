@@ -188,7 +188,10 @@ export async function seedMoreHomePool(s: Session): Promise<void> {
   const BATCH = 8;
   for (let i = 0; i < filtered.length; i += BATCH) {
     await Promise.all(filtered.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
-    if (i + BATCH < filtered.length) await new Promise((r) => setTimeout(r, 400));
+    // Only delay between batches when falling back to live TMDB — the delay guards
+    // against TMDB/OMDb rate limits, which only apply when upsertFilm makes API calls.
+    // Cache-path upserts are pure DB writes so no rate limiting is needed.
+    if (i + BATCH < filtered.length && !cached) await new Promise((r) => setTimeout(r, 400));
   }
   console.log(`[pool] seeding complete — ${filtered.length} films added to session`);
 }
