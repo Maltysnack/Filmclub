@@ -197,7 +197,22 @@ export default function ShortlistOverlay({
           syncPhase(r);
         }
       })
-      .subscribe();
+      .subscribe(async (status) => {
+        // On every (re)connect — including after a WebSocket drop — fetch the
+        // current round directly from DB and re-sync. Supabase realtime doesn't
+        // replay events missed during a drop, so without this a participant whose
+        // connection briefly blipped during a phase transition would be stuck
+        // indefinitely. syncPhase and advanceToVotePhase are both idempotent so
+        // re-calling on the initial SUBSCRIBED (alongside init()) is harmless.
+        if (status === "SUBSCRIBED") {
+          const latest = await getCurrentRound(sessionId);
+          if (latest) {
+            setRound(latest);
+            await loadSubmissions(latest);
+            syncPhase(latest);
+          }
+        }
+      });
 
     const vetoSub = supabase
       .channel(`sl-vetoes:${sessionId}`)
