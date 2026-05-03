@@ -1154,8 +1154,19 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   if (session !== null && !session.started) {
     const hostParticipant = participants[0]; // creator always joins first
+    // Preload the first 5 posters in the background while in the lobby. Browser
+    // caches them so when the deck mounts after Start, the first card renders
+    // instantly instead of flashing a blank for ~300ms while the image loads.
+    const lobbyPreloadPosters = fullQueue
+      .slice(0, 5)
+      .map((f) => f.poster_path ? posterUrl(f.poster_path, "w780") : null)
+      .filter(Boolean) as string[];
     return (
       <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
+        {/* Hidden preload — first 5 deck posters, warmed during lobby wait */}
+        {lobbyPreloadPosters.map((url) => (
+          <img key={url} src={url} alt="" aria-hidden className="hidden" />
+        ))}
         <MailButton />
         <div className="flex flex-col flex-1 mx-auto w-full px-5 pt-10" style={{ maxWidth: 480, paddingBottom: "max(calc(env(safe-area-inset-bottom) + 2rem), 6rem)" }}>
 

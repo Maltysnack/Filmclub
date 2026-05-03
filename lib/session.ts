@@ -183,7 +183,8 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
       providers.length === 0 ||
       providers.every((p) => p.logoPath == null) ||
       hasWrongIds ||
-      !cached.imdb_id; // backfill imdb_id for films cached before this field existed
+      !cached.imdb_id || // backfill imdb_id for films cached before this field existed
+      cached.collection_id == null; // backfill collection_id so franchise blocking works
     if (needsRefresh) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
       // Fetch detail when imdb_id or collection info is missing
@@ -205,7 +206,10 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
       if (imdbId) updates.imdb_id = imdbId;
       if (imdbRating) updates.imdb_rating = imdbRating;
       if (detail) {
-        updates.collection_id = detail.belongs_to_collection?.id ?? null;
+        // Use 0 as the "checked, no collection" sentinel so future encounters
+        // don't re-trigger refresh. Matches the pattern used by the swipe
+        // handler's async backfill in app/session/[code]/page.tsx.
+        updates.collection_id = detail.belongs_to_collection?.id ?? 0;
         updates.collection_name = detail.belongs_to_collection?.name ?? null;
       }
       await supabase.from("films").update(updates).eq("id", cached.id);
@@ -214,7 +218,7 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
         watch_providers_au: providerUpdate,
         imdb_id: imdbId,
         imdb_rating: imdbRating,
-        collection_id: detail ? (detail.belongs_to_collection?.id ?? null) : cached.collection_id,
+        collection_id: detail ? (detail.belongs_to_collection?.id ?? 0) : cached.collection_id,
         collection_name: detail ? (detail.belongs_to_collection?.name ?? null) : cached.collection_name,
       };
     }
