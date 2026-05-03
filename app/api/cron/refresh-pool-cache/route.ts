@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import { REGION_OPTIONS, getServicesForRegion } from "@/lib/streaming";
 import { discoverFilmsByProviders } from "@/lib/tmdb";
 import type { Region } from "@/types";
@@ -9,10 +9,17 @@ import type { Region } from "@/types";
 const PAGES_PER_SORT = 2;
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get("x-cron-secret");
-  if (secret !== process.env.CRON_SECRET) {
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Use service role key so writes bypass RLS — the provider_pool_cache table
+  // only has a SELECT policy for anon, so the anon client can't insert/delete.
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
 
   let totalInserted = 0;
   const errors: string[] = [];
