@@ -44,7 +44,16 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
   const backY = useTransform(effectivePMV, [0, SWIPE_THRESHOLD], [4, 0]);
 
   const [isDragging, setIsDragging] = useState(false);
-  const [posterLoaded, setPosterLoaded] = useState(false);
+  // Seed from browser cache state so cached posters skip the 300ms fade-in.
+  // Without this, every new top card flashes during a swipe — back card was
+  // already in cache, but a fresh SwipeCard mount resets posterLoaded.
+  const poster = posterUrl(film.poster_path, "w780");
+  const [posterLoaded, setPosterLoaded] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const probe = new Image();
+    probe.src = poster;
+    return probe.complete;
+  });
   const { handlers: lpHandlers, cancel: cancelLongPress } = useLongPress(onInfo);
 
   async function handleDragEnd(_: unknown, info: PanInfo) {
@@ -77,9 +86,6 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
       if (promotionMV) animate(promotionMV, 0, { type: "spring", stiffness: 500, damping: 35 });
     }
   }
-
-  // w780 is indistinguishable from "original" at 480px display width and ~5-10x smaller
-  const poster = posterUrl(film.poster_path, "w780");
 
   return (
     <motion.div
