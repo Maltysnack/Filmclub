@@ -353,9 +353,11 @@ export default function ShortlistOverlay({
     } else if ("tied" in result) {
       broadcastSpin(result.tied);
     } else {
-      // Host decides: keep narrowing or spin with survivors
-      setDecisionFilms(result.survivors);
-      updateUiPhase("host_decision");
+      // Multiple survivors → auto-advance to next round (#76).
+      // The previous host_decision UI showed a "Vote again or spin?" choice that
+      // confused hosts during testing — they didn't realise it was a decision and
+      // sessions stalled. Spin remains for genuine ties (handled above).
+      advanceToNextRound(sessionId, round.round_number + 1, result.survivors);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [votes.length, isHost, round?.phase, totalParticipants]);
@@ -821,6 +823,11 @@ export default function ShortlistOverlay({
               ? film.id === pendingVeto || film.id === myVeto
               : pendingVotes.includes(film.id) || (myVotes ?? []).includes(film.id);
             const disabled = submitted || excluded;
+            // Veto active = thicker (4px) red border + REMOVE stamp.
+            // Vote active = standard (2px) green border + tick.
+            // Strong visual difference between phases prevents the veto/vote mix-up
+            // that caused someone to remove a film they meant to save (#76).
+            const borderWidth = uiPhase === "veto" && active ? 4 : 2;
             const borderColor = active
               ? uiPhase === "veto" ? "var(--dislike)" : "var(--like)"
               : "transparent";
@@ -835,7 +842,7 @@ export default function ShortlistOverlay({
                 }}
                 disabled={disabled}
                 className="relative rounded-xl overflow-hidden transition-all"
-                style={{ aspectRatio: "2/3", border: `2px solid ${borderColor}`, opacity: disabled && !active ? 0.35 : 1 }}>
+                style={{ aspectRatio: "2/3", border: `${borderWidth}px solid ${borderColor}`, opacity: disabled && !active ? 0.35 : 1 }}>
                 {film.poster_path ? (
                   <img src={posterUrl(film.poster_path, "w342")} alt={film.title}
                     className="w-full h-full object-cover" />
@@ -845,12 +852,27 @@ export default function ShortlistOverlay({
                     {film.title}
                   </div>
                 )}
-                {active && (
+                {active && uiPhase === "veto" && (
+                  <>
+                    <div className="absolute inset-0"
+                      style={{ background: "linear-gradient(225deg, rgba(248,113,113,0.4) 0%, rgba(0,0,0,0.55) 100%)" }} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span
+                        className="px-3 py-1.5 rounded-lg border-2 font-bold text-base tracking-widest rotate-[-15deg]"
+                        style={{
+                          borderColor: "var(--dislike)",
+                          color: "var(--dislike)",
+                          background: "rgba(12,12,14,0.7)",
+                        }}>
+                        REMOVE
+                      </span>
+                    </div>
+                  </>
+                )}
+                {active && uiPhase !== "veto" && (
                   <div className="absolute inset-0 flex items-center justify-center"
                     style={{ background: "rgba(0,0,0,0.45)" }}>
-                    <span className="text-white text-2xl font-bold">
-                      {uiPhase === "veto" ? "✕" : "✓"}
-                    </span>
+                    <span className="text-white text-2xl font-bold">✓</span>
                   </div>
                 )}
               </PressableCard>
@@ -868,8 +890,10 @@ export default function ShortlistOverlay({
             disabled={uiPhase === "veto" ? !pendingVeto : pendingVotes.length === 0}
             className="w-full py-4 rounded-2xl text-sm font-semibold transition-opacity"
             style={{
-              background: "var(--accent)",
-              color: "#0c0c0e",
+              // Veto submit = dislike colour, vote submit = accent. Reinforces
+              // the phase identity throughout the UI (#76).
+              background: uiPhase === "veto" ? "var(--dislike)" : "var(--accent)",
+              color: uiPhase === "veto" ? "#fff" : "#0c0c0e",
               opacity: (uiPhase === "veto" ? !pendingVeto : pendingVotes.length === 0) ? 0.4 : 1,
             }}>
             {uiPhase === "veto"
