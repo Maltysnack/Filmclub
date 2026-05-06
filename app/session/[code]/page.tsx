@@ -789,7 +789,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               const sess = sessionRef.current;
               if (sess?.started && sess.mode === "live" &&
                   mySwipeHistoryRef.current.get(newSwipe.film_id) === true) {
-                const isMatch = await checkForMatch(sess.id, newSwipe.film_id, sess.threshold);
+                // Trigger of this match check is the remote swiper whose like just landed.
+                const isMatch = await checkForMatch(sess.id, newSwipe.film_id, sess.threshold, newSwipe.participant_id);
                 if (isMatch) {
                   // Grace period: match recorded but defer resolution to the grace-period effect.
                   if (inGracePeriod()) return;
@@ -1091,7 +1092,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
     // ── Async: match check ────────────────────────────────────────────────────
     if (liked && s.started && !isSolo) {
-      const isMatch = await checkForMatch(s.id, film.id, s.threshold);
+      // Trigger of this match is the local participant who just swiped.
+      const isMatch = await checkForMatch(s.id, film.id, s.threshold, participant.id);
       if (isMatch && s.mode === "live") {
         // Grace period: match is recorded in DB but session stays open. The
         // grace-period effect will resolve all accumulated matches when the timer fires.
@@ -1145,7 +1147,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       if (s.started && s.mode === "live" && !isSolo) {
         let found = false;
         for (const f of workingQueue) {
-          if (await checkForMatch(s.id, f.id, s.threshold)) found = true;
+          // End-of-deck batch check — local participant is the trigger if any match crosses.
+          if (await checkForMatch(s.id, f.id, s.threshold, participant.id)) found = true;
         }
         if (found) {
           // Grace period: matches recorded but session stays open until the timer fires.
