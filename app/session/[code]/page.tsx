@@ -1071,18 +1071,22 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
     // ── Async: on-demand franchise fetch for unknown collection_id ────────────
     // Runs after index has advanced so the user never waits for this fetch.
+    // CRITICAL: must use functional updaters — getFilmDetail + fetchCollectionTmdbIds
+    // can take 300-600ms total, during which the user may swipe several more cards
+    // that mutate fullQueue (drip, priority swap, etc). A non-functional setFullQueue
+    // here would overwrite the live queue with a stale snapshot, causing the visible
+    // card to change abruptly. See #65.
     if (!liked && cid === null) {
       const detail = await getFilmDetail(film.tmdb_id);
       const detailCid = detail?.belongs_to_collection?.id ?? 0;
       if (detailCid) {
         const colMemberIds = await fetchCollectionTmdbIds(detailCid);
-        const enriched = fullQueue.map((f) =>
+        setFullQueue((prev) => prev.map((f) =>
           f.id === film.id || (colMemberIds.has(f.tmdb_id) && f.collection_id == null)
             ? { ...f, collection_id: detailCid }
             : f
-        );
-        setFullQueue(enriched);
-        setBlockedCollections(new Set([...blockedCollections, detailCid]));
+        ));
+        setBlockedCollections((prev) => new Set([...prev, detailCid]));
       } else {
         setFullQueue((prev) =>
           prev.map((f) => f.id === film.id ? { ...f, collection_id: 0 } : f)
