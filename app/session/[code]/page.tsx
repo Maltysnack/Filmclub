@@ -182,6 +182,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [loading, setLoading] = useState(true);
   const [sessionFilmCount, setSessionFilmCount] = useState(0);
   const MIN_FILMS = 40;
+  // Minimum time before a match can close the session, in ms. Inspired by the
+  // secretary/optimal-stopping problem: forcing a small consideration window
+  // prevents the very first like from instantly ending movie night before the
+  // group has surveyed enough options. During this window, matches still get
+  // recorded; they're resolved when the timer expires.
+  const MIN_SESSION_MS = 30_000;
+  // Captured locally per client when this device first sees session.started flip
+  // to true. Slight per-client variation (~100ms over realtime) is fine.
+  const startedAtRef = useRef<number | null>(null);
   // Read home-page logo position stored just before navigation — used to
   // start the lobby animation from exactly where the logo sat on the home page.
   const [logoStartY] = useState(() => {
@@ -256,6 +265,48 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       sessionStorage.removeItem(`filmclub-index-${code}`);
     }
   }, [matchList, code]);
+
+  // ── Minimum-session grace period ──────────────────────────────────────────
+  // While the timer is active, swipe/realtime/start match handlers record matches
+  // but don't close the session. When the timer fires, accumulated matches are
+  // resolved: 1 → resolveMatch with that winner, 2+ → closeSession (shortlist
+  // vote flow takes over). Solo and 2-person sessions both get the timer; only
+  // sessions with no other participants would skip — but those don't run match
+  // detection at all, so this gate is sufficient.
+  function inGracePeriod(): boolean {
+    if (startedAtRef.current === null) return false;
+    return Date.now() - startedAtRef.current < MIN_SESSION_MS;
+  }
+
+  useEffect(() => {
+    if (!session?.started || !session.id) return;
+    if (participants.length <= 1) return; // solo: no match detection runs anyway
+    if (startedAtRef.current === null) startedAtRef.current = Date.now();
+
+    const remaining = MIN_SESSION_MS - (Date.now() - startedAtRef.current);
+    if (remaining <= 0) return; // already past the grace period (e.g. late joiner whose timer expired in another render)
+
+    const timer = setTimeout(async () => {
+      if (!session.id || session.mode !== "live") return;
+      // Status check guards against double-resolution if another client (host) closed first
+      const latest = await getSession(code);
+      if (!latest || latest.status === "closed") {
+        const existing = await getMatches(session.id);
+        if (existing.length > 0) setMatchList(existing);
+        return;
+      }
+      const allMatches = await getMatches(session.id);
+      if (allMatches.length === 0) return; // no matches accumulated; normal flow continues
+      if (allMatches.length === 1) {
+        await resolveMatch(session.id, allMatches[0].film_id);
+      } else {
+        await closeSession(session.id);
+      }
+      setMatchList(allMatches);
+    }, remaining);
+
+    return () => clearTimeout(timer);
+  }, [session?.started, session?.id, session?.mode, participants.length, code]);
 
   // ── Auto-open shortlist overlay for all participants when host starts it ───
   // openShortlist fetches all liked films (matched + also-liked) so both entry
@@ -728,6 +779,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                   mySwipeHistoryRef.current.get(newSwipe.film_id) === true) {
                 const isMatch = await checkForMatch(sess.id, newSwipe.film_id, sess.threshold);
                 if (isMatch) {
+                  // Grace period: match recorded but defer resolution to the grace-period effect.
+                  if (inGracePeriod()) return;
                   await new Promise((r) => setTimeout(r, 300));
                   const allMatches = await getMatches(sess.id);
                   if (allMatches.length === 1) await resolveMatch(sess.id, allMatches[0].film_id);
@@ -1028,6 +1081,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     if (liked && s.started && !isSolo) {
       const isMatch = await checkForMatch(s.id, film.id, s.threshold);
       if (isMatch && s.mode === "live") {
+        // Grace period: match is recorded in DB but session stays open. The
+        // grace-period effect will resolve all accumulated matches when the timer fires.
+        if (inGracePeriod()) return;
         // Brief delay for DB consistency before reading matches
         await new Promise((r) => setTimeout(r, 300));
         const allMatches = await getMatches(s.id);
@@ -1080,6 +1136,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           if (await checkForMatch(s.id, f.id, s.threshold)) found = true;
         }
         if (found) {
+          // Grace period: matches recorded but session stays open until the timer fires.
+          if (inGracePeriod()) return;
           await new Promise((r) => setTimeout(r, 300));
           const allMatches = await getMatches(s.id);
           if (allMatches.length === 1) {
@@ -1098,18 +1156,20 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   async function handleStart() {
     if (!session) return;
     setStarting(true);
+    // Set the local grace-period start synchronously so handleSwipe and the
+    // realtime subscription immediately see inGracePeriod() === true. Without
+    // this, the grace-period effect's setTimeout wouldn't be scheduled until
+    // the next render flushes session.started=true, which is too late for any
+    // matches detected in the same tick.
+    startedAtRef.current = Date.now();
     await startSession(session.id);
-    // Update local state immediately so handleSwipe checks fire correctly
     setSession((s) => s ? { ...s, started: true } : s);
 
     if (session.mode === "live" && participants.length > 1) {
-      const matched = await checkAllMatches(session.id, session.threshold);
-      if (matched.length > 0) {
-        await closeSession(session.id);
-        await new Promise((r) => setTimeout(r, 300));
-        const allMatches = await getMatches(session.id);
-        if (allMatches.length > 0) { setMatchList(allMatches); setStarting(false); return; }
-      }
+      // Run checkAllMatches to commit any pre-Start matches into the matches
+      // table. Don't close the session here — the grace-period effect will
+      // resolve them (or any newer ones) when the timer fires.
+      await checkAllMatches(session.id, session.threshold);
     }
     setStarting(false);
   }
