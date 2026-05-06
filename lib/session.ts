@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 import { Session, Participant, Film, Match, WatchMode, Region } from "@/types";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
-import { fetchWatchProvidersAU, getService } from "./streaming";
+import { fetchWatchProviders, getService } from "./streaming";
 
 // ── Session code generation ───────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ export async function getParticipants(sessionId: string): Promise<Participant[]>
 
 // ── Film pool ─────────────────────────────────────────────────────────────────
 
-export async function upsertFilm(tmdbId: number): Promise<Film | null> {
+export async function upsertFilm(tmdbId: number, region: Region = "AU"): Promise<Film | null> {
   // Check cache first
   const { data: cached } = await supabase
     .from("films")
@@ -192,7 +192,7 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
       // allSettled so a transient TMDB blip on one fetch doesn't drop the other.
       const needsDetail = !cached.imdb_id || cached.collection_id == null;
       const settled = await Promise.allSettled([
-        fetchWatchProvidersAU(tmdbId, apiKey),
+        fetchWatchProviders(tmdbId, apiKey, region),
         needsDetail ? getFilmDetail(tmdbId) : Promise.resolve(null),
       ]);
       const fresh = settled[0].status === "fulfilled" ? settled[0].value : [];
@@ -232,7 +232,7 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
 
   const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
   const filmData = tmdbToFilm(detail);
-  const providersResult = await Promise.allSettled([fetchWatchProvidersAU(tmdbId, apiKey)]);
+  const providersResult = await Promise.allSettled([fetchWatchProviders(tmdbId, apiKey, region)]);
   const watchProviders = providersResult[0].status === "fulfilled" ? providersResult[0].value : [];
 
   const { data, error } = await supabase
@@ -255,9 +255,10 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
 export async function addFilmToSession(
   sessionId: string,
   tmdbId: number,
-  participantId: string | null
+  participantId: string | null,
+  region: Region = "AU",
 ): Promise<boolean> {
-  const film = await upsertFilm(tmdbId);
+  const film = await upsertFilm(tmdbId, region);
   if (!film) return false;
 
   if (participantId) {

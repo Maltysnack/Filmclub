@@ -85,7 +85,7 @@ export async function seedHomePool(s: Session): Promise<void> {
     if (cached && cached.length > 0) {
       const initial = cached.slice(0, 10);
       console.log("[seed] cache hit —", cached.length, "films available, seeding first", initial.length);
-      await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null)));
+      await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null, s.region ?? "AU")));
       return;
     }
     console.log("[seed] cache miss — falling back to live TMDB");
@@ -101,7 +101,7 @@ export async function seedHomePool(s: Session): Promise<void> {
     seen.add(m.id);
     return true;
   }).slice(0, 10);
-  await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null)));
+  await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null, s.region ?? "AU")));
 }
 
 // Background expander — runs after the lobby is shown.
@@ -187,7 +187,7 @@ export async function seedMoreHomePool(s: Session): Promise<void> {
   console.log(`[pool] ${cached ? "cache" : "live"}: ${raw.length} raw → ${deduped.length} deduped → ${filtered.length} after language filter, seeding now...`);
   const BATCH = 8;
   for (let i = 0; i < filtered.length; i += BATCH) {
-    await Promise.all(filtered.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null)));
+    await Promise.all(filtered.slice(i, i + BATCH).map((m) => addFilmToSession(s.id, m.id, null, s.region ?? "AU")));
     // Only delay between batches when falling back to live TMDB — the delay guards
     // against TMDB/OMDb rate limits, which only apply when upsertFilm makes API calls.
     // Cache-path upserts are pure DB writes so no rate limiting is needed.
