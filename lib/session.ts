@@ -378,10 +378,17 @@ export async function getMyLikes(sessionId: string, participantId: string): Prom
 
 // ── Match detection ───────────────────────────────────────────────────────────
 
+// Per-participant cooldown after triggering a match. Prevents one fast-swiping
+// person from creating multiple consecutive matches in a burst (issue #64).
+// Concurrent matches triggered by *different* participants are unaffected — they
+// each have their own cooldown row.
+const MATCH_TRIGGER_COOLDOWN_MS = 5_000;
+
 export async function checkForMatch(
   sessionId: string,
   filmId: string,
-  threshold: number
+  threshold: number,
+  triggeringParticipantId: string | null = null,
 ): Promise<boolean> {
   const [{ count: participantCount }, { data: likes }] = await Promise.all([
     supabase
@@ -400,14 +407,30 @@ export async function checkForMatch(
   const likeCount = (likes ?? []).length;
   const pct = (likeCount / participantCount) * 100;
 
-  if (pct >= threshold) {
-    await supabase.from("matches").upsert(
-      { session_id: sessionId, film_id: filmId, score: likeCount },
-      { onConflict: "session_id,film_id" }
-    );
-    return true;
+  if (pct < threshold) return false;
+
+  // Cooldown check: if this participant has already triggered a match in this
+  // session within the last 5 seconds, don't write another. The first match wins.
+  if (triggeringParticipantId) {
+    const cutoff = new Date(Date.now() - MATCH_TRIGGER_COOLDOWN_MS).toISOString();
+    const { count: recentByMe } = await supabase
+      .from("matches")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .eq("triggered_by", triggeringParticipantId)
+      .gte("matched_at", cutoff);
+    if ((recentByMe ?? 0) > 0) return false;
   }
-  return false;
+
+  // ignoreDuplicates: true so the FIRST triggered_by sticks — subsequent calls
+  // for the same (session_id, film_id) no-op rather than overwriting metadata.
+  // The score field becomes slightly stale on later likes but it's only used
+  // for ordering matches, never as a source of truth for whether a match exists.
+  await supabase.from("matches").upsert(
+    { session_id: sessionId, film_id: filmId, score: likeCount, triggered_by: triggeringParticipantId },
+    { onConflict: "session_id,film_id", ignoreDuplicates: true }
+  );
+  return true;
 }
 
 // Checks ALL films for matches in 2 DB calls instead of 2×N sequential calls.
@@ -431,10 +454,13 @@ export async function checkAllMatches(sessionId: string, threshold: number): Pro
   }
   if (matched.length === 0) return [];
 
+  // ignoreDuplicates: true so any existing match's triggered_by attribution is
+  // preserved. checkAllMatches has no specific triggering participant (it's a
+  // bulk reconciliation at session start), so triggered_by stays null on new rows.
   await Promise.all(matched.map((filmId) =>
     supabase.from("matches").upsert(
       { session_id: sessionId, film_id: filmId, score: likeCounts.get(filmId)!.size },
-      { onConflict: "session_id,film_id" }
+      { onConflict: "session_id,film_id", ignoreDuplicates: true }
     )
   ));
   return matched;
