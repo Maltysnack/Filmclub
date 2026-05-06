@@ -1,7 +1,6 @@
 import { supabase } from "./supabase";
 import { Session, Participant, Film, Match, WatchMode, Region } from "@/types";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
-import { fetchOmdbRating } from "./omdb";
 import { fetchWatchProvidersAU, getService } from "./streaming";
 
 // ── Session code generation ───────────────────────────────────────────────────
@@ -187,24 +186,24 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
       cached.collection_id == null; // backfill collection_id so franchise blocking works
     if (needsRefresh) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-      // Fetch detail when imdb_id or collection info is missing
+      // Fetch detail when imdb_id or collection info is missing.
+      // OMDb rating is NOT fetched here — that's handled by the daily
+      // /api/cron/backfill-ratings cron so seeding stays fast (#69).
+      // allSettled so a transient TMDB blip on one fetch doesn't drop the other.
       const needsDetail = !cached.imdb_id || cached.collection_id == null;
-      const [fresh, detail] = await Promise.all([
+      const settled = await Promise.allSettled([
         fetchWatchProvidersAU(tmdbId, apiKey),
         needsDetail ? getFilmDetail(tmdbId) : Promise.resolve(null),
       ]);
+      const fresh = settled[0].status === "fulfilled" ? settled[0].value : [];
+      const detail = settled[1].status === "fulfilled" ? settled[1].value : null;
       const imdbId = detail?.imdb_id ?? cached.imdb_id ?? null;
-      // Fetch OMDb rating if we now have an imdb_id but no rating yet
-      const imdbRating = (imdbId && !cached.imdb_rating)
-        ? await fetchOmdbRating(imdbId)
-        : cached.imdb_rating ?? null;
       // Only overwrite providers if we got a non-empty result — guards against
       // transient API failures (e.g. poor connectivity overseas) clobbering
       // previously good data stored for another session's participants.
       const providerUpdate = fresh.length > 0 || providers.length === 0 ? fresh : providers;
       const updates: Record<string, unknown> = { watch_providers_au: providerUpdate };
       if (imdbId) updates.imdb_id = imdbId;
-      if (imdbRating) updates.imdb_rating = imdbRating;
       if (detail) {
         // Use 0 as the "checked, no collection" sentinel so future encounters
         // don't re-trigger refresh. Matches the pattern used by the swipe
@@ -217,37 +216,30 @@ export async function upsertFilm(tmdbId: number): Promise<Film | null> {
         ...cached,
         watch_providers_au: providerUpdate,
         imdb_id: imdbId,
-        imdb_rating: imdbRating,
         collection_id: detail ? (detail.belongs_to_collection?.id ?? 0) : cached.collection_id,
         collection_name: detail ? (detail.belongs_to_collection?.name ?? null) : cached.collection_name,
       };
     }
-    // Backfill imdb_rating for cached films that have imdb_id but no rating yet
-    if (!cached.imdb_rating && cached.imdb_id) {
-      const imdbRating = await fetchOmdbRating(cached.imdb_id);
-      if (imdbRating) {
-        await supabase.from("films").update({ imdb_rating: imdbRating }).eq("id", cached.id);
-        return { ...cached, imdb_rating: imdbRating };
-      }
-    }
+    // OMDb rating backfill removed from the hot path (#69). The daily cron
+    // /api/cron/backfill-ratings handles films with imdb_id but no rating.
     return cached;
   }
 
-  // Fetch from TMDB and cache
+  // Fetch from TMDB and cache. allSettled so a TMDB providers blip doesn't
+  // block the film insert — partial data (no providers) is better than no row.
   const detail = await getFilmDetail(tmdbId);
   if (!detail) return null;
 
   const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-  const [filmData, watchProviders, imdbRating] = await Promise.all([
-    Promise.resolve(tmdbToFilm(detail)),
-    fetchWatchProvidersAU(tmdbId, apiKey),
-    detail.imdb_id ? fetchOmdbRating(detail.imdb_id) : Promise.resolve(null),
-  ]);
+  const filmData = tmdbToFilm(detail);
+  const providersResult = await Promise.allSettled([fetchWatchProvidersAU(tmdbId, apiKey)]);
+  const watchProviders = providersResult[0].status === "fulfilled" ? providersResult[0].value : [];
 
   const { data, error } = await supabase
     .from("films")
     .upsert(
-      { ...filmData, watch_providers_au: watchProviders, imdb_rating: imdbRating },
+      // imdb_rating intentionally omitted — backfilled by the daily cron (#69).
+      { ...filmData, watch_providers_au: watchProviders },
       { onConflict: "tmdb_id" }
     )
     .select()
