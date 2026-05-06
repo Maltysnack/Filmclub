@@ -474,13 +474,17 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     const autoSeeded = unswiped.filter(({ addedBy }) => !addedBy || addedBy === participantId);
 
     // Filter home pool by streaming services.
-    // Since we now seed from TMDB Discover (provider-filtered), films in the pool
-    // should already match. This filter is the final safety net for AU sessions —
-    // watch_providers_au contains AU provider data so the filter is only reliable there.
-    // For non-AU sessions we trust the Discover seed and skip this filter.
+    // Since we seed from TMDB Discover (provider-filtered), films in the pool
+    // should already match. This filter is the final safety net.
+    //
+    // Post-#67: providers are now fetched in the session's region rather than
+    // hardcoded AU, so this filter applies to all regions. The remaining caveat
+    // is cross-region staleness — if a film was first cached by a user in
+    // region X and later viewed by a user in region Y, the providers field may
+    // still hold X's data until upsertFilm's needsRefresh re-fetches. Tracked
+    // for proper resolution as a follow-up (per-region provider storage).
     let filteredAuto = autoSeeded;
     if (
-      (s.region ?? "AU") === "AU" &&
       (s.watch_mode === "home" || s.watch_mode === "both") &&
       s.streaming_services?.length > 0
     ) {

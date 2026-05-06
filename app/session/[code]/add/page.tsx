@@ -6,10 +6,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, Trophy, Layers } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
-import { fetchWatchProvidersAU, getService } from "@/lib/streaming";
+import { fetchWatchProviders, getService } from "@/lib/streaming";
 import { fetchOmdbRating } from "@/lib/omdb";
 import { addFilmToSession, getSession, getParticipantId, getIsHost, getSessionFilms, recordSwipe } from "@/lib/session";
-import { TMDBMovie, Film } from "@/types";
+import { TMDBMovie, Film, Region } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
 
@@ -32,6 +32,7 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   const [participantId, setParticipantIdState] = useState<string | null>(null);
   const [filmIdMap, setFilmIdMap] = useState<Map<number, string>>(new Map());
   const [sessionServices, setSessionServices] = useState<string[]>([]);
+  const [sessionRegion, setSessionRegion] = useState<Region>("AU");
   // tmdbId → serviceIds (populated lazily, one film at a time)
   const [providerMap, setProviderMap] = useState<Map<number, string[]>>(new Map());
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
@@ -48,6 +49,7 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
       setSessionId(s.id);
       setParticipantIdState(pid);
       setSessionServices(s.streaming_services ?? []);
+      setSessionRegion((s.region ?? "AU") as Region);
 
       const pool = await getSessionFilms(s.id);
       setAlreadyInPool(new Set(pool.map((f: Film) => f.tmdb_id)));
@@ -89,7 +91,7 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
         const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
         filtered.forEach(async (movie) => {
           if (providerCache.has(movie.id)) return; // already seeded above
-          const providers = await fetchWatchProvidersAU(movie.id, apiKey);
+          const providers = await fetchWatchProviders(movie.id, apiKey, sessionRegion);
           const serviceIds = providers.map(p => p.serviceId);
           providerCache.set(movie.id, serviceIds);
           // Only update state if this film is still in the current results
@@ -104,7 +106,7 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   async function handleAdd(movie: TMDBMovie) {
     if (!sessionId || !participantId) return;
     setAlreadyInPool((prev) => new Set([...prev, movie.id]));
-    const success = await addFilmToSession(sessionId, movie.id, participantId);
+    const success = await addFilmToSession(sessionId, movie.id, participantId, sessionRegion);
     if (!success) return;
     const pool = await getSessionFilms(sessionId);
     const added = pool.find((f) => f.tmdb_id === movie.id);
@@ -153,7 +155,7 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
     if (detail) {
       const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
       const [providers, imdbRating] = await Promise.all([
-        fetchWatchProvidersAU(movie.id, apiKey),
+        fetchWatchProviders(movie.id, apiKey, sessionRegion),
         detail.imdb_id ? fetchOmdbRating(detail.imdb_id) : Promise.resolve(null),
       ]);
       setInfoFilm({ ...tmdbToFilm(detail), id: String(movie.id), watch_providers_au: providers, imdb_rating: imdbRating });

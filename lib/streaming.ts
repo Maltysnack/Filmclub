@@ -302,10 +302,6 @@ export async function fetchWatchProviders(
   }
 }
 
-export async function fetchWatchProvidersAU(tmdbId: number, apiKey: string) {
-  return fetchWatchProviders(tmdbId, apiKey, "AU");
-}
-
 // ── TMDB genre list ───────────────────────────────────────────────────────────
 
 export const TMDB_GENRES = [
