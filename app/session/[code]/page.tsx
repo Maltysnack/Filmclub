@@ -214,9 +214,17 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Ref so shortlist subscription sees latest matchList without stale closure
   const matchListRef = useRef<Match[]>([]);
   useEffect(() => { matchListRef.current = matchList; }, [matchList]);
-  // Ref so loadFilms (useCallback with [] deps) always sees the latest index
+  // Ref so loadFilms (useCallback with [] deps) always sees the latest index.
+  // IMPORTANT: writes to this ref must be SYNCHRONOUS alongside setCurrentIndex.
+  // Use the advanceIndex() helper below — don't call setCurrentIndex directly.
+  // (The previous useEffect-based sync left a window after commit + paint where
+  // propagateFilm could read a stale ref and splice a film at the about-to-be
+  // front position, causing a brief "card flash" — see #63.)
   const currentIndexRef = useRef(0);
-  useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  const advanceIndex = useCallback((next: number) => {
+    currentIndexRef.current = next;
+    setCurrentIndex(next);
+  }, []);
   // Ref to track whether the user currently has a finger on the card mid-drag.
   // Like propagation (queue reorder) is deferred while a swipe is in progress
   // to prevent the card being yanked out from under the user's finger (Bug #4).
@@ -557,7 +565,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       ];
 
       setFullQueue(initialQueue);
-      setCurrentIndex(0);
+      advanceIndex(0);
       setAllDone(initialQueue.length === 0);
     } else {
       // Background update: new user-added films surface near top of active queue;
@@ -625,9 +633,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setFullQueue((prev) => {
       const filmIdx = prev.findIndex((f) => f.id === filmId);
       if (filmIdx !== -1) {
-        // Already in queue — move it closer to the current card (original behaviour).
-        if (filmIdx <= ci) return prev;
-        const targetPos = Math.min(ci + 1 + Math.floor(Math.random() * 3), prev.length - 1);
+        // Already in queue — move it closer to the current card. Target ci+2 minimum
+        // (back-card position at the closest, never the front-card position) so a
+        // propagation arriving mid-swipe can't overwrite the card that's about to
+        // be promoted to front. See #63.
+        if (filmIdx <= ci + 1) return prev;
+        const targetPos = Math.min(ci + 2 + Math.floor(Math.random() * 3), prev.length - 1);
         if (filmIdx <= targetPos) return prev;
         const next = [...prev];
         const [film] = next.splice(filmIdx, 1);
@@ -635,9 +646,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         return next;
       }
       // Inject from pre-resolved source (reserve pull or cross-slot).
+      // Insert at ci+2 (not ci+1) so the front-card position is never displaced.
       if (injectionFilm) {
         const next = [...prev];
-        next.splice(Math.min(ci + 1, next.length), 0, injectionFilm);
+        next.splice(Math.min(ci + 2, next.length), 0, injectionFilm);
         return next;
       }
       return prev;
@@ -683,7 +695,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       const savedIndex = sessionStorage.getItem(`filmclub-index-${code}`);
       if (savedQueue && savedIndex) {
         setFullQueue(JSON.parse(savedQueue) as Film[]);
-        setCurrentIndex(parseInt(savedIndex, 10));
+        advanceIndex(parseInt(savedIndex, 10));
         // Restore phase-scoring state in parallel with silent background refresh
         const stats = await getSessionSwipeStats(s.id);
         setGroupSwipeCount(stats.totalSwipes);
@@ -739,7 +751,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             // Tiebreaker started — reload queue with only tied films
             setMatchList([]);
             setAllDone(false);
-            setCurrentIndex(0);
+            advanceIndex(0);
             await loadFilms(updated, participant.id, true);
           }
         })
@@ -1047,7 +1059,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     // films aren't incorrectly skipped by the franchise/genre block exemption check.
     const nextIdx = skipBlocked(currentIndex + 1, workingQueue, newBlocked, filmLikesRef.current, newBlockedGenres);
     if (nextIdx < workingQueue.length) {
-      setCurrentIndex(nextIdx);
+      advanceIndex(nextIdx);
       if (infoFilm) setInfoFilm(workingQueue[nextIdx]);
     }
 
@@ -1106,7 +1118,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         const refill = reserveQueueRef.current.slice(0, 20);
         reserveQueueRef.current = reserveQueueRef.current.slice(20);
         setFullQueue((prev) => [...prev, ...refill]);
-        setCurrentIndex(workingQueue.length);
+        advanceIndex(workingQueue.length);
         if (infoFilm) setInfoFilm(refill[0]);
         return;
       }
@@ -1121,7 +1133,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
       if (secondChance.length > 0) {
         setFullQueue((prev) => [...prev, ...secondChance]);
-        setCurrentIndex(workingQueue.length);
+        advanceIndex(workingQueue.length);
         if (infoFilm) setInfoFilm(secondChance[0]);
         return;
       }
