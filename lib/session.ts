@@ -110,9 +110,9 @@ export async function removeParticipant(sessionId: string, participantId: string
     supabase.from("session_films")
       .update({ added_by: null }).eq("session_id", sessionId).eq("added_by", participantId),
   ]);
-  const { data, error } = await supabase
-    .from("participants").delete().eq("id", participantId).eq("session_id", sessionId).select();
-  console.log("[removeParticipant] sessionId:", sessionId, "participantId:", participantId, "deleted:", data, "error:", error?.message);
+  const { error } = await supabase
+    .from("participants").delete().eq("id", participantId).eq("session_id", sessionId);
+  if (error) console.error("[removeParticipant] failed:", error.message);
 }
 
 export async function startSession(sessionId: string) {
