@@ -4,9 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Use service role key explicitly — no fallback to anon. If the service role
+// is missing in env, fail loudly rather than silently degrading to anon-key
+// behaviour where the feedback table insert would be RLS-rejected (#48).
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 const TAG_LABELS: Record<string, string> = {
@@ -15,11 +18,27 @@ const TAG_LABELS: Record<string, string> = {
   other:   "Other",
 };
 
+// Server-side validation caps. Client-side `maxLength` is bypassable via curl
+// so these guard the actual endpoint (#55).
+const MAX_MESSAGE_LENGTH = 2000;
+const MAX_EMAIL_LENGTH   = 254; // RFC 5321
+const MAX_OTHER_LABEL_LENGTH = 60;
+
 export async function POST(req: NextRequest) {
   const { tag, otherLabel, message, email } = await req.json();
 
   if (!tag || !message?.trim()) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  if (typeof message !== "string" || message.length > MAX_MESSAGE_LENGTH) {
+    return NextResponse.json({ error: "Message too long" }, { status: 400 });
+  }
+  if (email && (typeof email !== "string" || email.length > MAX_EMAIL_LENGTH)) {
+    return NextResponse.json({ error: "Invalid email" }, { status: 400 });
+  }
+  if (otherLabel && (typeof otherLabel !== "string" || otherLabel.length > MAX_OTHER_LABEL_LENGTH)) {
+    return NextResponse.json({ error: "Label too long" }, { status: 400 });
   }
 
   // Save to Supabase
@@ -44,11 +63,11 @@ export async function POST(req: NextRequest) {
   const githubToken = process.env.GITHUB_TOKEN;
   if (githubToken) {
     const issueTitle = `[${subjectTag}] ${message.trim().slice(0, 60)}${message.trim().length > 60 ? "…" : ""}`;
-    const issueBody = [
-      message.trim(),
-      "",
-      email?.trim() ? `**From:** ${email.trim()}` : "",
-    ].filter(Boolean).join("\n");
+    // Email is delivered via Resend below — no need to also embed it in the
+    // GitHub issue body. Even though the repo is private (so the email isn't
+    // externally exposed) keeping issue bodies clean of PII is the right
+    // default in case the repo ever opens (#42).
+    const issueBody = message.trim();
 
     await fetch("https://api.github.com/repos/Maltysnack/Filmclub/issues", {
       method: "POST",
