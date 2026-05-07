@@ -64,12 +64,29 @@ export async function getCurrentRound(sessionId: string): Promise<ShortlistRound
   return data ?? null;
 }
 
+// Verify the given participant actually belongs to this session before
+// recording a vote/veto on their behalf. Without this, any client could
+// pass any participant_id and submit votes as anyone in the session (#50).
+async function assertParticipantInSession(sessionId: string, participantId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("participants")
+    .select("id")
+    .eq("id", participantId)
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  return !!data;
+}
+
 export async function submitVeto(
   sessionId: string,
   roundNumber: number,
   participantId: string,
   filmId: string
 ): Promise<void> {
+  if (!(await assertParticipantInSession(sessionId, participantId))) {
+    console.warn("[submitVeto] participant not in session, ignored", { sessionId, participantId });
+    return;
+  }
   await supabase.from("shortlist_vetoes").upsert(
     { session_id: sessionId, round_number: roundNumber, participant_id: participantId, film_id: filmId },
     { onConflict: "session_id,round_number,participant_id" }
@@ -110,6 +127,10 @@ export async function submitVotes(
   participantId: string,
   filmIds: string[]
 ): Promise<void> {
+  if (!(await assertParticipantInSession(sessionId, participantId))) {
+    console.warn("[submitVotes] participant not in session, ignored", { sessionId, participantId });
+    return;
+  }
   await supabase.from("shortlist_votes").upsert(
     { session_id: sessionId, round_number: roundNumber, participant_id: participantId, film_ids: filmIds },
     { onConflict: "session_id,round_number,participant_id" }
