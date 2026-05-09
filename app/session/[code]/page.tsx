@@ -222,9 +222,60 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // front position, causing a brief "card flash" — see #63.)
   const currentIndexRef = useRef(0);
   const advanceIndex = useCallback((next: number) => {
+    if (typeof window !== "undefined") {
+      console.log(`[deck:advance] ${currentIndexRef.current} → ${next}`);
+    }
     currentIndexRef.current = next;
     setCurrentIndex(next);
   }, []);
+
+  // Tagged setFullQueue wrapper — logs every queue mutation with a reason and
+  // raises an alarm if the mutation changes the film at currentIndex (which
+  // would mean the user's currently-visible front card just got replaced).
+  // Temporary instrumentation to track down the "card disappears" bug.
+  const setFullQueueTagged = useCallback((updater: (prev: import("@/types").Film[]) => import("@/types").Film[], reason: string) => {
+    setFullQueue((prev) => {
+      const next = updater(prev);
+      if (typeof window !== "undefined" && prev !== next) {
+        const ci = currentIndexRef.current;
+        const oldId = prev[ci]?.id ?? "(none)";
+        const newId = next[ci]?.id ?? "(none)";
+        if (oldId !== newId) {
+          console.warn(
+            `[deck:FRONT-CARD-CHANGED] reason=${reason} index=${ci} ${oldId} → ${newId} (queue length ${prev.length} → ${next.length})`
+          );
+        } else {
+          console.log(`[deck:queue-mutate] reason=${reason} index=${ci} (front=${oldId.slice(0, 8)}, length ${prev.length} → ${next.length})`);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  // Front-card-change detector. Logs every change to currentFilm.id between
+  // renders. If the index didn't advance but the film did, that's the bug
+  // we're hunting. Temporary instrumentation.
+  const lastFrontCardRef = useRef<{ id: string | null; index: number; length: number }>({
+    id: null, index: 0, length: 0,
+  });
+  useEffect(() => {
+    const id = fullQueue[currentIndex]?.id ?? null;
+    const last = lastFrontCardRef.current;
+    if (last.id !== id) {
+      const indexAdvanced = last.index !== currentIndex;
+      if (!indexAdvanced && last.id !== null) {
+        console.warn(
+          `[deck:FRONT-CARD-REPLACED] index ${currentIndex} unchanged but film changed: ${last.id} → ${id} (queue length ${last.length} → ${fullQueue.length})`
+        );
+      } else if (indexAdvanced) {
+        console.log(
+          `[deck:advanced] index ${last.index} → ${currentIndex}, front ${last.id} → ${id}`
+        );
+      }
+      lastFrontCardRef.current = { id, index: currentIndex, length: fullQueue.length };
+    }
+  });
+
   // Ref to track whether the user currently has a finger on the card mid-drag.
   // Like propagation (queue reorder) is deferred while a swipe is in progress
   // to prevent the card being yanked out from under the user's finger (Bug #4).
@@ -568,7 +619,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         ...initialAuto.slice(insertAt),
       ];
 
-      setFullQueue(initialQueue);
+      setFullQueueTagged(() => initialQueue, "load-initial");
       advanceIndex(0);
       setAllDone(initialQueue.length === 0);
     } else {
@@ -576,7 +627,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       // new auto-seeded films go into the reserve to be dripped in gradually.
       const ci = currentIndexRef.current;
 
-      setFullQueue((prev) => {
+      setFullQueueTagged((prev) => {
         const existingQueueIds = new Set(prev.map((f) => f.id));
         const existingReserveIds = new Set(reserveQueueRef.current.map((f) => f.id));
         const existingIds = new Set([...existingQueueIds, ...existingReserveIds]);
@@ -608,7 +659,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           unseen.splice(pos, 0, film);
         }
         return [...prev.slice(0, ci), ...unseen];
-      });
+      }, "load-non-initial");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -634,7 +685,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       injectionFilm = allSessionFilmsRef.current.find((f) => f.id === filmId) ?? null;
     }
 
-    setFullQueue((prev) => {
+    setFullQueueTagged((prev) => {
       const filmIdx = prev.findIndex((f) => f.id === filmId);
       if (filmIdx !== -1) {
         // Already in queue — move it closer to the current card. Target ci+2 minimum
@@ -657,7 +708,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         return next;
       }
       return prev;
-    });
+    }, "propagate");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -698,7 +749,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       const savedQueue = sessionStorage.getItem(`filmclub-queue-${code}`);
       const savedIndex = sessionStorage.getItem(`filmclub-index-${code}`);
       if (savedQueue && savedIndex) {
-        setFullQueue(JSON.parse(savedQueue) as Film[]);
+        setFullQueueTagged(() => JSON.parse(savedQueue) as Film[], "snapshot-restore");
         advanceIndex(parseInt(savedIndex, 10));
         // Restore phase-scoring state in parallel with silent background refresh
         const stats = await getSessionSwipeStats(s.id);
@@ -1005,7 +1056,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       console.log(`[drip] swipe ${swipeCountRef.current} — spliced ${drip.length} films into queue, reserve remaining: ${reserveQueueRef.current.length}`);
       workingQueue = [...workingQueue, ...drip];
       const ci = currentIndex;
-      setFullQueue((prev) => {
+      setFullQueueTagged((prev) => {
         const seen = prev.slice(0, ci + 1);
         const unseen = [...prev.slice(ci + 1)];
         for (const f of drip) {
@@ -1013,7 +1064,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           unseen.splice(pos, 0, f);
         }
         return [...seen, ...unseen];
-      });
+      }, "drip");
     }
 
     // ── Genre priority swap ───────────────────────────────────────────────────
@@ -1045,7 +1096,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         [workingQueue[currentIndex + 1], workingQueue[swapIdx]] =
           [workingQueue[swapIdx], workingQueue[currentIndex + 1]];
         // Perform the same swap in fullQueue using film IDs (safe against drip index drift)
-        setFullQueue((prev) => {
+        setFullQueueTagged((prev) => {
           const next = [...prev];
           const aIdx = next.findIndex((f) => f.id === workingQueue[currentIndex + 1].id);
           const bIdx = next.findIndex((f) => f.id === targetFilmId);
@@ -1053,7 +1104,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             [next[aIdx], next[bIdx]] = [next[bIdx], next[aIdx]];
           }
           return next;
-        });
+        }, "priority-swap");
       }
     }
 
@@ -1085,16 +1136,16 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       const detailCid = detail?.belongs_to_collection?.id ?? 0;
       if (detailCid) {
         const colMemberIds = await fetchCollectionTmdbIds(detailCid);
-        setFullQueue((prev) => prev.map((f) =>
+        setFullQueueTagged((prev) => prev.map((f) =>
           f.id === film.id || (colMemberIds.has(f.tmdb_id) && f.collection_id == null)
             ? { ...f, collection_id: detailCid }
             : f
-        ));
+        ), "collection-backfill-positive");
         setBlockedCollections((prev) => new Set([...prev, detailCid]));
       } else {
-        setFullQueue((prev) =>
+        setFullQueueTagged((prev) =>
           prev.map((f) => f.id === film.id ? { ...f, collection_id: 0 } : f)
-        );
+        , "collection-backfill-negative");
       }
     }
 
@@ -1127,7 +1178,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       if (reserveQueueRef.current.length > 0) {
         const refill = reserveQueueRef.current.slice(0, 20);
         reserveQueueRef.current = reserveQueueRef.current.slice(20);
-        setFullQueue((prev) => [...prev, ...refill]);
+        setFullQueueTagged((prev) => [...prev, ...refill], "end-of-deck-refill");
         advanceIndex(workingQueue.length);
         if (infoFilm) setInfoFilm(refill[0]);
         return;
@@ -1142,7 +1193,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         .sort((a, b) => (filmLikes.get(b.id)?.length ?? 0) - (filmLikes.get(a.id)?.length ?? 0));
 
       if (secondChance.length > 0) {
-        setFullQueue((prev) => [...prev, ...secondChance]);
+        setFullQueueTagged((prev) => [...prev, ...secondChance], "end-of-deck-second-chance");
         advanceIndex(workingQueue.length);
         if (infoFilm) setInfoFilm(secondChance[0]);
         return;
