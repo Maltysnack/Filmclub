@@ -64,6 +64,20 @@ const GENRE_BLOCK_THRESHOLD    = -3;
 const GENRE_PRIORITY_THRESHOLD =  3;
 const GENRE_PRIORITY_WINDOW    = 10;
 
+// Number of cards at the front of the queue that are LOCKED — no algorithm
+// (drip, propagation, priority swap) is allowed to mutate the queue at
+// positions [currentIndex, currentIndex + FRONT_BUFFER - 1]. Films arriving
+// from those algorithms target queue[currentIndex + FRONT_BUFFER] at the
+// closest. Belt-and-suspenders defence against the persistent "front card
+// briefly appears then disappears" symptom — even if a structural race we
+// haven't found displaces a film, it can't displace a card the user is
+// looking at or about to swipe to.
+//
+// 4 = front card + back card + 2 preload positions. Larger delays social
+// signals visibly; smaller leaves less protection. 4 is the smallest value
+// that protects what the user can actually see during a swipe animation.
+const FRONT_BUFFER = 4;
+
 // Human-readable genre name lookup — built from the same TMDB_GENRES list used
 // everywhere else in the codebase. Only used for console logging.
 const GENRE_NAME: Record<number, string> = Object.fromEntries(
@@ -688,12 +702,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     setFullQueueTagged((prev) => {
       const filmIdx = prev.findIndex((f) => f.id === filmId);
       if (filmIdx !== -1) {
-        // Already in queue — move it closer to the current card. Target ci+2 minimum
-        // (back-card position at the closest, never the front-card position) so a
-        // propagation arriving mid-swipe can't overwrite the card that's about to
-        // be promoted to front. See #63.
-        if (filmIdx <= ci + 1) return prev;
-        const targetPos = Math.min(ci + 2 + Math.floor(Math.random() * 3), prev.length - 1);
+        // Already in queue — move it closer to the current card, but never
+        // into the FRONT_BUFFER zone. If it's already inside the buffer,
+        // leave it (it'll be seen soon naturally). Otherwise target a random
+        // position from ci+FRONT_BUFFER through ci+FRONT_BUFFER+2.
+        if (filmIdx < ci + FRONT_BUFFER) return prev;
+        const targetPos = Math.min(ci + FRONT_BUFFER + Math.floor(Math.random() * 3), prev.length - 1);
         if (filmIdx <= targetPos) return prev;
         const next = [...prev];
         const [film] = next.splice(filmIdx, 1);
@@ -701,10 +715,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         return next;
       }
       // Inject from pre-resolved source (reserve pull or cross-slot).
-      // Insert at ci+2 (not ci+1) so the front-card position is never displaced.
+      // Insert just past the buffer so the locked-front cards are untouched.
       if (injectionFilm) {
         const next = [...prev];
-        next.splice(Math.min(ci + 2, next.length), 0, injectionFilm);
+        next.splice(Math.min(ci + FRONT_BUFFER, next.length), 0, injectionFilm);
         return next;
       }
       return prev;
@@ -1057,48 +1071,54 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       workingQueue = [...workingQueue, ...drip];
       const ci = currentIndex;
       setFullQueueTagged((prev) => {
-        const seen = prev.slice(0, ci + 1);
-        const unseen = [...prev.slice(ci + 1)];
+        // Lock the front-buffer cards. Drip splices into the unseen tail
+        // starting from position FRONT_BUFFER (relative to the unseen slice).
+        // First card of unseen (= queue[ci]) is the live front card.
+        const lockedEnd = Math.min(ci + FRONT_BUFFER, prev.length);
+        const locked = prev.slice(0, lockedEnd);
+        const tail = [...prev.slice(lockedEnd)];
         for (const f of drip) {
-          const pos = unseen.length <= 1 ? unseen.length : 1 + Math.floor(Math.random() * Math.min(unseen.length, 15));
-          unseen.splice(pos, 0, f);
+          const pos = tail.length === 0 ? 0 : Math.floor(Math.random() * Math.min(tail.length + 1, 15));
+          tail.splice(pos, 0, f);
         }
-        return [...seen, ...unseen];
+        return [...locked, ...tail];
       }, "drip");
     }
 
     // ── Genre priority swap ───────────────────────────────────────────────────
-    // If there are priority genres, scan the look-ahead window for a matching film
-    // and swap it to currentIndex + 1 so the user sees it on the very next card.
-    // Uses film IDs inside the functional setFullQueue update to avoid index-drift
-    // from the concurrent drip splice above.
+    // If there are priority genres, scan the look-ahead window for a matching
+    // film and swap it to position ci + FRONT_BUFFER. The locked front cards
+    // (ci through ci + FRONT_BUFFER - 1) are never displaced. Uses film IDs
+    // inside the functional setFullQueue update to avoid index-drift from
+    // the concurrent drip splice above.
     if (newPriorityGenres.size > 0) {
+      const targetSlot = currentIndex + FRONT_BUFFER;
       const swapIdx = findPriorityFilmInWindow(
-        currentIndex + 1,
+        targetSlot,
         workingQueue,
         newPriorityGenres,
         newBlockedGenres,
         newBlocked,
         filmLikesRef.current,
       );
-      // Don't displace a propagated film — if ci+1 is already liked by another participant,
-      // let it stay there and respect the social signal over personal genre preference.
-      const filmAtNext = workingQueue[currentIndex + 1];
-      const nextIsLikedByOther = !!filmAtNext &&
-        (filmLikesRef.current.get(filmAtNext.id) ?? []).some((id) => id !== participant?.id);
-      if (swapIdx > currentIndex + 1 && !nextIsLikedByOther) {
+      // Don't displace a propagated film at the target slot — if it's already
+      // liked by another participant, respect that social signal.
+      const filmAtSlot = workingQueue[targetSlot];
+      const slotIsLikedByOther = !!filmAtSlot &&
+        (filmLikesRef.current.get(filmAtSlot.id) ?? []).some((id) => id !== participant?.id);
+      if (swapIdx > targetSlot && !slotIsLikedByOther) {
         const targetFilmId = workingQueue[swapIdx].id;
         console.log(
-          `[genre:swap] "${workingQueue[swapIdx].title}" (${workingQueue[swapIdx].genres.map((g) => g.name).join(", ")}) → position ${currentIndex + 2}`
+          `[genre:swap] "${workingQueue[swapIdx].title}" (${workingQueue[swapIdx].genres.map((g) => g.name).join(", ")}) → position ${targetSlot}`
         );
         workingQueue = [...workingQueue];
         // Perform the swap in workingQueue for nextIdx computation below
-        [workingQueue[currentIndex + 1], workingQueue[swapIdx]] =
-          [workingQueue[swapIdx], workingQueue[currentIndex + 1]];
+        [workingQueue[targetSlot], workingQueue[swapIdx]] =
+          [workingQueue[swapIdx], workingQueue[targetSlot]];
         // Perform the same swap in fullQueue using film IDs (safe against drip index drift)
         setFullQueueTagged((prev) => {
           const next = [...prev];
-          const aIdx = next.findIndex((f) => f.id === workingQueue[currentIndex + 1].id);
+          const aIdx = next.findIndex((f) => f.id === workingQueue[targetSlot].id);
           const bIdx = next.findIndex((f) => f.id === targetFilmId);
           if (aIdx !== -1 && bIdx !== -1 && aIdx !== bIdx) {
             [next[aIdx], next[bIdx]] = [next[bIdx], next[aIdx]];
