@@ -771,6 +771,18 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         setGroupLikeCount(stats.totalLikes);
         filmLikesRef.current = stats.filmLikes;
         setFilmLikes(stats.filmLikes);
+        // Rebuild personal swipe history — the silent loadFilms below runs in
+        // non-initial mode and won't touch this ref, so without an explicit
+        // rebuild here it would stay empty and break the cross-slot propagation
+        // guard + the Layer-2 end-of-deck filter.
+        const [mySwipedSnap, myLikesSnap] = await Promise.all([
+          getMySwipes(s.id, pid),
+          getMyLikes(s.id, pid),
+        ]);
+        const history = new Map<string, boolean>();
+        for (const id of mySwipedSnap) history.set(id, myLikesSnap.has(id));
+        mySwipeHistoryRef.current = history;
+        setLikedInScroll(myLikesSnap);
         setLoading(false);
         loadFilms(s, pid);   // silent background refresh for new films
         return;
@@ -1204,11 +1216,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         return;
       }
 
-      // Layer 2: second chance — films others liked that you said no to
+      // Layer 2: end-of-deck cross-slot — surface films liked by at least one
+      // OTHER participant that the user hasn't swiped on at all. Never re-show
+      // anything the user already liked or disliked.
       const secondChance = allSessionFilmsRef.current
         .filter((f) => {
+          if (mySwipeHistoryRef.current.has(f.id)) return false;
           const likers = filmLikes.get(f.id) ?? [];
-          return likers.length > 0 && mySwipeHistoryRef.current.get(f.id) === false;
+          return likers.some((id) => id !== participant.id);
         })
         .sort((a, b) => (filmLikes.get(b.id)?.length ?? 0) - (filmLikes.get(a.id)?.length ?? 0));
 
