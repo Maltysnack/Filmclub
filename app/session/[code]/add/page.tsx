@@ -8,7 +8,8 @@ import { useLongPress } from "@/hooks/useLongPress";
 import { searchFilms, getFilmDetail, tmdbToFilm, posterUrl } from "@/lib/tmdb";
 import { fetchWatchProviders, getService } from "@/lib/streaming";
 import { fetchOmdbRating } from "@/lib/omdb";
-import { addFilmToSession, getSession, getParticipantId, getIsHost, getSessionFilms, recordSwipe } from "@/lib/session";
+import { addFilmToSession, getSession, getParticipantId, getIsHost, getSessionFilms, getMySwipes, recordSwipe } from "@/lib/session";
+import { logEvent } from "@/lib/telemetry";
 import { TMDBMovie, Film, Region } from "@/types";
 import Logo from "@/components/Logo";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
@@ -27,6 +28,10 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
   const [results, setResults] = useState<TMDBMovie[]>([]);
   const [alreadyInPool, setAlreadyInPool] = useState<Set<number>>(new Set());
   const [likedByMe, setLikedByMe] = useState<Set<number>>(new Set());
+  // Internal-film-IDs the user has already swiped on (any direction). Used to
+  // hide the overlay heart on already-decided films so a mis-tap during browse
+  // can't upsert dislike → like (ghost like). See #82.
+  const [mySwipedFilmIds, setMySwipedFilmIds] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [participantId, setParticipantIdState] = useState<string | null>(null);
@@ -51,9 +56,13 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
       setSessionServices(s.streaming_services ?? []);
       setSessionRegion((s.region ?? "AU") as Region);
 
-      const pool = await getSessionFilms(s.id);
+      const [pool, swiped] = await Promise.all([
+        getSessionFilms(s.id),
+        getMySwipes(s.id, pid),
+      ]);
       setAlreadyInPool(new Set(pool.map((f: Film) => f.tmdb_id)));
       setFilmIdMap(new Map(pool.map((f: Film) => [f.tmdb_id, f.id])));
+      setMySwipedFilmIds(swiped);
     }
     init();
   }, [code, router]);
@@ -112,8 +121,10 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
     const added = pool.find((f) => f.tmdb_id === movie.id);
     if (added) {
       setFilmIdMap((prev) => new Map([...prev, [movie.id, added.id]]));
+      logEvent(sessionId, participantId, "swipe.write", { source: "add-page-add", film_id: added.id, liked: true });
       await recordSwipe(sessionId, participantId, added.id, true);
       setLikedByMe((prev) => new Set([...prev, movie.id]));
+      setMySwipedFilmIds((prev) => new Set(prev).add(added.id));
     }
   }
 
@@ -124,8 +135,10 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
     } else {
       const filmId = filmIdMap.get(movie.id);
       if (filmId) {
+        logEvent(sessionId, participantId, "swipe.write", { source: "add-page-like", film_id: filmId, liked: true });
         await recordSwipe(sessionId, participantId, filmId, true);
         setLikedByMe((prev) => new Set([...prev, movie.id]));
+        setMySwipedFilmIds((prev) => new Set(prev).add(filmId));
       }
     }
   }
@@ -294,11 +307,19 @@ export default function AddFilmsPage({ params }: { params: Promise<{ code: strin
       <FilmInfoOverlay
         film={infoFilm}
         onClose={() => setInfoFilm(null)}
-        onLike={infoFilm ? () => {
-          const movie = results.find((r) => r.id === infoFilm.tmdb_id);
-          if (movie) handleLike(movie);
-          setInfoFilm(null);
-        } : undefined}
+        onLike={(() => {
+          if (!infoFilm) return undefined;
+          // Hide heart if the user has already swiped this film (any direction).
+          // Internal film id only exists once the film is in the pool — for new
+          // search results not yet added, the heart stays visible (intended).
+          const internalId = filmIdMap.get(infoFilm.tmdb_id);
+          if (internalId && mySwipedFilmIds.has(internalId)) return undefined;
+          return () => {
+            const movie = results.find((r) => r.id === infoFilm.tmdb_id);
+            if (movie) handleLike(movie);
+            setInfoFilm(null);
+          };
+        })()}
         sessionServices={sessionServices}
       />
 

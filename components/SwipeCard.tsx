@@ -29,6 +29,17 @@ interface SwipeCardProps {
 
 const SWIPE_THRESHOLD = 80;
 
+// Module-level set of poster URLs known to have loaded in this session. New
+// SwipeCard instances consult this before the cache probe — if a poster has
+// already rendered once during the page lifetime, we trust it's still cached
+// and skip the opacity-0 → opacity-1 fade-in. This eliminates the "card
+// flashes then comes back" effect that #77 reports: the old front card's
+// poster image was decoded, but a fresh SwipeCard mounts as a different
+// React instance (different `key`) and resets posterLoaded, even though the
+// browser already has the bytes. The set is intentionally never cleared —
+// memory cost is one ~80-byte URL per poster, capped by the deck size.
+const loadedPosters = new Set<string>();
+
 export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sessionServices = [], votePhase = 1, voteInfo, participants = [], onDragStart: onDragStartProp, onDragEnd: onDragEndProp, promotionMV }: SwipeCardProps) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -50,6 +61,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
   const poster = posterUrl(film.poster_path, "w780");
   const [posterLoaded, setPosterLoaded] = useState(() => {
     if (typeof window === "undefined") return false;
+    if (loadedPosters.has(poster)) return true;
     const probe = new Image();
     probe.src = poster;
     return probe.complete;
@@ -111,7 +123,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
             className="w-full h-full object-cover pointer-events-none transition-opacity duration-300"
             style={{ opacity: posterLoaded ? 1 : 0 }}
             draggable={false}
-            onLoad={() => setPosterLoaded(true)}
+            onLoad={() => { loadedPosters.add(poster); setPosterLoaded(true); }}
           />
           {/* Gradient overlay at bottom */}
           <div

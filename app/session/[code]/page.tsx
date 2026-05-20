@@ -16,6 +16,7 @@ import {
   removeParticipant, getShortlistData,
 } from "@/lib/session";
 import { posterUrl, getFilmDetail, tmdbToFilm, fetchCollectionTmdbIds } from "@/lib/tmdb";
+import { logEvent } from "@/lib/telemetry";
 import { getService, TMDB_GENRES } from "@/lib/streaming";
 import { seedHomePool, seedMoreHomePool, sessionProviderTmdbIds, ENGLISH_PRIMARY_REGIONS, FOREIGN_LANG_CAP } from "@/lib/pool";
 import MailButton from "@/components/MailButton";
@@ -258,6 +259,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           console.warn(
             `[deck:FRONT-CARD-CHANGED] reason=${reason} index=${ci} ${oldId} → ${newId} (queue length ${prev.length} → ${next.length})`
           );
+          // Skip the unavoidable initial-load case (prev empty) — that's the
+          // hydration moment, not an actual swap mid-session.
+          if (prev.length > 0) {
+            logEvent(sessionRef.current?.id, participantRef.current?.id, "queue.front_card_changed", { reason, index: ci, old_id: oldId, new_id: newId, prev_length: prev.length, next_length: next.length });
+          }
         } else {
           console.log(`[deck:queue-mutate] reason=${reason} index=${ci} (front=${oldId.slice(0, 8)}, length ${prev.length} → ${next.length})`);
         }
@@ -281,6 +287,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         console.warn(
           `[deck:FRONT-CARD-REPLACED] index ${currentIndex} unchanged but film changed: ${last.id} → ${id} (queue length ${last.length} → ${fullQueue.length})`
         );
+        logEvent(sessionRef.current?.id, participantRef.current?.id, "queue.front_card_replaced", { index: currentIndex, old_id: last.id, new_id: id, prev_length: last.length, next_length: fullQueue.length });
       } else if (indexAdvanced) {
         console.log(
           `[deck:advanced] index ${last.index} → ${currentIndex}, front ${last.id} → ${id}`
@@ -298,6 +305,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // of the last swipe that started processing. Resets naturally when currentIndex
   // advances to the next film (new render → new closure → different value).
   const swipingIndexRef = useRef(-1);
+  // Time-based debounce on top of swipingIndexRef. Catches the "next-card
+  // ActionButton lights up under the user's finger" race: after a swipe
+  // advances currentIndex, the new front card's like button re-mounts in the
+  // same screen position. A residual finger-lift fires a click on it; the new
+  // render's handleSwipe closure sees a new currentIndex so the index guard
+  // alone passes through. This is the original ghost-like bug. See #82.
+  const lastSwipeAtRef = useRef(0);
   // Ref to imperatively scroll ScrollView when switching from swipe → scroll
   const scrollViewRef = useRef<ScrollViewHandle>(null);
   // Tracks the last known scroll mode index so swipe can resume at the same position
@@ -733,11 +747,23 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       const pid = getParticipantId(code);
       if (!pid) return router.push("/");
 
+      logEvent(s.id, pid, "deck.mount", { status: s.status, started: s.started, ua: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null });
       setSession(s);
 
       if (s.status === "closed") {
         const existing = await getMatches(s.id);
-        if (existing.length > 0) { setMatchList(existing); setLoading(false); return; }
+        if (existing.length > 0) {
+          // Hydrate participant + participants list before returning, otherwise
+          // the !participant render guard wins over the matchList branch and the
+          // page stays a blank <div>. See #81.
+          const allParticipants = await getParticipants(s.id);
+          setParticipants(allParticipants);
+          const me = allParticipants.find((p) => p.id === pid);
+          if (me) setParticipant(me); else setIsKicked(true);
+          setMatchList(existing);
+          setLoading(false);
+          return;
+        }
         else { router.push("/"); return; }
       }
 
@@ -823,6 +849,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions", filter: `id=eq.${session.id}` },
         async (payload) => {
           const updated = payload.new as Session;
+          logEvent(session.id, participant?.id, "session.update_received", { status: updated.status, tiebreaker: !!updated.tiebreaker_film_ids?.length });
           setSession(updated);
           if (updated.status === "closed") {
             const existing = await getMatches(session.id);
@@ -908,16 +935,33 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           const p = payload.new as Participant;
           setParticipants(prev => prev.some(x => x.id === p.id) ? prev : [...prev, p]);
         })
-      .subscribe();
+      .subscribe((status) => {
+        logEvent(session.id, participant?.id, "realtime.channel_status", { channel: "session", status });
+      });
 
     // Broadcast channel: receives kick events from the host so all clients
     // update their pill list immediately.
+    //
+    // Self-kick path validates against the DB before flipping isKicked. The
+    // channel name is `kicks:${session.id}` — anyone who knows the session
+    // code can subscribe AND broadcast. Without the DB check a malicious
+    // participant could send `participant_removed` with anyone's id and force
+    // that user onto the KickedScreen. The DB DELETE event is the source of
+    // truth; the broadcast just exists for instant pill-list updates. See #49.
     const kicksCh = supabase
       .channel(`kicks:${session.id}`)
-      .on("broadcast", { event: "participant_removed" }, ({ payload }) => {
+      .on("broadcast", { event: "participant_removed" }, async ({ payload }) => {
         const removedId = payload.id as string;
         setParticipants(prev => prev.filter(p => p.id !== removedId));
-        if (removedId === myParticipantId) setIsKicked(true);
+        if (removedId === myParticipantId) {
+          const { data } = await supabase.from("participants").select("id").eq("id", myParticipantId).maybeSingle();
+          if (!data) {
+            logEvent(session.id, myParticipantId, "participant.kicked", { verified: true });
+            setIsKicked(true);
+          } else {
+            logEvent(session.id, myParticipantId, "participant.spoofed_kick_rejected");
+          }
+        }
       })
       .subscribe();
 
@@ -936,6 +980,36 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       supabase.removeChannel(selfCh);
     };
   }, [session, participant, loadFilms, code]);
+
+  // ── Safety net for dropped realtime: re-sync on tab focus / visibility ──────
+  // Mobile Safari (and others) silently pause WebSockets when the tab is
+  // backgrounded. If a match closes the session during that window, neither the
+  // `sessions` UPDATE handler nor the `swipes` INSERT fallback fires. When the
+  // user returns we re-check the server state and surface the match. See #81.
+  useEffect(() => {
+    if (!session || !participant) return;
+    let cancelled = false;
+    async function resync() {
+      if (cancelled) return;
+      const latest = await getSession(code);
+      if (!latest || cancelled) return;
+      if (latest.status === "closed") {
+        const existing = await getMatches(latest.id);
+        if (!cancelled && existing.length > 0) setMatchList(existing);
+      }
+    }
+    const onVisible = () => {
+      logEvent(session.id, participant.id, "visibility.change", { hidden: document.hidden });
+      if (!document.hidden) resync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", resync);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", resync);
+    };
+  }, [session, participant, code]);
 
   // ── Wheel broadcast channel — lets all participants see the spin ───────────
   useEffect(() => {
@@ -983,10 +1057,20 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   async function handleSwipe(liked: boolean) {
     if (!session || !participant || currentIndex >= queue.length) return;
     if (swipingIndexRef.current === currentIndex) return;
+    // Time-based debounce: a stray click on a freshly-mounted ActionButton or
+    // overlay heart, fired within the swipe-out animation window, would
+    // otherwise pass the index guard because the closure now holds the next
+    // currentIndex. 300 ms is well below any deliberate inter-swipe interval.
+    if (Date.now() - lastSwipeAtRef.current < 300) {
+      logEvent(session.id, participant.id, "swipe.debounced", { currentIndex, liked, since_last_ms: Date.now() - lastSwipeAtRef.current });
+      return;
+    }
+    lastSwipeAtRef.current = Date.now();
     swipingIndexRef.current = currentIndex;
     const s = sessionRef.current ?? session; // always fresh — avoids stale closure
     const film = queue[currentIndex];
     const isSolo = participants.length <= 1;
+    logEvent(s.id, participant.id, "swipe.write", { source: "deck", film_id: film.id, liked, currentIndex, queue_length: queue.length });
 
     // ── Swipe history (synchronous) ───────────────────────────────────────────
     mySwipeHistoryRef.current.set(film.id, liked);
@@ -1186,6 +1270,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       // Trigger of this match is the local participant who just swiped.
       const isMatch = await checkForMatch(s.id, film.id, s.threshold, participant.id);
       if (isMatch && s.mode === "live") {
+        logEvent(s.id, participant.id, "match.detected", { source: "deck-swipe", film_id: film.id, in_grace_period: inGracePeriod() });
         // Grace period: match is recorded in DB but session stays open. The
         // grace-period effect will resolve all accumulated matches when the timer fires.
         if (inGracePeriod()) return;

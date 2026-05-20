@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy, Search, Layers } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
-import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, recordSwipe, removeParticipant, checkAllMatches, resolveMatch } from "@/lib/session";
+import { getSession, getParticipantId, getIsHost, getFilmScores, closeSession, getParticipants, getMySwipes, recordSwipe, removeParticipant, checkAllMatches, resolveMatch } from "@/lib/session";
+import { logEvent } from "@/lib/telemetry";
 import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { posterUrl, getFilmDetail, tmdbToFilm } from "@/lib/tmdb";
@@ -33,6 +34,10 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [infoFilm, setInfoFilm] = useState<Film | null>(null);
   const [charInfoFilm, setCharInfoFilm] = useState<Film | null>(null);
+  // Films this user has already swiped on (either direction). Used to disable
+  // the heart in the FilmInfoOverlay so an accidental tap can't upsert a
+  // previous dislike into a like (the original ghost-like bug). See #82.
+  const [mySwiped, setMySwiped] = useState<Set<string>>(new Set());
 
   async function handleCharacterFilmClick(name: string) {
     const charFilm = getCharacterFilm(name);
@@ -63,12 +68,14 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
 
       setSession(s);
 
-      const [allScores, allParticipants] = await Promise.all([
+      const [allScores, allParticipants, swiped] = await Promise.all([
         getFilmScores(s.id),
         getParticipants(s.id),
+        getMySwipes(s.id, pid),
       ]);
 
       setParticipants(allParticipants);
+      setMySwiped(swiped);
 
       if (!allParticipants.some(p => p.id === pid)) {
         setIsKicked(true);
@@ -113,6 +120,15 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
     const ch = supabase
       .channel(`results-sl:${session.id}`)
       .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "sessions",
+        filter: `id=eq.${session.id}`,
+      }, (payload) => {
+        // If a match closes the session while we're on /results, the deck page
+        // owns the MatchScreen render path — route there so it renders. See #81.
+        const updated = payload.new as Session;
+        if (updated.status === "closed") router.push(`/session/${code}`);
+      })
+      .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "shortlist_rounds",
         filter: `session_id=eq.${session.id}`,
       }, () => setShowShortlist(true))
@@ -132,7 +148,9 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         const p = payload.new as Participant;
         setParticipants(prev => prev.some(x => x.id === p.id) ? prev : [...prev, p]);
       })
-      .subscribe();
+      .subscribe((status) => {
+        logEvent(session.id, myParticipantId, "realtime.channel_status", { channel: "results-sl", status });
+      });
     resultSlCh.current = ch;
 
     // Broadcast channel: receives kick events from the host so all clients
@@ -140,11 +158,17 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
     // (which requires REPLICA IDENTITY FULL for unfiltered delivery).
     const kicksCh = supabase
       .channel(`kicks:${session.id}`)
-      .on("broadcast", { event: "participant_removed" }, ({ payload }) => {
+      .on("broadcast", { event: "participant_removed" }, async ({ payload }) => {
         const removedId = payload.id as string;
         setParticipants(prev => prev.filter(p => p.id !== removedId));
         refreshScores();
-        if (removedId === myParticipantId) setIsKicked(true);
+        if (removedId === myParticipantId) {
+          // Verify against the DB before showing KickedScreen — see #49 + the
+          // matching guard on the deck page. Self-kick path is the only one
+          // that needs validation; pill-list filtering is cosmetic.
+          const { data } = await supabase.from("participants").select("id").eq("id", myParticipantId).maybeSingle();
+          if (!data) setIsKicked(true);
+        }
       })
       .subscribe();
     kicksChRef.current = kicksCh;
@@ -426,8 +450,14 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         film={infoFilm}
         onClose={() => setInfoFilm(null)}
         sessionServices={session?.streaming_services ?? []}
-        onLike={infoFilm && !scores.find(s => s.film.id === infoFilm.id)?.likedByIds.includes(myParticipantId) && session ? async () => {
+        // Only show the heart for films the user has NEVER swiped on. Previously
+        // the guard was `!likedByIds.includes(me)`, which left the heart enabled
+        // on films the user had DISLIKED — an accidental tap would upsert
+        // dislike → like (ghost like). See #82.
+        onLike={infoFilm && session && !mySwiped.has(infoFilm.id) ? async () => {
+          logEvent(session.id, myParticipantId, "swipe.write", { source: "results-overlay", film_id: infoFilm.id, liked: true });
           await recordSwipe(session.id, myParticipantId, infoFilm.id, true);
+          setMySwiped(prev => new Set(prev).add(infoFilm.id));
         } : undefined}
       />
 
