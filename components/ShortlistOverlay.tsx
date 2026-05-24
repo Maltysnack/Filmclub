@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Film, ShortlistRound, ShortlistVeto, ShortlistVote } from "@/types";
+import { Film, Match, ShortlistRound, ShortlistVeto, ShortlistVote } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
 import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";

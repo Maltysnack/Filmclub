@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Film } from "@/types";
+import { Film, Match } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
 import Logo from "@/components/Logo";
 import SpinWheel from "@/components/SpinWheel";
@@ -53,14 +53,13 @@ export default function SinglePlayerVoteOverlay({
   // ── Spin phase ────────────────────────────────────────────────────────────
   if (phase === "spinning" && winnerId) {
     const spinFilms = films.filter(f => selected.includes(f.id));
-    const spinMatches = spinFilms.map(f => ({
+    const spinMatches: Match[] = spinFilms.map(f => ({
       id: f.id, session_id: sessionId, film_id: f.id,
       score: 1, matched_at: new Date().toISOString(), film: f,
     }));
     return (
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <SpinWheel
-        films={spinMatches as any}
+        films={spinMatches}
         winnerId={winnerId}
         onComplete={() => {
           const film = films.find(f => f.id === winnerId) ?? null;
