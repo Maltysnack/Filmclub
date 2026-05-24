@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Film } from "@/types";
 import { getService } from "@/lib/streaming";
 import { X, Heart } from "lucide-react";
@@ -52,7 +53,7 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, sessio
             <a href={`https://www.imdb.com/title/${film.imdb_id}/`} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1 text-xs font-medium rounded px-1 py-0.5"
               style={{ background: "rgba(245,197,24,0.15)", color: "#F5C518" }}>
-              <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
+              <Image src="/imdb-logo.png" alt="IMDb" width={24} height={24} className="h-3 w-auto" />
               {film.imdb_rating}
             </a>
           ) : (
@@ -66,7 +67,7 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, sessio
           <a href={`https://letterboxd.com/tmdb/${film.tmdb_id}/`}
             target="_blank" rel="noopener noreferrer"
             className="flex items-center transition-opacity hover:opacity-70">
-            <img src="/letterboxd-logo.png" alt="Letterboxd" className="h-5 w-5 rounded" />
+            <Image src="/letterboxd-logo.png" alt="Letterboxd" width={40} height={40} className="h-5 w-5 rounded" />
           </a>
         )}
         {film.genres?.slice(0, 2).map((g) => (

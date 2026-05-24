@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Film } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
@@ -353,7 +354,7 @@ function FilmScrollCard({
               )}
               {film.imdb_rating && (
                 <span className="flex items-center gap-1 text-sm" style={{ color: "#F5C518" }}>
-                  <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
+                  <Image src="/imdb-logo.png" alt="IMDb" width={24} height={24} className="h-3 w-auto" />
                   {film.imdb_rating}
                 </span>
               )}

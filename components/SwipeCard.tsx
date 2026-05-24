@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import NextImage from "next/image";
 import { animate, motion, AnimatePresence, useMotionValue, useTransform, PanInfo, MotionValue } from "framer-motion";
 import { Film } from "@/types";
 import { getService } from "@/lib/streaming";
@@ -246,7 +247,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
                     className="flex items-center gap-1 text-sm"
                     style={{ color: "#F5C518" }}
                   >
-                    <img src="/imdb-logo.png" alt="IMDb" className="h-3" />
+                    <NextImage src="/imdb-logo.png" alt="IMDb" width={24} height={24} className="h-3 w-auto" />
                     {film.imdb_rating}
                   </a>
                 ) : film.release_year === new Date().getFullYear() ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { X, ChevronRight } from "lucide-react";
 
 // Camera logo SVG (matches Logo.tsx, inlined so we avoid the router dependency)
@@ -222,7 +223,7 @@ export default function InfoPanel({ open, onClose }: Props) {
           className="flex items-center gap-2.5 transition-opacity hover:opacity-60"
           style={{ color: "var(--text-muted)" }}
         >
-          <img src="/letterboxd-logo.png" alt="Letterboxd" className="h-5 w-5 rounded" />
+          <Image src="/letterboxd-logo.png" alt="Letterboxd" width={40} height={40} className="h-5 w-5 rounded" />
           <span className="text-xs">follow me on letterboxd</span>
         </a>
       </div>
