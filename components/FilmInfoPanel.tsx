@@ -89,9 +89,9 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, sessio
                   if (!svc) return null;
                   const lp = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
                   return lp ? (
-                    <img key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${lp}`}
+                    <Image key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${lp}`}
                       alt={svc.name} title={svc.name}
-                      className="w-7 h-7 rounded-lg object-cover" />
+                      width={32} height={32} className="w-7 h-7 rounded-lg object-cover" />
                   ) : (
                     <span key={p.serviceId} className="text-xs px-2 py-0.5 rounded font-bold"
                       style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}50` }}>
@@ -123,8 +123,8 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, sessio
                   <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-medium"
                     style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
                     {member.profile_path
-                      ? <img src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
-                          alt={member.name} className="w-full h-full object-cover" />
+                      ? <Image src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
+                          alt={member.name} width={24} height={24} className="w-full h-full object-cover" />
                       : member.name.charAt(0)}
                   </div>
                   <div className="min-w-0">

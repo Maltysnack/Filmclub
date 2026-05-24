@@ -302,9 +302,9 @@ function FilmScrollCard({
               if (!svc) return null;
               const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
               return logo ? (
-                <img key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${logo}`}
+                <Image key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${logo}`}
                   alt={svc.name} title={svc.name}
-                  className="w-6 h-6 rounded object-cover" />
+                  width={28} height={28} className="w-6 h-6 rounded object-cover" />
               ) : (
                 <span key={p.serviceId} className="text-xs px-1.5 py-0.5 rounded font-bold"
                   style={{ background: `${svc.color}30`, color: svc.color, border: `1px solid ${svc.color}50` }}>

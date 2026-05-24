@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo, use } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import Logo from "@/components/Logo";
@@ -2159,8 +2160,8 @@ function MatchScreen({ matches, session, isHost, onRandomise, onShortlist }: {
                         if (!svc) return null;
                         const logo = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath?: string | null }).tmdbLogoPath;
                         return logo ? (
-                          <img key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${logo}`}
-                            alt={svc.name} title={svc.name} className="w-5 h-5 rounded object-cover" />
+                          <Image key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${logo}`}
+                            alt={svc.name} title={svc.name} width={28} height={28} className="w-5 h-5 rounded object-cover" />
                         ) : (
                           <span key={p.serviceId} className="text-[9px] px-1 py-0.5 rounded font-bold"
                             style={{ background: svc.color, color: "#fff" }}>{svc.abbrev}</span>
