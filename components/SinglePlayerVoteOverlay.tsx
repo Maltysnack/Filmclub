@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Film } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
 import Logo from "@/components/Logo";
@@ -174,7 +175,7 @@ function SelectCard({
       }}
     >
       {film.poster_path
-        ? <img src={posterUrl(film.poster_path, "w342")} alt={film.title} className="w-full h-full object-cover" />
+        ? <Image src={posterUrl(film.poster_path, "w342")} alt={film.title} fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
         : <div className="w-full h-full flex items-center justify-center text-xs text-center p-2"
             style={{ background: "var(--surface)", color: "var(--text-muted)" }}>{film.title}</div>
       }

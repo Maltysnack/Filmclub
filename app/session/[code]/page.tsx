@@ -2129,8 +2129,8 @@ function MatchScreen({ matches, session, isHost, onRandomise, onShortlist }: {
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Blurred backdrop from first film */}
       <div className="fixed inset-0 opacity-10 pointer-events-none overflow-hidden">
-        <img src={posterUrl(matches[0].film!.poster_path, "w500")} alt=""
-          className="w-full h-full object-cover" style={{ filter: "blur(20px)" }} />
+        <Image src={posterUrl(matches[0].film!.poster_path, "w500")} alt=""
+          fill sizes="100vw" className="object-cover" style={{ filter: "blur(20px)" }} />
       </div>
 
       <div className="relative z-10 flex flex-col items-center px-5 pt-12 pb-32 flex-1 overflow-y-auto">
@@ -2149,8 +2149,8 @@ function MatchScreen({ matches, session, isHost, onRandomise, onShortlist }: {
             return (
               <div key={m.id} className={`${cardWidthClass} flex flex-col gap-2`}>
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "2/3" }}>
-                  <img src={posterUrl(m.film.poster_path, "w342")} alt={m.film.title}
-                    className="w-full h-full object-cover" />
+                  <Image src={posterUrl(m.film.poster_path, "w342")} alt={m.film.title}
+                    fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
                   <div className="absolute inset-0"
                     style={{ background: "linear-gradient(to top, rgba(12,12,14,0.85) 0%, transparent 50%)" }} />
                   {available.length > 0 && (
