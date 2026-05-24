@@ -129,8 +129,13 @@ export async function seedMoreHomePool(s: Session): Promise<void> {
       console.log("[pool] cache miss — falling back to live TMDB");
     }
     let liveRaw: import("@/types").TMDBMovie[];
+    // 1.5x oversample compensates for dedup loss — popularity/vote_average
+    // lists share ~20% films, and cross-provider lists share even more for
+    // multi-service sessions. Without it, single-service sessions undersized
+    // the pool by ~10-15% (#129). The slice to targetPool below caps growth.
+    const OVERSAMPLE = 1.5;
     if (providerIds.length > 0) {
-      const halfPages = Math.ceil(targetPool / (20 * serviceCount * 2));
+      const halfPages = Math.ceil((targetPool * OVERSAMPLE) / (20 * serviceCount * 2));
       const [popularFilms, ratedFilms] = await Promise.all([
         discoverFilmsByProviders(providerIds, halfPages, region, "popularity.desc"),
         discoverFilmsByProviders(providerIds, halfPages, region, "vote_average.desc", 1000),
@@ -144,7 +149,7 @@ export async function seedMoreHomePool(s: Session): Promise<void> {
         }
       }
     } else {
-      const halfPages = Math.ceil(targetPool / 40);
+      const halfPages = Math.ceil((targetPool * OVERSAMPLE) / 40);
       liveRaw = await Promise.all([getTrendingFilms(halfPages), getTopRatedFilms(halfPages)])
         .then(([a, b]) => [...a, ...b]);
     }
