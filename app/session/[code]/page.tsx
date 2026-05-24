@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import Logo from "@/components/Logo";
 import SwipeCard from "@/components/SwipeCard";
-import FilmModal from "@/components/FilmModal";
 import FilmInfoPanel from "@/components/FilmInfoPanel";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
 import ScrollView, { ScrollViewHandle } from "@/components/ScrollView";
