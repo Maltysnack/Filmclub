@@ -230,6 +230,90 @@ export function getServiceByTmdbId(tmdbId: number, region: Region = "AU") {
 // ── Browser region auto-detection ────────────────────────────────────────────
 // Uses navigator.language then IANA timezone as fallback. No permissions needed.
 
+// IANA timezone → Region lookup. Exact matches are tried first, then prefixes.
+// Coverage expanded in #127 — previously missed Calgary/Edmonton (CA),
+// Cancun/Tijuana (MX), Anchorage/Honolulu (US), and most of Brazil outside
+// São Paulo (was using the deprecated `Brazil/East` literal).
+const TZ_EXACT: Record<string, Region> = {
+  "Brazil/East": "BR",
+  "Europe/Berlin": "DE", "Europe/Busingen": "DE",
+  "Europe/Madrid": "ES", "Atlantic/Canary": "ES",
+  "Europe/Paris": "FR",
+  "Europe/London": "GB",
+  "Asia/Kolkata": "IN",
+  "Europe/Rome": "IT",
+  "Asia/Tokyo": "JP",
+  "Asia/Seoul": "KR",
+  "Europe/Amsterdam": "NL",
+  "Pacific/Auckland": "NZ",
+};
+const TZ_PREFIX: { prefix: string; region: Region }[] = [
+  { prefix: "Australia/", region: "AU" },
+  // Brazil — covers Sao_Paulo, Manaus, Belem, Fortaleza, Recife, Bahia,
+  // Maceio, Cuiaba, Boa_Vista, Campo_Grande, Porto_Velho, Rio_Branco, etc.
+  { prefix: "America/Sao_", region: "BR" },
+  { prefix: "America/Manaus", region: "BR" },
+  { prefix: "America/Belem", region: "BR" },
+  { prefix: "America/Fortaleza", region: "BR" },
+  { prefix: "America/Recife", region: "BR" },
+  { prefix: "America/Bahia", region: "BR" },
+  { prefix: "America/Maceio", region: "BR" },
+  { prefix: "America/Cuiaba", region: "BR" },
+  { prefix: "America/Boa_Vista", region: "BR" },
+  { prefix: "America/Campo_Grande", region: "BR" },
+  { prefix: "America/Porto_Velho", region: "BR" },
+  { prefix: "America/Rio_Branco", region: "BR" },
+  { prefix: "America/Araguaina", region: "BR" },
+  { prefix: "America/Eirunepe", region: "BR" },
+  { prefix: "America/Noronha", region: "BR" },
+  { prefix: "America/Santarem", region: "BR" },
+  // Canada — adds Edmonton/Calgary/Yellowknife/Iqaluit/St_Johns/Whitehorse
+  { prefix: "America/Toronto", region: "CA" },
+  { prefix: "America/Vancouver", region: "CA" },
+  { prefix: "America/Winnipeg", region: "CA" },
+  { prefix: "America/Halifax", region: "CA" },
+  { prefix: "America/Edmonton", region: "CA" },
+  { prefix: "America/Yellowknife", region: "CA" },
+  { prefix: "America/Iqaluit", region: "CA" },
+  { prefix: "America/St_Johns", region: "CA" },
+  { prefix: "America/Whitehorse", region: "CA" },
+  { prefix: "America/Regina", region: "CA" },
+  { prefix: "America/Moncton", region: "CA" },
+  // India
+  { prefix: "Asia/Calcutta", region: "IN" },
+  // Mexico — adds Tijuana/Cancun/Chihuahua/Mazatlan/Hermosillo/Merida
+  { prefix: "America/Mexico_City", region: "MX" },
+  { prefix: "America/Monterrey", region: "MX" },
+  { prefix: "America/Tijuana", region: "MX" },
+  { prefix: "America/Cancun", region: "MX" },
+  { prefix: "America/Chihuahua", region: "MX" },
+  { prefix: "America/Mazatlan", region: "MX" },
+  { prefix: "America/Hermosillo", region: "MX" },
+  { prefix: "America/Merida", region: "MX" },
+  { prefix: "America/Bahia_Banderas", region: "MX" },
+  { prefix: "America/Matamoros", region: "MX" },
+  { prefix: "America/Ojinaga", region: "MX" },
+  // US — adds Anchorage (Alaska), Honolulu (Hawaii), Adak
+  { prefix: "America/New_York", region: "US" },
+  { prefix: "America/Chicago", region: "US" },
+  { prefix: "America/Denver", region: "US" },
+  { prefix: "America/Los_Angeles", region: "US" },
+  { prefix: "America/Phoenix", region: "US" },
+  { prefix: "America/Anchorage", region: "US" },
+  { prefix: "Pacific/Honolulu", region: "US" },
+  { prefix: "America/Adak", region: "US" },
+  { prefix: "America/Detroit", region: "US" },
+  { prefix: "America/Indiana/", region: "US" },
+  { prefix: "America/Kentucky/", region: "US" },
+  { prefix: "America/Boise", region: "US" },
+  { prefix: "America/Juneau", region: "US" },
+  { prefix: "America/Sitka", region: "US" },
+  { prefix: "America/Nome", region: "US" },
+  { prefix: "America/Yakutat", region: "US" },
+  { prefix: "America/Menominee", region: "US" },
+  { prefix: "America/North_Dakota/", region: "US" },
+];
+
 export function detectRegion(): Region {
   if (typeof window === "undefined") return "AU";
 
@@ -237,21 +321,11 @@ export function detectRegion(): Region {
   // Language codes like "en-GB" are common on Apple devices outside the UK.
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (tz.startsWith("Australia/"))   return "AU";
-    if (tz.startsWith("America/Sao_") || tz === "Brazil/East") return "BR";
-    if (tz.startsWith("America/Toronto") || tz.startsWith("America/Vancouver") || tz.startsWith("America/Winnipeg") || tz.startsWith("America/Halifax")) return "CA";
-    if (tz === "Europe/Berlin" || tz === "Europe/Busingen") return "DE";
-    if (tz === "Europe/Madrid" || tz === "Atlantic/Canary") return "ES";
-    if (tz === "Europe/Paris")   return "FR";
-    if (tz === "Europe/London")  return "GB";
-    if (tz.startsWith("Asia/Calcutta") || tz === "Asia/Kolkata") return "IN";
-    if (tz === "Europe/Rome")    return "IT";
-    if (tz === "Asia/Tokyo")     return "JP";
-    if (tz === "Asia/Seoul")     return "KR";
-    if (tz.startsWith("America/Mexico_City") || tz === "America/Monterrey") return "MX";
-    if (tz === "Europe/Amsterdam") return "NL";
-    if (tz === "Pacific/Auckland") return "NZ";
-    if (tz.startsWith("America/New_York") || tz.startsWith("America/Chicago") || tz.startsWith("America/Denver") || tz.startsWith("America/Los_Angeles") || tz.startsWith("America/Phoenix")) return "US";
+    const exact = TZ_EXACT[tz];
+    if (exact) return exact;
+    for (const { prefix, region } of TZ_PREFIX) {
+      if (tz.startsWith(prefix)) return region;
+    }
   } catch { /* ignore */ }
 
   // Fallback: language code suffix (e.g. "pt-BR", "ko-KR")
