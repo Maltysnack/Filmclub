@@ -156,7 +156,9 @@ export function votesAllowed(filmCount: number): number {
 
 /**
  * Pure function — tallies votes with survival-filter logic.
- * - Unanimous (all participants voted for it) → immediate winner.
+ * - 1 film unanimous → immediate winner.
+ * - 2+ films unanimous → spin between them (#128: previously returned
+ *   the first-iterated unanimous arbitrarily).
  * - 2-film round → plurality wins; exact tie → spin.
  * - Otherwise → survival filter (≥1 vote stays).
  *   All survived (no zeros) OR 2+ survivors → next veto+vote round.
@@ -175,10 +177,13 @@ export function tallyVotes(
     }
   }
 
-  // Unanimous — everyone voted for this film
+  // Unanimous — collect every film that every participant voted for
+  const unanimous: string[] = [];
   for (const [id, count] of counts) {
-    if (count === totalParticipants) return { winner: id };
+    if (count === totalParticipants) unanimous.push(id);
   }
+  if (unanimous.length === 1) return { winner: unanimous[0] };
+  if (unanimous.length >= 2) return { tied: unanimous };
 
   // Final vote: only 2 films — use plurality, tie → spin
   if (filmIds.length === 2) {
