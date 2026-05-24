@@ -247,7 +247,7 @@ const TZ_EXACT: Record<string, Region> = {
   "Europe/Amsterdam": "NL",
   "Pacific/Auckland": "NZ",
 };
-const TZ_PREFIX: { prefix: string; region: Region }[] = [
+const TZ_PREFIX_UNSORTED: { prefix: string; region: Region }[] = [
   { prefix: "Australia/", region: "AU" },
   // Brazil — covers Sao_Paulo, Manaus, Belem, Fortaleza, Recife, Bahia,
   // Maceio, Cuiaba, Boa_Vista, Campo_Grande, Porto_Velho, Rio_Branco, etc.
@@ -313,6 +313,12 @@ const TZ_PREFIX: { prefix: string; region: Region }[] = [
   { prefix: "America/Menominee", region: "US" },
   { prefix: "America/North_Dakota/", region: "US" },
 ];
+
+// Sort by prefix length descending so the longest match always wins. Without
+// this, `America/Bahia` (BR) swallows `America/Bahia_Banderas` (MX) because
+// `.startsWith("America/Bahia")` is true for the MX zone too. Sorting once
+// at module init avoids per-call overhead.
+const TZ_PREFIX = [...TZ_PREFIX_UNSORTED].sort((a, b) => b.prefix.length - a.prefix.length);
 
 export function detectRegion(): Region {
   if (typeof window === "undefined") return "AU";
