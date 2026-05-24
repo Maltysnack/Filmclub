@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Film, ShortlistRound, ShortlistVeto, ShortlistVote } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
 import { supabase } from "@/lib/supabase";
@@ -520,7 +521,7 @@ export default function ShortlistOverlay({
                   <DisplayCard key={film.id} onInfo={() => setInfoFilm(film)}
                     className="relative rounded-xl overflow-hidden" style={{ aspectRatio: "2/3" }}>
                     {film.poster_path
-                      ? <img src={posterUrl(film.poster_path, "w342")} alt={film.title} className="w-full h-full object-cover" />
+                      ? <Image src={posterUrl(film.poster_path, "w342")} alt={film.title} fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
                       : <div className="w-full h-full flex items-center justify-center text-xs text-center p-2"
                           style={{ background: "var(--surface)", color: "var(--text-muted)" }}>{film.title}</div>}
                     <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
@@ -543,7 +544,7 @@ export default function ShortlistOverlay({
                       className="relative rounded-xl overflow-hidden transition-all"
                       style={{ aspectRatio: "2/3", border: `2px solid ${selected ? "var(--like)" : "transparent"}` }}>
                       {film.poster_path
-                        ? <img src={posterUrl(film.poster_path, "w342")} alt={film.title} className="w-full h-full object-cover" />
+                        ? <Image src={posterUrl(film.poster_path, "w342")} alt={film.title} fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
                         : <div className="w-full h-full flex items-center justify-center text-xs text-center p-2"
                             style={{ background: "var(--surface)", color: "var(--text-muted)" }}>{film.title}</div>}
                       {selected && (
@@ -687,7 +688,7 @@ export default function ShortlistOverlay({
                   className="relative rounded-xl overflow-hidden transition-all"
                   style={{ aspectRatio: "2/3", border: `2px solid ${borderColor}`, opacity: isMiddle ? 0.4 : 1 }}>
                   {film.poster_path ? (
-                    <img src={posterUrl(film.poster_path, "w342")} alt={film.title} className="w-full h-full object-cover" />
+                    <Image src={posterUrl(film.poster_path, "w342")} alt={film.title} fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-xs text-center p-2"
                       style={{ background: "var(--surface)", color: "var(--text-muted)" }}>{film.title}</div>
@@ -750,8 +751,8 @@ export default function ShortlistOverlay({
                 className="relative rounded-xl overflow-hidden"
                 style={{ aspectRatio: "2/3" }}>
                 {film.poster_path ? (
-                  <img src={posterUrl(film.poster_path, "w342")} alt={film.title}
-                    className="w-full h-full object-cover" />
+                  <Image src={posterUrl(film.poster_path, "w342")} alt={film.title}
+                    fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-xs text-center p-2"
                     style={{ background: "var(--surface)", color: "var(--text-muted)" }}>{film.title}</div>
@@ -844,8 +845,8 @@ export default function ShortlistOverlay({
                 className="relative rounded-xl overflow-hidden transition-all"
                 style={{ aspectRatio: "2/3", border: `${borderWidth}px solid ${borderColor}`, opacity: disabled && !active ? 0.35 : 1 }}>
                 {film.poster_path ? (
-                  <img src={posterUrl(film.poster_path, "w342")} alt={film.title}
-                    className="w-full h-full object-cover" />
+                  <Image src={posterUrl(film.poster_path, "w342")} alt={film.title}
+                    fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-xs text-center p-2"
                     style={{ background: "var(--surface)", color: "var(--text-muted)" }}>

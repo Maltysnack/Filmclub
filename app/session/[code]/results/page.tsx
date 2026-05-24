@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, use, useRef, useCallback } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy, Search, Layers } from "lucide-react";
@@ -345,8 +346,8 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                         className="relative rounded-xl overflow-hidden text-left"
                         style={{ aspectRatio: "2/3", background: "var(--surface)" }}>
                         {film.poster_path ? (
-                          <img src={posterUrl(film.poster_path, "w342")} alt={film.title}
-                            className="w-full h-full object-cover" />
+                          <Image src={posterUrl(film.poster_path, "w342")} alt={film.title}
+                            fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center p-2 text-xs text-center"
                             style={{ color: "var(--text-muted)" }}>{film.title}</div>
@@ -375,8 +376,8 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
                         className="relative rounded-lg overflow-hidden text-left"
                         style={{ aspectRatio: "2/3", background: "var(--surface)" }}>
                         {film.poster_path ? (
-                          <img src={posterUrl(film.poster_path, "w342")} alt={film.title}
-                            className="w-full h-full object-cover" />
+                          <Image src={posterUrl(film.poster_path, "w342")} alt={film.title}
+                            fill sizes="(max-width: 640px) 33vw, 200px" className="object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center p-1 text-center"
                             style={{ fontSize: 10, color: "var(--text-muted)" }}>{film.title}</div>
