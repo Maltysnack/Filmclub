@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 120;
+
 // Anomaly digest. Runs daily. Queries the last 24h of session_events for
 // patterns that indicate a bug or weird behaviour, emails a brief summary if
 // any fire, stays silent otherwise. Goal: catch regressions without the user

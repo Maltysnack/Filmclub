@@ -4,6 +4,9 @@ import { REGION_OPTIONS, getServicesForRegion } from "@/lib/streaming";
 import { discoverFilmsByProviders } from "@/lib/tmdb";
 import type { Region } from "@/types";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 // Pages fetched per service per sort — 2 pages = 40 films each pass.
 // popularity + rating = up to 80 unique films cached per service.
 const PAGES_PER_SORT = 2;

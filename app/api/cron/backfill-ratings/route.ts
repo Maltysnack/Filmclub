@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 // Daily background OMDb rating backfill. Processes films that have an imdb_id
 // but no imdb_rating, fetching ratings from OMDb and updating the row.
 //

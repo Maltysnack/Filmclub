@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 // Daily retention cleanup for the feedback table (issue #54).
 // Deletes any feedback row older than RETENTION_DAYS. The maintainer has
 // already received the email via Resend at submission time, so the DB row
