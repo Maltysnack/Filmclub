@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { Json } from "@/types/database";
 
 // Fire-and-forget structured event logger. Writes to public.session_events so a
 // developer can read real session traces with SQL instead of asking the user to
@@ -9,12 +10,14 @@ import { supabase } from "./supabase";
 // so a 100-swipe session writes ~300 rows. Cleanup rides the existing
 // cleanup-sessions cron via ON DELETE CASCADE on session_id.
 
-const buffer: Array<{
+type EventRow = {
   session_id: string;
   participant_id: string | null;
   event: string;
-  payload: Record<string, unknown> | null;
-}> = [];
+  payload: Json | null;
+};
+
+const buffer: EventRow[] = [];
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -56,7 +59,10 @@ export function logEvent(
     session_id: sessionId,
     participant_id: participantId ?? null,
     event,
-    payload: payload ?? null,
+    // Callers pass arbitrary structured payloads — coerce to Json. The Json
+    // type's recursive constraint is stricter than Record<string, unknown>
+    // even though every concrete payload satisfies it in practice.
+    payload: (payload ?? null) as Json | null,
   });
   scheduleFlush();
 }

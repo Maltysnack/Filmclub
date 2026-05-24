@@ -1,7 +1,47 @@
 import { supabase } from "./supabase";
-import { Session, Participant, Film, Match, WatchMode, Region } from "@/types";
+import { Session, SessionMode, SessionStatus, WatchMode, Participant, Film, Match, Region } from "@/types";
+import type { Database } from "@/types/database";
 import { getFilmDetail, tmdbToFilm } from "./tmdb";
 import { fetchWatchProviders, getService } from "./streaming";
+
+// ── Type coercion helpers ────────────────────────────────────────────────────
+// DB types (generated) are wider than app types in two ways:
+//   - some columns are nullable in DB (created_at, matched_at) where app code
+//     assumes non-null because of DEFAULT now() — coerce `?? ""` on read
+//   - JSONB columns return `Json` — narrow to the typed shape via a helper
+// See #125 for the full migration rationale.
+
+type DbSession = Database["public"]["Tables"]["sessions"]["Row"];
+type DbParticipant = Database["public"]["Tables"]["participants"]["Row"];
+type DbFilm = Database["public"]["Tables"]["films"]["Row"];
+type DbMatch = Database["public"]["Tables"]["matches"]["Row"];
+
+function dbToSession(row: DbSession): Session {
+  return {
+    ...row,
+    mode: row.mode as SessionMode,
+    status: (row.status ?? "active") as SessionStatus,
+    watch_mode: (row.watch_mode ?? "home") as WatchMode,
+    started: row.started ?? false,
+    streaming_services: row.streaming_services ?? [],
+    threshold: row.threshold ?? 0,
+    region: (row.region ?? "AU") as Region,
+    created_at: row.created_at ?? "",
+  };
+}
+
+function dbToParticipant(row: DbParticipant): Participant {
+  return { ...row, created_at: row.created_at ?? "" };
+}
+
+function dbToFilm(row: DbFilm): Film {
+  return {
+    ...row,
+    genres: (row.genres as Film["genres"] | null) ?? [],
+    film_cast: (row.film_cast as Film["film_cast"] | null) ?? [],
+    watch_providers_au: (row.watch_providers_au as Film["watch_providers_au"] | null) ?? [],
+  };
+}
 
 // ── Session code generation ───────────────────────────────────────────────────
 
@@ -74,7 +114,7 @@ export async function createSession(
     .single();
 
   if (error) { console.error(error); return null; }
-  return data;
+  return dbToSession(data);
 }
 
 export async function getSession(code: string): Promise<Session | null> {
@@ -89,7 +129,7 @@ export async function getSession(code: string): Promise<Session | null> {
     .eq("code", normalized)
     .single();
   if (error) return null;
-  return data;
+  return dbToSession(data);
 }
 
 export async function closeSession(sessionId: string) {
@@ -143,7 +183,7 @@ export async function joinSession(sessionId: string, name: string): Promise<Part
     .select()
     .single();
   if (error) { console.error(error); return null; }
-  return data;
+  return dbToParticipant(data);
 }
 
 export async function getParticipants(sessionId: string): Promise<Participant[]> {
@@ -152,7 +192,7 @@ export async function getParticipants(sessionId: string): Promise<Participant[]>
     .select("*")
     .eq("session_id", sessionId)
     .order("created_at");
-  return data ?? [];
+  return (data ?? []).map(dbToParticipant);
 }
 
 // ── Film pool ─────────────────────────────────────────────────────────────────
@@ -166,8 +206,7 @@ export async function upsertFilm(tmdbId: number, region: Region = "AU"): Promise
     .single();
 
   if (cached) {
-    const providers: { serviceId: string; name: string; logoPath?: string | null; tmdbProviderId?: number | null }[] =
-      cached.watch_providers_au ?? [];
+    const providers = (cached.watch_providers_au as Film["watch_providers_au"] | null) ?? [];
     // Refresh if:
     //  (a) no providers stored yet — film cached before provider tracking
     //  (b) providers exist but lack logoPath — cached before logo capture
@@ -213,7 +252,7 @@ export async function upsertFilm(tmdbId: number, region: Region = "AU"): Promise
       }
       await supabase.from("films").update(updates).eq("id", cached.id);
       return {
-        ...cached,
+        ...dbToFilm(cached),
         watch_providers_au: providerUpdate,
         imdb_id: imdbId,
         collection_id: detail ? (detail.belongs_to_collection?.id ?? 0) : cached.collection_id,
@@ -222,7 +261,7 @@ export async function upsertFilm(tmdbId: number, region: Region = "AU"): Promise
     }
     // OMDb rating backfill removed from the hot path (#69). The daily cron
     // /api/cron/backfill-ratings handles films with imdb_id but no rating.
-    return cached;
+    return dbToFilm(cached);
   }
 
   // Fetch from TMDB and cache. allSettled so a TMDB providers blip doesn't
@@ -249,7 +288,7 @@ export async function upsertFilm(tmdbId: number, region: Region = "AU"): Promise
     console.error("upsertFilm error:", error.message ?? JSON.stringify(error));
     return null;
   }
-  return data;
+  return dbToFilm(data);
 }
 
 export async function addFilmToSession(
@@ -316,8 +355,13 @@ export async function getSessionFilms(sessionId: string): Promise<Film[]> {
     .order("created_at");
 
   if (!data) return [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data as any[]).map((row) => row.films).filter(Boolean) as Film[];
+  // Supabase nested select returns `films` as a single object (not array) for
+  // many-to-one relations, but the generated types model it as `any[]` for the
+  // join. Cast through `unknown` to narrow at the call site.
+  return data
+    .map((row) => (row.films as unknown) as DbFilm | null)
+    .filter((f): f is DbFilm => !!f)
+    .map(dbToFilm);
 }
 
 // Returns films with metadata (which participant added them)
@@ -331,10 +375,10 @@ export async function getSessionFilmsWithMeta(
     .order("created_at");
 
   if (!data) return [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data as any[])
-    .map((row) => ({ film: row.films as Film, addedBy: row.added_by as string | null }))
-    .filter((r) => r.film);
+  return data
+    .map((row) => ({ film: (row.films as unknown) as DbFilm | null, addedBy: row.added_by }))
+    .filter((r): r is { film: DbFilm; addedBy: string | null } => !!r.film)
+    .map((r) => ({ film: dbToFilm(r.film), addedBy: r.addedBy }));
 }
 
 // ── Swipes ────────────────────────────────────────────────────────────────────
@@ -536,7 +580,15 @@ export async function getMatches(sessionId: string): Promise<Match[]> {
     .select("*, film:films(*)")
     .eq("session_id", sessionId)
     .order("score", { ascending: false });
-  return data ?? [];
+  if (!data) return [];
+  return data.map((row) => {
+    const m = row as DbMatch & { film: DbFilm | null };
+    return {
+      ...m,
+      matched_at: m.matched_at ?? "",
+      film: m.film ? dbToFilm(m.film) : undefined,
+    };
+  });
 }
 
 // ── Scoring for planned mode ──────────────────────────────────────────────────
@@ -555,7 +607,7 @@ export async function getFilmScores(sessionId: string): Promise<{ film: Film; sc
   if (likedFilmIds.length === 0) return [];
 
   const { data: filmRows } = await supabase.from("films").select("*").in("id", likedFilmIds);
-  const films = (filmRows ?? []) as Film[];
+  const films: Film[] = (filmRows ?? []).map(dbToFilm);
 
   return films
     .map((film) => {

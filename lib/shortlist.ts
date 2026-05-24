@@ -1,5 +1,23 @@
 import { supabase } from "./supabase";
-import { ShortlistRound, ShortlistVeto, ShortlistVote } from "@/types";
+import { ShortlistRound, ShortlistPhase, ShortlistVeto, ShortlistVote } from "@/types";
+import type { Database } from "@/types/database";
+
+// DB types are wider than app types: `phase` is `string` in DB but constrained
+// to `ShortlistPhase` by app convention; `created_at` is nullable in DB but
+// always has DEFAULT now() so app types model it as `string`. Coerce on read.
+type DbRound = Database["public"]["Tables"]["shortlist_rounds"]["Row"];
+type DbVeto = Database["public"]["Tables"]["shortlist_vetoes"]["Row"];
+type DbVote = Database["public"]["Tables"]["shortlist_votes"]["Row"];
+
+function dbToRound(row: DbRound): ShortlistRound {
+  return { ...row, phase: row.phase as ShortlistPhase, created_at: row.created_at ?? "" };
+}
+function dbToVeto(row: DbVeto): ShortlistVeto {
+  return { ...row, created_at: row.created_at ?? "" };
+}
+function dbToVote(row: DbVote): ShortlistVote {
+  return { ...row, created_at: row.created_at ?? "" };
+}
 
 /** Host only. Creates round 1 with phase 'nominate' so all participants get the INSERT signal
  *  and open the nomination UI before any films are locked in. */
@@ -16,7 +34,7 @@ export async function startNomination(
     // Likely a duplicate — another device already created the round. Fetch it instead.
     return getCurrentRound(sessionId);
   }
-  return data;
+  return dbToRound(data);
 }
 
 /** Host only. Advances the nomination round to veto/vote with the final film set.
@@ -50,7 +68,7 @@ export async function startShortlist(
     .select()
     .single();
   if (error) { console.error(error); return null; }
-  return data;
+  return dbToRound(data);
 }
 
 export async function getCurrentRound(sessionId: string): Promise<ShortlistRound | null> {
@@ -61,7 +79,7 @@ export async function getCurrentRound(sessionId: string): Promise<ShortlistRound
     .order("round_number", { ascending: false })
     .limit(1)
     .single();
-  return data ?? null;
+  return data ? dbToRound(data) : null;
 }
 
 // Verify the given participant actually belongs to this session before
@@ -102,7 +120,7 @@ export async function getVetoes(
     .select("*")
     .eq("session_id", sessionId)
     .eq("round_number", roundNumber);
-  return data ?? [];
+  return (data ?? []).map(dbToVeto);
 }
 
 /** Host only. Moves veto → vote with the surviving films. Returns false if another device got there first. */
@@ -146,7 +164,7 @@ export async function getVotes(
     .select("*")
     .eq("session_id", sessionId)
     .eq("round_number", roundNumber);
-  return data ?? [];
+  return (data ?? []).map(dbToVote);
 }
 
 /** How many votes each person gets for a given pool size (1 per 5 films). */
@@ -226,7 +244,7 @@ export async function advanceToNextRound(
     .select()
     .single();
   if (error) { console.error(error); return null; }
-  return data;
+  return dbToRound(data);
 }
 
 /** Host only. Writes the spin state to the DB so non-hosts who miss the broadcast
