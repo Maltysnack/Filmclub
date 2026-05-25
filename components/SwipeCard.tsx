@@ -45,8 +45,12 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-18, 18]);
-  const likeOpacity = useTransform(x, [20, 100], [0, 1]);
-  const dislikeOpacity = useTransform(x, [-100, -20], [1, 0]);
+  // #119: stamps reach full visibility by ~50px so users get unambiguous
+  // commit-intent feedback well before the 80px SWIPE_THRESHOLD. Previously
+  // peaked at 100px (after the commit), making them feel reactive rather
+  // than predictive.
+  const likeOpacity = useTransform(x, [15, 50], [0, 1]);
+  const dislikeOpacity = useTransform(x, [-50, -15], [1, 0]);
 
   // Back card promotion — driven by the front card's promotionMV.
   // fallback keeps hook call count stable (hooks can't be conditional).
@@ -86,11 +90,15 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
       const yRatio = Math.max(-2, Math.min(2, info.offset.y / info.offset.x));
       animate(y, 600 * yRatio, { duration: 0.2, ease: "easeOut" });
       await animate(x, 600, { duration: 0.2, ease: "easeOut" });
+      // #119: brief haptic confirms commit on supported devices (Android, some iOS).
+      // Optional-chained because vibrate() is undefined on iOS Safari + desktop.
+      navigator.vibrate?.(20);
       onLike();
     } else if (isHorizontalEnough && info.offset.x < -SWIPE_THRESHOLD) {
       const yRatio = Math.max(-2, Math.min(2, info.offset.y / Math.abs(info.offset.x)));
       animate(y, 600 * yRatio, { duration: 0.2, ease: "easeOut" });
       await animate(x, -600, { duration: 0.2, ease: "easeOut" });
+      navigator.vibrate?.(20);
       onDislike();
     } else {
       // Sub-threshold or vertical-dominant — spring everything back to centre
