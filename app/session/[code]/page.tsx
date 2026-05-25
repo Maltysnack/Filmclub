@@ -1654,8 +1654,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   // Preload the next 8 cards' posters (w780 — matches the display size on card) so they
   // are cache-warm before the user swipes to them. Also keep 3 backdrops ahead for the
-  // info panel. Previously only backdrops were preloaded, so the visible card poster was
-  // never in cache — this was the root cause of blank cards on fast swiping.
+  // info panel.
+  //
+  // #132: use <link rel="preload" as="image"> rather than hidden <img>. Both
+  // trigger fetches, but rel=preload is the standard "I'll need this very soon"
+  // hint and accepts fetchpriority — the next 2 posters after the front card
+  // get high priority so the browser races them ahead of normal-priority image
+  // loads. Eliminates the "next card hasn't loaded yet" pause that the cache-
+  // probe in SwipeCard couldn't catch by itself.
   const preloadStart = viewMode === "scroll" ? scrollIndexRef.current : currentIndex;
   const preloadWindow = queue.slice(preloadStart, preloadStart + 8);
   const preloadPosters = preloadWindow
@@ -1665,13 +1671,25 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     .slice(0, 3)
     .map((f) => f.backdrop_path ? posterUrl(f.backdrop_path, "w1280") : null)
     .filter(Boolean) as string[];
-  const preloadUrls = [...new Set([...preloadPosters, ...preloadBackdrops])];
+  // High-priority slice: front card itself + next 2 swipe-targets.
+  const highPriorityPosters = new Set(preloadPosters.slice(0, 3));
 
   return (
     <div className="h-dvh overflow-hidden" style={{ background: "var(--bg)" }}>
-    {/* Hidden preload images — posters (w780) for next 8 cards + backdrops for next 3 */}
-    {preloadUrls.map((url) => (
-      <img key={url} src={url} alt="" aria-hidden className="hidden" />
+    {/* Preload posters (w780) + backdrops (w1280). Browsers honour rel=preload
+        anywhere in the document. fetchpriority=high on the next 3 posters
+        boosts them above default image-load priority. */}
+    {preloadPosters.map((url) => (
+      <link
+        key={`p:${url}`}
+        rel="preload"
+        as="image"
+        href={url}
+        fetchPriority={highPriorityPosters.has(url) ? "high" : "auto"}
+      />
+    ))}
+    {preloadBackdrops.map((url) => (
+      <link key={`b:${url}`} rel="preload" as="image" href={url} />
     ))}
     <div className="flex flex-col h-dvh mx-auto overflow-hidden"
       style={{ maxWidth: infoFilm ? 920 : 480, transition: "max-width 0.3s cubic-bezier(0.4,0,0.2,1)" }}>
