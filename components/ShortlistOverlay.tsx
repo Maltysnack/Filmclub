@@ -791,14 +791,20 @@ export default function ShortlistOverlay({
     <>
     <div className="fixed inset-0 z-50 flex flex-col items-center" style={{ background: "var(--bg)" }}>
     <div className="relative w-full flex flex-col flex-1 min-h-0 mx-auto" style={{ maxWidth: 480 }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-10 pb-4">
+      {/* Header — logo + round chip */}
+      <div className="flex items-center justify-between px-5 pt-10 pb-3">
         <Logo size="sm" showText />
-        <span className="text-xs px-2.5 py-1 rounded-full"
+        <span className="text-[10px] px-2 py-0.5 rounded-full tracking-widest uppercase"
           style={{ background: "var(--surface)", color: "var(--text-muted)" }}>
           Round {round?.round_number ?? 1}
         </span>
       </div>
+
+      {/* #117: phase stepper. Reads as a four-frame filmstrip — current frame
+          glows accent, past frames step down to accent-dim, future frames sit
+          ghosted. Tracking-widest + tiny caps gives the strip an architectural,
+          deliberate feel against the lush poster grid below. */}
+      <PhaseStepper uiPhase={uiPhase} />
 
       {/* Phase heading */}
       <div className="px-5 mb-4">
@@ -961,6 +967,94 @@ function DisplayCard({
   return (
     <div className={className} style={style} {...handlers}>
       {children}
+    </div>
+  );
+}
+
+// #117: 4-step filmstrip stepper that tells the participant where they are
+// in the nominate → veto → vote → spin arc. Reads at a glance even on a
+// poster-saturated screen because of the wide-tracked caps treatment.
+//
+// Stop states:
+//   active     — accent gold, soft halo, slightly elevated chip
+//   completed  — accent-dim, no halo, no chip background
+//   upcoming   — text-muted at 40% opacity, no background
+//
+// `uiPhase` mapping derives the index — `winner` and `loading` return null
+// because they don't represent a step in the funnel.
+function PhaseStepper({ uiPhase }: { uiPhase: UiPhase }) {
+  const indexFor: Partial<Record<UiPhase, number>> = {
+    nominate: 0,
+    veto: 1,
+    vote: 2,
+    three_film: 2,
+    host_decision: 2,
+    two_film: 3,
+  };
+  const activeIdx = indexFor[uiPhase];
+  if (activeIdx === undefined) return null;
+
+  const STOPS = [
+    { key: "nominate", label: "NOM" },
+    { key: "veto",     label: "VETO" },
+    { key: "vote",     label: "VOTE" },
+    { key: "spin",     label: "SPIN" },
+  ];
+
+  return (
+    <div
+      className="px-5 mb-5 flex items-center justify-center"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={STOPS.length - 1}
+      aria-valuenow={activeIdx}
+      aria-valuetext={STOPS[activeIdx].label}
+    >
+      <div className="flex items-center gap-1.5">
+        {STOPS.map((stop, i) => {
+          const active = i === activeIdx;
+          const completed = i < activeIdx;
+          const upcoming = i > activeIdx;
+
+          const chipBg = active ? "rgba(232,184,109,0.14)" : "transparent";
+          const chipBorder = active ? "rgba(232,184,109,0.55)" : "transparent";
+          const chipColor = active
+            ? "var(--accent)"
+            : completed
+            ? "var(--accent-dim)"
+            : "var(--text-muted)";
+          const chipOpacity = upcoming ? 0.4 : 1;
+
+          return (
+            <div key={stop.key} className="flex items-center gap-1.5">
+              <span
+                className="text-[10px] font-semibold tracking-[0.18em] uppercase px-2 py-1 rounded-md border transition-all duration-300"
+                style={{
+                  background: chipBg,
+                  borderColor: chipBorder,
+                  color: chipColor,
+                  opacity: chipOpacity,
+                  transform: active ? "translateY(-0.5px)" : "none",
+                  boxShadow: active ? "0 1px 0 rgba(232,184,109,0.25)" : "none",
+                }}
+              >
+                {stop.label}
+              </span>
+              {i < STOPS.length - 1 && (
+                <span
+                  aria-hidden
+                  className="block transition-colors duration-300"
+                  style={{
+                    width: 14,
+                    height: 1,
+                    background: i < activeIdx ? "var(--accent-dim)" : "var(--border)",
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
