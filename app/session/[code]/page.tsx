@@ -912,13 +912,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
             }
           }
 
-          // Fallback: if the session UPDATE subscription missed a close event,
-          // catch it here so the match screen still appears.
-          const latestSession = await getSession(code);
-          if (latestSession?.started && latestSession?.mode === "live" && latestSession.status === "closed") {
-            const existing = await getMatches(session.id);
-            if (existing.length > 0) setMatchList(existing);
-          }
+          // Per-swipe fallback removed (#131). Previously fetched the session
+          // row on every remote swipe in case the UPDATE subscription missed a
+          // close. The visibility-change resync (#81) already covers that case
+          // on tab-return without hammering the DB on every swipe.
         })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "session_films", filter: `session_id=eq.${session.id}` },
         () => {
