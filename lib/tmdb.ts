@@ -8,10 +8,18 @@ function params(extra: Record<string, string> = {}) {
   return new URLSearchParams({ api_key: KEY, language: "en-US", ...extra });
 }
 
+// #111: cache TTLs for Next fetch cache. Only applied on server-side callers
+// (Server Components, Route Handlers, server-side calls from those). Silently
+// ignored on client-side fetches — harmless. Tags allow targeted revalidation
+// via revalidateTag(...) from an admin route if data goes stale early.
+const CACHE_LIST: RequestInit = { next: { revalidate: 3600, tags: ["tmdb-list"] } };      // popularity/ratings shift daily; 1h refresh
+const CACHE_DETAIL: RequestInit = { next: { revalidate: 86400, tags: ["tmdb-detail"] } }; // film metadata stable; 1d refresh
+const CACHE_STABLE: RequestInit = { next: { revalidate: 604800, tags: ["tmdb-stable"] } }; // franchise + provider list ~immutable; 7d refresh
+
 // Fetch multiple pages and return the flat list
-async function fetchPages(url: string, pages: number): Promise<TMDBMovie[]> {
+async function fetchPages(url: string, pages: number, init?: RequestInit): Promise<TMDBMovie[]> {
   const requests = Array.from({ length: pages }, (_, i) =>
-    fetch(`${url}&${params({ page: String(i + 1) })}`).then((r) => r.ok ? r.json() : { results: [] })
+    fetch(`${url}&${params({ page: String(i + 1) })}`, init).then((r) => r.ok ? r.json() : { results: [] })
   );
   const results = await Promise.all(requests);
   return results.flatMap((d) => d.results ?? []);
@@ -20,16 +28,16 @@ async function fetchPages(url: string, pages: number): Promise<TMDBMovie[]> {
 export async function getTrendingFilms(pages = 1): Promise<TMDBMovie[]> {
   // Trending uses a slightly different URL structure
   if (pages === 1) {
-    const res = await fetch(`${BASE}/trending/movie/week?${params()}`);
+    const res = await fetch(`${BASE}/trending/movie/week?${params()}`, CACHE_LIST);
     if (!res.ok) return [];
     const data = await res.json();
     return data.results ?? [];
   }
-  return fetchPages(`${BASE}/trending/movie/week?`, pages);
+  return fetchPages(`${BASE}/trending/movie/week?`, pages, CACHE_LIST);
 }
 
 export async function getTopRatedFilms(pages = 1): Promise<TMDBMovie[]> {
-  return fetchPages(`${BASE}/movie/top_rated?`, pages);
+  return fetchPages(`${BASE}/movie/top_rated?`, pages, CACHE_LIST);
 }
 
 // Films available on specific streaming services in a given region (TMDB Discover).
@@ -48,7 +56,8 @@ export async function discoverFilmsByProviders(
     providerIds.map((id) =>
       fetchPages(
         `${BASE}/discover/movie?watch_region=${region}&with_watch_providers=${id}&sort_by=${sortBy}${minVotes ? `&vote_count.gte=${minVotes}` : ""}&`,
-        pagesPerProvider
+        pagesPerProvider,
+        CACHE_LIST,
       )
     )
   );
@@ -77,7 +86,7 @@ export async function discoverFilmsByProviders(
 // Call this from the browser console to verify/correct provider IDs:
 //   import { getProviderList } from "@/lib/tmdb"; getProviderList("AU").then(console.log)
 export async function getProviderList(region: Region = "AU"): Promise<{ provider_id: number; provider_name: string; logo_path: string }[]> {
-  const res = await fetch(`${BASE}/watch/providers/movie?${params({ watch_region: region })}`);
+  const res = await fetch(`${BASE}/watch/providers/movie?${params({ watch_region: region })}`, CACHE_STABLE);
   if (!res.ok) return [];
   const data = await res.json();
   return (data.results ?? []).sort((a: { provider_name: string }, b: { provider_name: string }) =>
@@ -85,16 +94,18 @@ export async function getProviderList(region: Region = "AU"): Promise<{ provider
   );
 }
 
+// Search intentionally bypasses cache — results depend on the user's
+// in-progress query and change as they type; caching adds noise without helping.
 export async function searchFilms(query: string): Promise<TMDBMovie[]> {
   if (!query.trim()) return [];
-  const res = await fetch(`${BASE}/search/movie?${params({ query, include_adult: "false" })}`);
+  const res = await fetch(`${BASE}/search/movie?${params({ query, include_adult: "false" })}`, { cache: "no-store" });
   if (!res.ok) return [];
   const data = await res.json();
   return data.results ?? [];
 }
 
 export async function getFilmDetail(tmdbId: number): Promise<TMDBMovieDetail | null> {
-  const res = await fetch(`${BASE}/movie/${tmdbId}?${params({ append_to_response: "credits" })}`);
+  const res = await fetch(`${BASE}/movie/${tmdbId}?${params({ append_to_response: "credits" })}`, CACHE_DETAIL);
   if (!res.ok) return null;
   return res.json();
 }
@@ -102,8 +113,10 @@ export async function getFilmDetail(tmdbId: number): Promise<TMDBMovieDetail | n
 // Fetch all TMDB movie IDs that belong to a collection (franchise).
 // Used client-side to patch the local queue when the user swipes no on an
 // uncached film — lets skipBlocked suppress the rest of the franchise.
+// Collection membership is effectively immutable (films don't move between
+// franchises) so 7-day revalidate is generous.
 export async function fetchCollectionTmdbIds(collectionId: number): Promise<Set<number>> {
-  const res = await fetch(`${BASE}/collection/${collectionId}?${params()}`);
+  const res = await fetch(`${BASE}/collection/${collectionId}?${params()}`, CACHE_STABLE);
   if (!res.ok) return new Set();
   const data = await res.json();
   return new Set<number>((data.parts ?? []).map((p: { id: number }) => p.id));
