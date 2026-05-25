@@ -6,7 +6,7 @@ import { animate, motion, AnimatePresence, useMotionValue, useTransform, PanInfo
 import { Film } from "@/types";
 import { getService } from "@/lib/streaming";
 import { posterUrl } from "@/lib/tmdb";
-import { Heart, X } from "lucide-react";
+import { Heart, X, Info } from "lucide-react";
 import { useLongPress } from "@/hooks/useLongPress";
 import ParticipantPill from "./ParticipantPill";
 import { Participant } from "@/types";
@@ -182,6 +182,36 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
         >
           NOPE
         </motion.div>
+
+        {/* #119: visible tap-to-open-info affordance. Sits top-centre in the
+            negative space between the two stamps, fades out the moment the
+            user starts dragging so it never competes with LIKE/NOPE. The
+            actual gesture (long-press anywhere on the card) is unchanged;
+            this is just a discoverability cue. */}
+        <AnimatePresence>
+          {isTop && !isDragging && (
+            <motion.button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onInfo(); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              aria-label="Film info"
+              className="absolute top-4 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full flex items-center justify-center pointer-events-auto"
+              style={{
+                background: "rgba(12,12,14,0.55)",
+                color: "rgba(240,237,232,0.9)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <Info size={14} strokeWidth={2.25} />
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* Film info at bottom */}
         <div className="absolute bottom-0 left-0 right-0 p-5">
