@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { fetchWatchProviders } from "@/lib/streaming";
 import { getFilmDetail } from "@/lib/tmdb";
+import { checkRateLimit } from "@/lib/ratelimit";
 import type { Region } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -15,11 +16,15 @@ export const maxDuration = 30;
 // Response: the refreshed films row, or 404 if no cached row exists.
 //
 // No auth on the route — the work it does is strictly bounded to "refetch
-// this tmdbId from TMDB and write the result". Rate-limiting belongs in #47.
+// this tmdbId from TMDB and write the result". Rate-limiting added in #47.
 
 const REGION_RE = /^[A-Z]{2}$/;
 
 export async function POST(req: Request) {
+  // #47: rate-limit per IP. No-op when Upstash env vars are unset.
+  const rl = await checkRateLimit("filmsRefresh", req);
+  if (!rl.allowed) return new Response("rate limited", { status: 429 });
+
   let body: unknown;
   try { body = await req.json(); } catch { return new Response("bad json", { status: 400 }); }
   if (!body || typeof body !== "object") return new Response("bad body", { status: 400 });

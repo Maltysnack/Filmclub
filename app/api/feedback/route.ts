@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit } from "@/lib/ratelimit";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -25,6 +26,13 @@ const MAX_EMAIL_LENGTH   = 254; // RFC 5321
 const MAX_OTHER_LABEL_LENGTH = 60;
 
 export async function POST(req: NextRequest) {
+  // #47: rate-limit before parsing body — cheap deny for spam floods.
+  // No-op when UPSTASH_REDIS_REST_URL/_TOKEN are unset (see lib/ratelimit.ts).
+  const rl = await checkRateLimit("feedback", req);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Too many submissions. Try again later." }, { status: 429 });
+  }
+
   const { tag, otherLabel, message, email } = await req.json();
 
   if (!tag || !message?.trim()) {
