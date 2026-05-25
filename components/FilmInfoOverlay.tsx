@@ -77,7 +77,11 @@ export default function FilmInfoOverlay({
             <motion.div
               ref={posterRef}
               className="relative shrink-0 overflow-hidden"
-              style={{ height: "45dvh" }}
+              // #120: cap absolute height so on short/landscape viewports (iPad-ish)
+              // the poster doesn't dominate. 45dvh is fine on tall phones (~360-400px),
+              // but 45dvh on landscape iPad ≈ 360px in a 1366×900 viewport — still
+              // visually OK, just makes sure we never exceed 450px.
+              style={{ height: "min(45dvh, 450px)" }}
               drag="y"
               dragConstraints={posterRef}
               dragElastic={{ top: 0, bottom: 0.4 }}

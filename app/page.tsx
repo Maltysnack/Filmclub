@@ -272,9 +272,10 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Service grid — all 8 services in one row, h-11 (44px) tiles.
-                    Height matches the CodeBox (text-3xl line-height 36px + py-1 × 2 = 44px). */}
-                <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(8, 1fr)" }}>
+                {/* Service grid. h-11 (44px) tiles match CodeBox height.
+                    #120: 4 cols on mobile (sub-480px tiles would be <40px in 8-col),
+                    6 on tablet, 8 on desktop. Lays out as 2 rows on narrow phones. */}
+                <div className="grid gap-2 grid-cols-4 sm:grid-cols-6 lg:grid-cols-8">
                   {regionServices.map((svc) => {
                     const on = selectedServices.includes(svc.id);
                     return (

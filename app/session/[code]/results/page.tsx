@@ -242,7 +242,7 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
 
   return (
     <div className="min-h-dvh" style={{ background: "var(--bg)" }}>
-    <div className="flex flex-col h-dvh mx-auto" style={{ maxWidth: 480 }}>
+    <div className="flex flex-col h-dvh mx-auto max-w-[480px] md:max-w-3xl lg:max-w-5xl md:px-8">
       {/* Header */}
       <header className="flex items-center px-5 pt-5 pb-4 shrink-0">
         <div className="flex items-center gap-2 shrink-0">

@@ -112,7 +112,7 @@ export default function SwipeCard({ film, onLike, onDislike, onInfo, isTop, sess
       whileTap={isTop ? { scale: 1.02 } : undefined}
     >
       <div
-        className="relative w-full h-full rounded-[28px] overflow-hidden shadow-2xl drag-card"
+        className="relative w-full h-full rounded-[24px] md:rounded-[28px] overflow-hidden shadow-2xl drag-card"
         style={{ background: "var(--surface-2)" }}
         {...lpHandlers}
       >

@@ -1734,8 +1734,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         </div>
       </header>
 
-      {/* Participants */}
-      <div className="flex justify-start gap-1.5 flex-wrap px-5 py-3 shrink-0">
+      {/* Participants. #120: horizontal scroll on narrow viewports prevents
+          8+ participants from eating 60+ px of header height. On md+ wrap is
+          fine since the page has more horizontal room. */}
+      <div className="flex justify-start gap-1.5 px-5 py-3 shrink-0 overflow-x-auto md:flex-wrap md:overflow-visible">
         {participants.map((p) => (
           <ParticipantPill
             key={p.id}
