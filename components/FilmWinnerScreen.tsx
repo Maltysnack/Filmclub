@@ -8,6 +8,7 @@ import { getService } from "@/lib/streaming";
 import { Film, Region } from "@/types";
 import FilmInfoOverlay from "@/components/FilmInfoOverlay";
 import { useLongPress } from "@/hooks/useLongPress";
+import { Share2 } from "lucide-react";
 
 interface FilmWinnerScreenProps {
   film: Film;
@@ -28,10 +29,43 @@ export default function FilmWinnerScreen({
   const router = useRouter();
   const handleDone = onDone ?? (() => router.push("/"));
   const [infoOpen, setInfoOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { handlers: posterLp } = useLongPress(() => setInfoOpen(true));
 
   const providers = (film.watch_providers_au ?? []) as { serviceId: string; logoPath?: string | null }[];
   const available = providers.filter((p) => sessionServices.includes(p.serviceId));
+
+  // #116: format runtime as "1h 47m" or "47m" if under an hour. Returns null
+  // if runtime is missing so the chip strip drops the cell gracefully.
+  const runtimeLabel = (() => {
+    if (!film.runtime || film.runtime <= 0) return null;
+    const h = Math.floor(film.runtime / 60);
+    const m = film.runtime % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  })();
+
+  async function handleShare() {
+    // #116: native share where supported (iOS/Android/modern desktop), copy-to-
+    // clipboard fallback otherwise. Both paths swallow user-cancel silently.
+    const yearSuffix = film.release_year ? ` (${film.release_year})` : "";
+    const text = `We matched on ${film.title}${yearSuffix} on Filmclub`;
+    const url = "https://filmclub.watch";
+    try {
+      if (typeof navigator !== "undefined" && "share" in navigator) {
+        await navigator.share({ title: "Filmclub", text, url });
+        return;
+      }
+    } catch {
+      // user cancelled, or share rejected — fall through to clipboard
+    }
+    try {
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // clipboard blocked — silent
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center" style={{ background: "var(--bg)" }}>
@@ -107,30 +141,69 @@ export default function FilmWinnerScreen({
             )}
           </div>
 
-          {/* Title + year */}
+          {/* Title + meta strip. #116: surface year · runtime · ★rating
+              in one architectural row so the payoff moment feels denser than
+              the lone year that used to live here. Middle dots separate; any
+              missing cell drops cleanly without leaving a hanging separator. */}
           <div className="text-center">
             <p className="text-sm font-semibold leading-tight" style={{ color: "var(--text)" }}>
               {film.title}
             </p>
-            {film.release_year && (
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                {film.release_year}
+            {(film.release_year || runtimeLabel || film.imdb_rating) && (
+              <p
+                className="text-xs mt-1 inline-flex items-center justify-center"
+                style={{ color: "var(--text-muted)", letterSpacing: "0.04em" }}
+              >
+                {[
+                  film.release_year ? String(film.release_year) : null,
+                  runtimeLabel,
+                  film.imdb_rating ? `★ ${film.imdb_rating}` : null,
+                ]
+                  .filter(Boolean)
+                  .map((part, i, arr) => (
+                    <span key={i}>
+                      {i > 0 && (
+                        <span className="mx-1.5" aria-hidden style={{ opacity: 0.5 }}>·</span>
+                      )}
+                      <span style={i === arr.length - 1 && film.imdb_rating ? { color: "#F5C518" } : undefined}>
+                        {part}
+                      </span>
+                    </span>
+                  ))}
               </p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Sticky Done bar */}
+      {/* Sticky action bar. #116: Share + Done. Done stays the primary
+          (filled gold), Share is the secondary virality hook (outlined
+          accent with the share glyph). On supported devices native share
+          sheet fires; elsewhere the title+link copies to clipboard with
+          a brief inline confirmation. */}
       <div
         className="fixed bottom-0 left-0 right-0 z-20 px-5 pb-6 pt-3"
         style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}
       >
-        <div className="mx-auto flex justify-center" style={{ maxWidth: 480 }}>
+        <div className="mx-auto flex items-center gap-3 w-72" style={{ maxWidth: 480 }}>
+          <button
+            onClick={handleShare}
+            className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium border transition-all active:scale-[0.98]"
+            style={{
+              borderColor: copied ? "var(--like)" : "var(--accent)",
+              color: copied ? "var(--like)" : "var(--accent)",
+              background: "transparent",
+              minWidth: 96,
+            }}
+            aria-label={copied ? "Link copied" : "Share match"}
+          >
+            <Share2 size={14} />
+            <span>{copied ? "Copied" : "Share"}</span>
+          </button>
           <button
             onClick={handleDone}
             disabled={doneDisabled}
-            className="w-72 py-3 rounded-xl text-sm font-semibold"
+            className="flex-1 py-3 rounded-xl text-sm font-semibold"
             style={{ background: "var(--accent)", color: "#0c0c0e", opacity: doneDisabled ? 0.4 : 1 }}
           >
             Done
