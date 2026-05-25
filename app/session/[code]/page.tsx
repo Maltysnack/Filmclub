@@ -751,12 +751,17 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setSession(s);
 
       if (s.status === "closed") {
-        const existing = await getMatches(s.id);
+        // #130: fan out matches + participants in parallel. Wasted getParticipants
+        // when there are no matches is a rare edge case (session closed without
+        // matches → router.push(/) anyway).
+        const [existing, allParticipants] = await Promise.all([
+          getMatches(s.id),
+          getParticipants(s.id),
+        ]);
         if (existing.length > 0) {
           // Hydrate participant + participants list before returning, otherwise
           // the !participant render guard wins over the matchList branch and the
           // page stays a blank <div>. See #81.
-          const allParticipants = await getParticipants(s.id);
           setParticipants(allParticipants);
           const me = allParticipants.find((p) => p.id === pid);
           if (me) setParticipant(me); else setIsKicked(true);
@@ -767,8 +772,31 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         else { router.push("/"); return; }
       }
 
-      const allParticipants = await getParticipants(s.id);
-      participantsRef.current = allParticipants; // set before loadFilms so slot calc sees correct list
+      // #130: branch on snapshot existence first, then fan out the right set
+      // of independent reads in parallel. Eliminates 4-6 serial round-trips
+      // that previously ran one after another after getSession resolved.
+      const savedQueue = sessionStorage.getItem(`filmclub-queue-${code}`);
+      const savedIndex = sessionStorage.getItem(`filmclub-index-${code}`);
+      const hasSnapshotRestore = !!(savedQueue && savedIndex);
+
+      // Common parallel set: participants + film count + group swipe stats.
+      // Snapshot path additionally needs personal swipe history upfront;
+      // cold path gets that inside loadFilms.
+      const commonPromise = Promise.all([
+        getParticipants(s.id),
+        supabase.from("session_films").select("*", { count: "exact", head: true }).eq("session_id", s.id),
+        getSessionSwipeStats(s.id),
+      ]);
+      const snapshotExtrasPromise = hasSnapshotRestore
+        ? Promise.all([getMySwipes(s.id, pid), getMyLikes(s.id, pid)])
+        : Promise.resolve([new Set<string>(), new Set<string>()] as const);
+
+      const [
+        [allParticipants, { count: filmCount }, stats],
+        [mySwipedSnap, myLikesSnap],
+      ] = await Promise.all([commonPromise, snapshotExtrasPromise]);
+
+      participantsRef.current = allParticipants;
       setParticipants(allParticipants);
 
       if (!allParticipants.some(p => p.id === pid)) {
@@ -778,33 +806,20 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       }
 
       setParticipant(allParticipants.find((p) => p.id === pid) ?? null);
-
-      const { count: filmCount } = await supabase
-        .from("session_films")
-        .select("*", { count: "exact", head: true })
-        .eq("session_id", s.id);
       setSessionFilmCount(filmCount ?? 0);
+      setGroupSwipeCount(stats.totalSwipes);
+      setGroupLikeCount(stats.totalLikes);
+      filmLikesRef.current = stats.filmLikes;
+      setFilmLikes(stats.filmLikes);
 
-      // ── Snapshot restore: instant return from + / results pages ───────────
-      const savedQueue = sessionStorage.getItem(`filmclub-queue-${code}`);
-      const savedIndex = sessionStorage.getItem(`filmclub-index-${code}`);
-      if (savedQueue && savedIndex) {
-        setFullQueueTagged(() => JSON.parse(savedQueue) as Film[], "snapshot-restore");
-        advanceIndex(parseInt(savedIndex, 10));
-        // Restore phase-scoring state in parallel with silent background refresh
-        const stats = await getSessionSwipeStats(s.id);
-        setGroupSwipeCount(stats.totalSwipes);
-        setGroupLikeCount(stats.totalLikes);
-        filmLikesRef.current = stats.filmLikes;
-        setFilmLikes(stats.filmLikes);
+      if (hasSnapshotRestore) {
+        // ── Snapshot restore: instant return from + / results pages ─────────
+        setFullQueueTagged(() => JSON.parse(savedQueue!) as Film[], "snapshot-restore");
+        advanceIndex(parseInt(savedIndex!, 10));
         // Rebuild personal swipe history — the silent loadFilms below runs in
         // non-initial mode and won't touch this ref, so without an explicit
         // rebuild here it would stay empty and break the cross-slot propagation
         // guard + the Layer-2 end-of-deck filter.
-        const [mySwipedSnap, myLikesSnap] = await Promise.all([
-          getMySwipes(s.id, pid),
-          getMyLikes(s.id, pid),
-        ]);
         const history = new Map<string, boolean>();
         for (const id of mySwipedSnap) history.set(id, myLikesSnap.has(id));
         mySwipeHistoryRef.current = history;
@@ -816,13 +831,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
       // ── First visit: full init with loading screen ─────────────────────────
       await loadFilms(s, pid, true);
-
-      // Initialise phase-scoring counters and per-film like map from existing swipe history
-      const stats = await getSessionSwipeStats(s.id);
-      setGroupSwipeCount(stats.totalSwipes);
-      setGroupLikeCount(stats.totalLikes);
-      filmLikesRef.current = stats.filmLikes;
-      setFilmLikes(stats.filmLikes);
 
       // Show a one-time "how it works" card to users who joined after the session started
       if (s.started && !sessionStorage.getItem(`filmclub-hints-${code}`)) {
