@@ -3,7 +3,7 @@
 
 import { Session } from "@/types";
 import { discoverFilmsByProviders, getTrendingFilms, getTopRatedFilms, getProviderList } from "./tmdb";
-import { addFilmToSession } from "./session";
+import { addFilmToSession, addCachedFilmToSession, bulkLookupFilmIds } from "./session";
 import { getServicesForRegion } from "./streaming";
 import { supabase } from "./supabase";
 
@@ -85,7 +85,7 @@ export async function seedHomePool(s: Session): Promise<void> {
     if (cached && cached.length > 0) {
       const initial = cached.slice(0, 10);
       console.log("[seed] cache hit —", cached.length, "films available, seeding first", initial.length);
-      await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null, s.region ?? "AU")));
+      await seedFilmsBulk(s, initial.map((m) => m.id));
       return;
     }
     console.log("[seed] cache miss — falling back to live TMDB");
@@ -101,7 +101,32 @@ export async function seedHomePool(s: Session): Promise<void> {
     seen.add(m.id);
     return true;
   }).slice(0, 10);
-  await Promise.all(initial.map((m) => addFilmToSession(s.id, m.id, null, s.region ?? "AU")));
+  await seedFilmsBulk(s, initial.map((m) => m.id));
+}
+
+// #133: bulk-fetch films table before per-film upsertFilm chains.
+// Cache hits (film already in films table) skip the slow upsertFilm SELECT
+// and go straight to session_films upsert via addCachedFilmToSession.
+// Cache misses fall through to the original addFilmToSession (which does
+// upsertFilm: SELECT, then fetch TMDB detail + providers, then INSERT).
+//
+// Cache-hit-heavy case (common after refresh-pool-cache cron runs):
+// drops from ~20 round-trips to ~2 (one bulk SELECT + parallel upserts).
+async function seedFilmsBulk(s: Session, tmdbIds: number[]): Promise<void> {
+  if (tmdbIds.length === 0) return;
+  const region = s.region ?? "AU";
+  const existing = await bulkLookupFilmIds(tmdbIds);
+  const hits: string[] = [];
+  const misses: number[] = [];
+  for (const tmdbId of tmdbIds) {
+    const filmId = existing.get(tmdbId);
+    if (filmId) hits.push(filmId);
+    else misses.push(tmdbId);
+  }
+  await Promise.all([
+    ...hits.map((filmId) => addCachedFilmToSession(s.id, filmId)),
+    ...misses.map((tmdbId) => addFilmToSession(s.id, tmdbId, null, region)),
+  ]);
 }
 
 // Background expander — runs after the lobby is shown.

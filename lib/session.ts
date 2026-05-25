@@ -276,6 +276,34 @@ export async function upsertFilm(tmdbId: number, region: Region = "AU"): Promise
   return dbToFilm(data);
 }
 
+// Bulk lookup of cached films by tmdb_id. Returns a Map of tmdb_id → film.id
+// so seed paths can skip the per-film upsertFilm SELECT for cache hits (#133).
+// Cache-miss tmdb_ids are absent from the map; callers fall back to upsertFilm.
+export async function bulkLookupFilmIds(tmdbIds: number[]): Promise<Map<number, string>> {
+  if (tmdbIds.length === 0) return new Map();
+  const { data } = await supabase
+    .from("films")
+    .select("id, tmdb_id")
+    .in("tmdb_id", tmdbIds);
+  const map = new Map<number, string>();
+  for (const row of (data ?? []) as { id: string; tmdb_id: number }[]) {
+    map.set(row.tmdb_id, row.id);
+  }
+  return map;
+}
+
+// Seeder-path session_films upsert for a film already known to exist (#133).
+// Mirrors the no-participantId branch of addFilmToSession but skips upsertFilm.
+export async function addCachedFilmToSession(sessionId: string, filmId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("session_films")
+    .upsert(
+      { session_id: sessionId, film_id: filmId, added_by: null },
+      { onConflict: "session_id,film_id", ignoreDuplicates: true }
+    );
+  return !error;
+}
+
 export async function addFilmToSession(
   sessionId: string,
   tmdbId: number,
