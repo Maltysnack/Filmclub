@@ -224,40 +224,25 @@ export async function upsertFilm(tmdbId: number, region: Region = "AU"): Promise
       !cached.imdb_id || // backfill imdb_id for films cached before this field existed
       cached.collection_id == null; // backfill collection_id so franchise blocking works
     if (needsRefresh) {
-      const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY ?? "";
-      // Fetch detail when imdb_id or collection info is missing.
-      // OMDb rating is NOT fetched here — that's handled by the daily
-      // /api/cron/backfill-ratings cron so seeding stays fast (#69).
-      // allSettled so a transient TMDB blip on one fetch doesn't drop the other.
-      const needsDetail = !cached.imdb_id || cached.collection_id == null;
-      const settled = await Promise.allSettled([
-        fetchWatchProviders(tmdbId, apiKey, region),
-        needsDetail ? getFilmDetail(tmdbId) : Promise.resolve(null),
-      ]);
-      const fresh = settled[0].status === "fulfilled" ? settled[0].value : [];
-      const detail = settled[1].status === "fulfilled" ? settled[1].value : null;
-      const imdbId = detail?.imdb_id ?? cached.imdb_id ?? null;
-      // Only overwrite providers if we got a non-empty result — guards against
-      // transient API failures (e.g. poor connectivity overseas) clobbering
-      // previously good data stored for another session's participants.
-      const providerUpdate = fresh.length > 0 || providers.length === 0 ? fresh : providers;
-      const updates: Record<string, unknown> = { watch_providers_au: providerUpdate };
-      if (imdbId) updates.imdb_id = imdbId;
-      if (detail) {
-        // Use 0 as the "checked, no collection" sentinel so future encounters
-        // don't re-trigger refresh. Matches the pattern used by the swipe
-        // handler's async backfill in app/session/[code]/page.tsx.
-        updates.collection_id = detail.belongs_to_collection?.id ?? 0;
-        updates.collection_name = detail.belongs_to_collection?.name ?? null;
+      // Refresh routes through /api/films/refresh because anon no longer has
+      // UPDATE permission on films (#108). The route uses a service-role
+      // client to write. On failure, fall through to the stale cached row
+      // rather than blocking the session — providers may stay stale until
+      // the next refresh-pool-cache cron run, which is acceptable.
+      try {
+        const res = await fetch("/api/films/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tmdbId, region }),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          return dbToFilm(updated as DbFilm);
+        }
+      } catch {
+        // network or parsing failure — fall through to cached
       }
-      await supabase.from("films").update(updates).eq("id", cached.id);
-      return {
-        ...dbToFilm(cached),
-        watch_providers_au: providerUpdate,
-        imdb_id: imdbId,
-        collection_id: detail ? (detail.belongs_to_collection?.id ?? 0) : cached.collection_id,
-        collection_name: detail ? (detail.belongs_to_collection?.name ?? null) : cached.collection_name,
-      };
+      return dbToFilm(cached);
     }
     // OMDb rating backfill removed from the hot path (#69). The daily cron
     // /api/cron/backfill-ratings handles films with imdb_id but no rating.
