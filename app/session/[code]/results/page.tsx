@@ -133,7 +133,14 @@ export default function ResultsPage({ params }: { params: Promise<{ code: string
         event: "INSERT", schema: "public", table: "shortlist_rounds",
         filter: `session_id=eq.${session.id}`,
       }, () => setShowShortlist(true))
-      .on("broadcast", { event: "shortlist_open" }, () => setShowShortlist(true))
+      .on("broadcast", { event: "shortlist_open" }, async () => {
+        // #49: verify against DB before acting on the broadcast — a malicious
+        // participant could spoof shortlist_open by subscribing to the same
+        // channel name. Only open if a real, non-complete round exists.
+        // Cost: one DB read per broadcast (rare event, not hot path).
+        const round = await getCurrentRound(session.id);
+        if (round && round.phase !== "complete") setShowShortlist(true);
+      })
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "swipes",
         filter: `session_id=eq.${session.id}`,

@@ -1021,7 +1021,13 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     if (!session) return;
     const ch = supabase
       .channel(`wheel:${session.id}`)
-      .on("broadcast", { event: "spin" }, ({ payload }) => {
+      .on("broadcast", { event: "spin" }, async ({ payload }) => {
+        // #49: verify against DB before applying spin payload. The host
+        // writes phase=spinning + winner_id to shortlist_rounds before
+        // broadcasting; a spoofed broadcast wouldn't have that DB state.
+        // Drop the broadcast if the active round isn't actually spinning.
+        const round = await getCurrentRound(session.id);
+        if (!round || round.phase !== "spinning") return;
         setWheelFilms(payload.films as Match[]);
         setWheelWinnerId(payload.winnerId as string);
       })
