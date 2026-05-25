@@ -386,8 +386,14 @@ export default function Home() {
           <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
             style={{ background: "var(--surface)" }}>
             <div>
-              <p className="text-sm font-semibold mb-3" style={{ color: "var(--text)" }}>
+              <p className="text-sm font-semibold mb-1" style={{ color: "var(--text)" }}>
                 Start session?
+              </p>
+              {/* #118: explicit summary line so users can verify region + count
+                  before committing. Region is the one users most often have
+                  wrong; surfacing it here is the last chance to fix. */}
+              <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+                Starting with {selectedServices.length} service{selectedServices.length === 1 ? "" : "s"} in {REGION_OPTIONS.find(r => r.value === region)?.flag} {REGION_OPTIONS.find(r => r.value === region)?.abbrev ?? region}
               </p>
               {/* Show selected service logos so users can confirm / spot omissions */}
               <div className="flex gap-2 flex-wrap">
