@@ -162,7 +162,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [showLateModal, setShowLateModal] = useState(false);
-  const [showShortlistConfirm, setShowShortlistConfirm] = useState(false);
+
   const [autoVoteCountdown, setAutoVoteCountdown] = useState<number | null>(null);
   const autoVoteFiredRef = useRef(false);
   // Set of TMDB collection IDs the user has swiped no on — hides remaining
@@ -1762,14 +1762,15 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
           </div>
         </div>
         <div className="flex-1" />
-        {/* Centre: Shortlist Vote — flex spacers keep it centred in the gap */}
-        {isHost && session?.status !== "closed" && !allDone && filmLikes.size >= 2 && (
-          <button
-            onClick={() => setShowShortlistConfirm(true)}
-            className="shrink-0 whitespace-nowrap px-5 py-1.5 rounded-lg text-xs font-semibold"
-            style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-            Shortlist Vote
-          </button>
+        {/* Centre: auto-vote countdown pill, visible in the last 60 s */}
+        {session?.started && autoVoteCountdown !== null && autoVoteCountdown <= COUNTDOWN_VISIBLE_BELOW_MS && !showShortlist && session.status !== "closed" && (
+          <div
+            className="shrink-0 whitespace-nowrap px-3 py-1 rounded-full text-xs font-semibold tabular-nums"
+            style={{ background: "var(--surface-2)", color: autoVoteCountdown <= 0 ? "var(--text-muted)" : "var(--text)" }}>
+            {autoVoteCountdown > 0
+              ? `Vote in ${Math.floor(autoVoteCountdown / 60_000)}:${String(Math.floor((autoVoteCountdown % 60_000) / 1_000)).padStart(2, "0")}`
+              : "Vote soon…"}
+          </div>
         )}
         <div className="flex-1" />
         {/* Right */}
@@ -2080,43 +2081,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       </div>
     )}
 
-    {/* ── Shortlist Vote confirmation ───────────────────────────────────── */}
-    {showShortlistConfirm && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
-        style={{ background: "rgba(12,12,14,0.75)", backdropFilter: "blur(4px)" }}>
-        <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
-          style={{ background: "var(--surface)" }}>
-          <div>
-            <p className="text-sm font-semibold mb-1.5" style={{ color: "var(--text)" }}>
-              Start a shortlist vote?
-            </p>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              All films with at least one like will go to a group vote.
-            </p>
-            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-              Live swiping ends.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowShortlistConfirm(false)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium"
-              style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                setShowShortlistConfirm(false);
-                const likedIds = [...filmLikes.keys()];
-                openShortlist(session!.id, likedIds.length > 0 ? likedIds : []);
-              }}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-              style={{ background: "var(--accent)", color: "#0c0c0e" }}>
-              Start Vote
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
     </div>
   );
 }
