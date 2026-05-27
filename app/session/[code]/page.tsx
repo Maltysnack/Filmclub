@@ -438,13 +438,16 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
     const startedAtMs = new Date(session.started_at).getTime();
     const deadline = autoShortlistDeadline(participants.length, startedAtMs);
+    // swipeFloor: not reset on tiebreaker. Round 1 swipes carry over, so swipesMet
+    // is always true in tiebreaker rounds and the timer fires purely on deadline.
     const swipeFloor = participants.length * MIN_SWIPES_PER_PERSON;
 
     const tick = () => {
-      const remaining = deadline - Date.now();
+      const now = Date.now();
+      const remaining = deadline - now;
       setAutoVoteCountdown(remaining);
 
-      const timeUp = Date.now() >= deadline;
+      const timeUp = remaining <= 0;
       const swipesMet = groupSwipeCountRef.current >= swipeFloor;
 
       if (timeUp && swipesMet && !autoVoteFiredRef.current) {
