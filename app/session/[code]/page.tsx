@@ -163,6 +163,8 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [showLateModal, setShowLateModal] = useState(false);
   const [showShortlistConfirm, setShowShortlistConfirm] = useState(false);
+  const [autoVoteCountdown, setAutoVoteCountdown] = useState<number | null>(null);
+  const autoVoteFiredRef = useRef(false);
   // Set of TMDB collection IDs the user has swiped no on — hides remaining
   // films from that franchise unless another participant has already liked one.
   const [blockedCollections, setBlockedCollections] = useState<Set<number>>(() => {
@@ -203,6 +205,18 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // group has surveyed enough options. During this window, matches still get
   // recorded; they're resolved when the timer expires.
   const MIN_SESSION_MS = 30_000;
+  // Auto-vote timer: both conditions must be met before firing.
+  const MIN_SWIPES_PER_PERSON = 8;
+  const BASE_TIMER_MS = 3 * 60 * 1000;         // 3 min for a solo session
+  const PER_PERSON_MS = 60 * 1000;              // +1 min per additional participant
+  const MAX_TIMER_MS = 5 * 60 * 1000;           // hard cap regardless of group size
+  const COUNTDOWN_VISIBLE_BELOW_MS = 60_000;    // show pill in the last 60 s
+
+  function autoShortlistDeadline(groupSize: number, startedAtMs: number): number {
+    const duration = Math.min(BASE_TIMER_MS + (groupSize - 1) * PER_PERSON_MS, MAX_TIMER_MS);
+    return startedAtMs + duration;
+  }
+
   // Captured locally per client when this device first sees session.started flip
   // to true. Slight per-client variation (~100ms over realtime) is fine.
   const startedAtRef = useRef<number | null>(null);
@@ -406,6 +420,40 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
+  // Auto-vote timer: fires a shortlist vote once both conditions are met.
+  // Any client can fire; the DB unique constraint on shortlist_rounds prevents
+  // duplicate inserts from a concurrent race.
+  useEffect(() => {
+    if (
+      !session?.started ||
+      !session.started_at ||
+      showShortlist ||
+      session.status === "closed"
+    ) return;
+
+    const startedAtMs = new Date(session.started_at).getTime();
+    const deadline = autoShortlistDeadline(participants.length, startedAtMs);
+    const swipeFloor = participants.length * MIN_SWIPES_PER_PERSON;
+
+    const tick = () => {
+      const remaining = deadline - Date.now();
+      setAutoVoteCountdown(remaining);
+
+      const timeUp = Date.now() >= deadline;
+      const swipesMet = groupSwipeCountRef.current >= swipeFloor;
+
+      if (timeUp && swipesMet && !autoVoteFiredRef.current) {
+        autoVoteFiredRef.current = true;
+        openShortlist(session.id, [...filmLikesRef.current.keys()]);
+      }
+    };
+
+    tick(); // evaluate immediately on mount/session change
+    const intervalId = setInterval(tick, 1_000);
+    return () => clearInterval(intervalId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.started, session?.started_at, session?.id, session?.status, participants.length, showShortlist]);
+
   useEffect(() => {
     if (!session) return;
     // Check if a round is already active (e.g. rejoining mid-shortlist)
@@ -469,6 +517,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // groupSwipeCount / groupLikeCount track ALL participants' swipes for this session.
   // filmLikes maps filmId → participantIds who liked it (for phase 2/3 card display).
   const [groupSwipeCount, setGroupSwipeCount] = useState(0);
+  const groupSwipeCountRef = useRef(0); // sync mirror for interval reads
   const [groupLikeCount, setGroupLikeCount] = useState(0);
   const [filmLikes, setFilmLikes] = useState<Map<string, string[]>>(new Map());
 
@@ -808,6 +857,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       setParticipant(allParticipants.find((p) => p.id === pid) ?? null);
       setSessionFilmCount(filmCount ?? 0);
       setGroupSwipeCount(stats.totalSwipes);
+      groupSwipeCountRef.current = stats.totalSwipes;
       setGroupLikeCount(stats.totalLikes);
       filmLikesRef.current = stats.filmLikes;
       setFilmLikes(stats.filmLikes);
@@ -877,6 +927,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
           // Update group phase-scoring counters
           setGroupSwipeCount((c) => c + 1);
+          groupSwipeCountRef.current += 1;
           if (newSwipe.liked) {
             setGroupLikeCount((c) => c + 1);
             // Update per-film like map — write ref synchronously so handleSwipe always
