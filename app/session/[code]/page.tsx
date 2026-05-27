@@ -24,7 +24,7 @@ import { getCurrentRound } from "@/lib/shortlist";
 import { supabase } from "@/lib/supabase";
 import { participantColor, getCharacterFilm } from "@/lib/names";
 import { Film, Session, Participant, Match } from "@/types";
-import { Search, Trophy, Play, Clock, Zap, Crown, Layers } from "lucide-react";
+import { Search, Trophy, Play, Clock, Zap, Layers, Timer } from "lucide-react";
 import { CodeDisplay } from "@/components/CodeBox";
 import SpinWheel from "@/components/SpinWheel";
 import ShortlistOverlay from "@/components/ShortlistOverlay";
@@ -1586,11 +1586,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
                 <span className="text-xs font-medium" style={{ color: "var(--text)" }}>Everyone swipes right is an instant match</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="w-4 shrink-0 text-center text-[10px] font-bold" style={{ color: "var(--accent)" }}>OR</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="shrink-0" style={{ color: "var(--accent)" }}><Crown size={16} /></span>
-                <span className="text-xs font-medium" style={{ color: "var(--text)" }}>{hostParticipant?.name ?? "Host"} can call a shortlist vote at any time</span>
+                <span className="shrink-0" style={{ color: "var(--accent)" }}><Timer size={16} /></span>
+                <span className="text-xs font-medium" style={{ color: "var(--text)" }}>
+                  {"You have "}
+                  {participants.length <= 1 ? "3" : participants.length === 2 ? "4" : "5"}
+                  {" minutes. If no match, a vote picks the winner."}
+                </span>
               </div>
             </div>
 
@@ -1992,9 +1993,9 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
       <div className="h-24 shrink-0" />
     </div>
 
-    {/* ShortlistOverlay during swipe phase — the version in the matchList block only
+    {/* ShortlistOverlay during swipe phase. The version in the matchList block only
         renders on the tie/match screen. This one covers the active swiping phase so
-        the host can trigger a vote before any unanimous match has occurred. */}
+        the auto-vote timer can trigger a vote before any unanimous match has occurred. */}
     {showShortlist && session && shortlistData && matchList.length === 0 && (
       participants.length === 1 ? (
         <SinglePlayerVoteOverlay
@@ -2063,12 +2064,11 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
               <span className="text-xs font-medium" style={{ color: "var(--text)" }}>Everyone swipes right → instant match</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="w-4 shrink-0 text-center text-[10px] font-bold" style={{ color: "var(--accent)" }}>OR</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="shrink-0" style={{ color: "var(--accent)" }}><Crown size={16} /></span>
+              <span className="shrink-0" style={{ color: "var(--accent)" }}><Timer size={16} /></span>
               <span className="text-xs font-medium" style={{ color: "var(--text)" }}>
-                {participants[0]?.name ?? "Host"} can call a shortlist vote at any time
+                {"You have "}
+                {participants.length <= 1 ? "3" : participants.length === 2 ? "4" : "5"}
+                {" minutes. If no match, a vote picks the winner."}
               </span>
             </div>
           </div>
