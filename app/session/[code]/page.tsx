@@ -165,6 +165,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
 
   const [autoVoteCountdown, setAutoVoteCountdown] = useState<number | null>(null);
   const autoVoteFiredRef = useRef(false);
+  const lastStartedAtRef = useRef<string | null>(null);
   // Set of TMDB collection IDs the user has swiped no on — hides remaining
   // films from that franchise unless another participant has already liked one.
   const [blockedCollections, setBlockedCollections] = useState<Set<number>>(() => {
@@ -424,7 +425,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Any client can fire; the DB unique constraint on shortlist_rounds prevents
   // duplicate inserts from a concurrent race.
   useEffect(() => {
-    autoVoteFiredRef.current = false;
+    if (session?.started_at !== lastStartedAtRef.current) {
+      autoVoteFiredRef.current = false;
+      lastStartedAtRef.current = session?.started_at ?? null;
+    }
     if (
       !session?.started ||
       !session.started_at ||
