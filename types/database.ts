@@ -342,6 +342,7 @@ export type Database = {
           mode: string
           region: string
           started: boolean | null
+          started_at: string | null
           status: string | null
           streaming_services: string[] | null
           threshold: number | null
@@ -355,6 +356,7 @@ export type Database = {
           mode: string
           region?: string
           started?: boolean | null
+          started_at?: string | null
           status?: string | null
           streaming_services?: string[] | null
           threshold?: number | null
@@ -368,6 +370,7 @@ export type Database = {
           mode?: string
           region?: string
           started?: boolean | null
+          started_at?: string | null
           status?: string | null
           streaming_services?: string[] | null
           threshold?: number | null

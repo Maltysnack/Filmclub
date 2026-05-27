@@ -23,6 +23,7 @@ function dbToSession(row: DbSession): Session {
     status: (row.status ?? "active") as SessionStatus,
     watch_mode: (row.watch_mode ?? "home") as WatchMode,
     started: row.started ?? false,
+    started_at: row.started_at ?? null,
     streaming_services: row.streaming_services ?? [],
     threshold: row.threshold ?? 0,
     region: (row.region ?? "AU") as Region,
@@ -156,7 +157,7 @@ export async function removeParticipant(sessionId: string, participantId: string
 }
 
 export async function startSession(sessionId: string) {
-  await supabase.from("sessions").update({ started: true }).eq("id", sessionId);
+  await supabase.from("sessions").update({ started: true, started_at: new Date().toISOString() }).eq("id", sessionId);
 }
 
 export async function startTiebreaker(sessionId: string, filmIds: string[]) {

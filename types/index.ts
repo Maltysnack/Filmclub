@@ -11,6 +11,7 @@ export interface Session {
   threshold: number;
   status: SessionStatus;
   started: boolean;
+  started_at: string | null;
   watch_mode: WatchMode;
   streaming_services: string[];
   region: Region;
