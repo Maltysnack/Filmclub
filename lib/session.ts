@@ -157,7 +157,8 @@ export async function removeParticipant(sessionId: string, participantId: string
 }
 
 export async function startSession(sessionId: string) {
-  await supabase.from("sessions").update({ started: true, started_at: new Date().toISOString() }).eq("id", sessionId);
+  const { error } = await supabase.from("sessions").update({ started: true, started_at: new Date().toISOString() }).eq("id", sessionId);
+  if (error) throw error;
 }
 
 export async function startTiebreaker(sessionId: string, filmIds: string[]) {
@@ -166,6 +167,7 @@ export async function startTiebreaker(sessionId: string, filmIds: string[]) {
     supabase.from("sessions").update({
       status: "active",
       started: true,
+      started_at: new Date().toISOString(),
       tiebreaker_film_ids: filmIds,
     }).eq("id", sessionId),
     supabase.from("matches").delete().eq("session_id", sessionId),
