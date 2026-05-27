@@ -424,6 +424,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   // Any client can fire; the DB unique constraint on shortlist_rounds prevents
   // duplicate inserts from a concurrent race.
   useEffect(() => {
+    autoVoteFiredRef.current = false;
     if (
       !session?.started ||
       !session.started_at ||
@@ -1417,9 +1418,10 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     // this, the grace-period effect's setTimeout wouldn't be scheduled until
     // the next render flushes session.started=true, which is too late for any
     // matches detected in the same tick.
+    const nowIso = new Date().toISOString();
     startedAtRef.current = Date.now();
     await startSession(session.id);
-    setSession((s) => s ? { ...s, started: true } : s);
+    setSession((s) => s ? { ...s, started: true, started_at: nowIso } : s);
 
     if (session.mode === "live" && participants.length > 1) {
       // Run checkAllMatches to commit any pre-Start matches into the matches
