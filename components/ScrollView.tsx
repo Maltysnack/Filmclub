@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Film } from "@/types";
 import { posterUrl } from "@/lib/tmdb";
 import { getService } from "@/lib/streaming";
-import { Heart, Info } from "lucide-react";
+import { Heart } from "lucide-react";
 import { Participant } from "@/types";
 import { participantColor } from "@/lib/names";
 
@@ -366,13 +366,6 @@ function FilmScrollCard({
               )}
             </div>
           </div>
-          <button
-            className="pointer-events-auto shrink-0 p-2 rounded-full"
-            style={{ background: "rgba(28,28,32,0.8)", color: "var(--text-muted)" }}
-            onClick={(e) => { e.stopPropagation(); onInfo(); }}
-          >
-            <Info size={18} />
-          </button>
         </div>
       </div>
     </div>

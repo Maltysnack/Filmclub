@@ -102,6 +102,7 @@ export default function FilmInfoOverlay({
               />
               {/* X button — only one on mobile, lives here in the poster */}
               <button
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={onClose}
                 className="absolute top-4 right-4 p-2 rounded-full"
                 style={{ background: "rgba(0,0,0,0.55)", color: "var(--text)" }}

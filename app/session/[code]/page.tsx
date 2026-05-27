@@ -1773,11 +1773,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
         {/* Centre: auto-vote countdown pill, visible in the last 60 s */}
         {session?.started && autoVoteCountdown !== null && autoVoteCountdown <= COUNTDOWN_VISIBLE_BELOW_MS && !showShortlist && session.status !== "closed" && (
           <div
-            className="shrink-0 whitespace-nowrap px-3 py-1 rounded-full text-xs font-semibold tabular-nums"
-            style={{ background: "var(--surface-2)", color: autoVoteCountdown <= 0 ? "var(--text-muted)" : "var(--text)" }}>
+            className="shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-semibold tabular-nums"
+            style={{ background: "var(--surface-2)", color: autoVoteCountdown <= 0 ? "var(--text-muted)" : "var(--accent)" }}>
+            <Timer size={13} />
             {autoVoteCountdown > 0
-              ? `Vote in ${Math.floor(autoVoteCountdown / 60_000)}:${String(Math.floor((autoVoteCountdown % 60_000) / 1_000)).padStart(2, "0")}`
-              : "Vote soon…"}
+              ? `${Math.floor(autoVoteCountdown / 60_000)}:${String(Math.floor((autoVoteCountdown % 60_000) / 1_000)).padStart(2, "0")}`
+              : "0:00"}
           </div>
         )}
         <div className="flex-1" />

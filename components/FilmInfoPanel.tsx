@@ -89,9 +89,10 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, sessio
                   if (!svc) return null;
                   const lp = p.logoPath ?? (svc as typeof svc & { tmdbLogoPath: string | null }).tmdbLogoPath;
                   return lp ? (
-                    <Image key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${lp}`}
+                    <img key={p.serviceId} src={`https://image.tmdb.org/t/p/w45${lp}`}
                       alt={svc.name} title={svc.name}
-                      width={32} height={32} className="w-7 h-7 rounded-lg object-cover" />
+                      className="w-7 h-7 rounded-lg object-cover"
+                      onError={e => { e.currentTarget.style.display = "none"; }} />
                   ) : (
                     <span key={p.serviceId} className="text-xs px-2 py-0.5 rounded font-bold"
                       style={{ background: `${svc.color}25`, color: svc.color, border: `1px solid ${svc.color}50` }}>
@@ -120,12 +121,15 @@ export default function FilmInfoPanel({ film, onClose, onLike, onDislike, sessio
             <div className="space-y-1.5">
               {film.film_cast.slice(0, 6).map((member, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-medium"
+                  <div className="relative w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-xs font-medium"
                     style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
-                    {member.profile_path
-                      ? <Image src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
-                          alt={member.name} width={24} height={24} className="w-full h-full object-cover" />
-                      : member.name.charAt(0)}
+                    {member.name.charAt(0)}
+                    {member.profile_path && (
+                      <img src={`https://image.tmdb.org/t/p/w45${member.profile_path}`}
+                        alt={member.name}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={e => { e.currentTarget.style.display = "none"; }} />
+                    )}
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs truncate" style={{ color: "var(--text)" }}>{member.name}</p>
