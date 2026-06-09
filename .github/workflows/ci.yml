@@ -17,3 +17,27 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          # Public, client-side values (real, stored as repo secrets).
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_TMDB_API_KEY: ${{ secrets.NEXT_PUBLIC_TMDB_API_KEY }}
+          # Server-only vars: these routes are dynamic and never execute at build,
+          # but their module-scope clients (Resend, Supabase service role) construct
+          # on import. Non-empty placeholders satisfy the constructors; the build
+          # makes no real calls, so real secrets are not needed to gate the build.
+          RESEND_API_KEY: re_build_placeholder
+          SUPABASE_SERVICE_ROLE_KEY: build_placeholder
+          OMDB_API_KEY: build_placeholder
+          CRON_SECRET: build_placeholder
