@@ -1,14 +1,30 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
+import { getPublishableCombos, getPublishableRegions } from "@/lib/content";
 
-// Static routes for now. Phase 1 adds programmatic /watch/* content pages here.
-export default function sitemap(): MetadataRoute.Sitemap {
+export const revalidate = 86400;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const now = new Date();
+  const [combos, regions] = await Promise.all([
+    getPublishableCombos(),
+    getPublishableRegions(),
+  ]);
+
   return [
-    {
-      url: SITE_URL,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 1,
-    },
+    { url: SITE_URL, lastModified: now, changeFrequency: "weekly", priority: 1 },
+    { url: `${SITE_URL}/watch`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
+    ...regions.map((r) => ({
+      url: `${SITE_URL}/watch/${r.toLowerCase()}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
+    ...combos.map((c) => ({
+      url: `${SITE_URL}/watch/${c.region.toLowerCase()}/${c.service}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.6,
+    })),
   ];
 }
