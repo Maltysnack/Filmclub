@@ -5,6 +5,7 @@ import Link from "next/link";
 import Cast from "@/components/Cast";
 import Deck from "@/components/Deck";
 import Decider from "@/components/Decider";
+import LeaveLogo from "@/components/LeaveLogo";
 import Lobby from "@/components/Lobby";
 import Reveal from "@/components/Reveal";
 import { useRoom } from "@/hooks/useRoom";
@@ -62,19 +63,21 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   if (error) return <Notice title="Can't join" body={error} />;
   if (!session || !me) return <main className="flex min-h-dvh items-center justify-center"><p className="label">Loading</p></main>;
 
-  if (session.status === "lobby") return <Lobby session={session} people={people} me={me} />;
+  const leave = <LeaveLogo sessionId={session.id} code={session.code} />;
+
+  if (session.status === "lobby") return <>{leave}<Lobby session={session} people={people} me={me} /></>;
 
   if (!castDismissed && sessionStorage.getItem(`cast-${session.id}`) !== "1") {
-    return <Cast me={me} people={people} onDone={() => {
+    return <>{leave}<Cast me={me} people={people} onDone={() => {
       sessionStorage.setItem(`cast-${session.id}`, "1");
       setCastDismissed(true);
-    }} />;
+    }} /></>;
   }
 
-  if (session.status === "swiping" && deck) return <Deck session={session} people={people} me={me} deck={deck} swipe={swipe} />;
+  if (session.status === "swiping" && deck) return <>{leave}<Deck session={session} people={people} me={me} deck={deck} swipe={swipe} /></>;
   if (session.status === "deciding" && round && pool.length) {
-    return <Decider session={session} round={round} marks={marks} pool={pool} people={people} me={me} />;
+    return <>{leave}<Decider session={session} round={round} marks={marks} pool={pool} people={people} me={me} /></>;
   }
-  if (session.status === "closed" && pool.length) return <Reveal key={session.game} session={session} pool={pool} people={people} me={me} />;
+  if (session.status === "closed" && pool.length) return <>{leave}<Reveal key={session.game} session={session} pool={pool} people={people} me={me} /></>;
   return <main className="flex min-h-dvh items-center justify-center"><p className="label">Loading</p></main>;
 }

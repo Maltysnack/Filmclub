@@ -44,8 +44,13 @@ function must<T>(result: { data: T | null; error: { message: string } | null }):
   return result.data as T;
 }
 
-async function peopleIn(sessionId: string): Promise<Participant[]> {
+// Everyone who has ever joined, so a returning person keeps their character.
+async function everyone(sessionId: string): Promise<Participant[]> {
   return must(await db().from("participants").select("*").eq("session_id", sessionId).order("joined_at"));
+}
+
+async function peopleIn(sessionId: string): Promise<Participant[]> {
+  return (await everyone(sessionId)).filter((p) => !p.left_session);
 }
 
 async function poolOf(sessionId: string): Promise<Film[]> {
@@ -215,15 +220,19 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     const session = must(await db().from("sessions").select("*").eq("code", code).maybeSingle()) as SessionRow | null;
     if (!session) throw new Refused("No session with that code.", 404);
     if (session.banned_users.includes(user)) throw new Refused("You were removed from this session.", 403);
-    const people = await peopleIn(session.id);
-    if (people.some((p) => p.user_id === user)) return { code };
+    const all = await everyone(session.id);
+    const known = all.find((p) => p.user_id === user);
+    if (known) {
+      if (known.left_session) must(await db().from("participants").update({ left_session: false }).eq("id", known.id));
+      return { code };
+    }
     if (session.status === "deciding" || session.status === "closed") throw new Refused("This round is already deciding.", 409);
-    if (people.length >= MAX_PEOPLE) throw new Refused("This session is full.", 409);
-    const taken = people.map((p) => p.name);
+    if (all.filter((p) => !p.left_session).length >= MAX_PEOPLE) throw new Refused("This session is full.", 409);
+    const taken = all.map((p) => p.name);
     for (let attempt = 0; attempt < 5; attempt++) {
       const { error } = await db().from("participants").insert({ session_id: session.id, user_id: user, name: nextName(session.character_set, taken) });
       if (!error) return { code };
-      taken.push(...(await peopleIn(session.id)).map((p) => p.name));
+      taken.push(...(await everyone(session.id)).map((p) => p.name));
     }
     throw new Error("Could not join");
   },
@@ -305,6 +314,18 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
       must(await db().from("sessions").update({ banned_users: [...session.banned_users, target.user_id] }).eq("id", session.id));
     }
     await advance(session, people.filter((p) => p.id !== target.id));
+    return {};
+  },
+
+  async leave(user, body) {
+    const session = await loadSession(body.sessionId);
+    const { me, people } = await member(session.id, user);
+    must(await db().from("participants").update({ left_session: true, ready: false, rematch: false, is_host: false }).eq("id", me.id));
+    const remaining = people.filter((p) => p.id !== me.id);
+    const next = remaining.find((p) => !p.is_bot);
+    if (!next) return {};
+    if (me.is_host) must(await db().from("participants").update({ is_host: true }).eq("id", next.id));
+    await advance(session, remaining);
     return {};
   },
 

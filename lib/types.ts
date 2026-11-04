@@ -22,6 +22,7 @@ export interface Participant {
   is_host: boolean;
   ready: boolean;
   rematch: boolean;
+  left_session: boolean;
   joined_at: string;
 }
 

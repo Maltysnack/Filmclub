@@ -12,11 +12,10 @@ export function randomSet(random = Math.random): string {
   return SET_NAMES[Math.floor(random() * SET_NAMES.length)];
 }
 
+// Same story while there's room, then a random character from any other story.
 export function nextName(setName: string, taken: string[], random = Math.random): string {
-  const start = Math.max(SET_NAMES.indexOf(setName), 0);
-  for (let i = 0; i < SET_NAMES.length; i++) {
-    const free = CHARACTER_SETS[SET_NAMES[(start + i) % SET_NAMES.length]].filter((n) => !taken.includes(n));
-    if (free.length) return free[Math.floor(random() * free.length)];
-  }
-  return `Extra ${taken.length + 1}`;
+  const free = (names: string[]) => names.filter((n) => !taken.includes(n));
+  const own = free(CHARACTER_SETS[setName] ?? []);
+  const pool = own.length ? own : free(Object.values(CHARACTER_SETS).flat());
+  return pool.length ? pool[Math.floor(random() * pool.length)] : `Extra ${taken.length + 1}`;
 }

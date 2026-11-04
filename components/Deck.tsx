@@ -96,7 +96,7 @@ export default function Deck({ session, people, me, deck, swipe }: {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (info) return;
+      if (info || document.querySelector("[data-modal]")) return;
       if (e.key === "ArrowLeft") decide(false);
       if (e.key === "ArrowRight") decide(true);
     };
@@ -134,13 +134,11 @@ export default function Deck({ session, people, me, deck, swipe }: {
             <p className="display text-[28px]">That&apos;s your deck. Waiting on the others.</p>
           </div>
         )}
-        <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-2 lg:hidden">
-          {waiting ? <span className="label max-w-[70%] bg-black px-2.5 py-2.5 leading-snug">{waiting}</span> : <span />}
-          <span className="label flex shrink-0 items-center gap-2 bg-black px-2.5 py-2.5">
-            <span className="size-2.5 bg-red" />
-            {clock(left)}
-          </span>
-        </div>
+        <span className="label pointer-events-none absolute right-3 top-3 z-10 flex h-9 items-center gap-2 bg-black px-2.5 lg:hidden">
+          <span className="size-2.5 bg-red" />
+          {clock(left)}
+        </span>
+        {waiting && <span className="label pointer-events-none absolute left-3 top-14 z-10 max-w-[75%] bg-black px-2.5 py-2.5 leading-snug lg:hidden">{waiting}</span>}
       </div>
 
       <div className="relative flex shrink-0 flex-col gap-3 bg-black px-4 pb-5 pt-3 lg:flex-1 lg:justify-center lg:gap-5 lg:px-16">

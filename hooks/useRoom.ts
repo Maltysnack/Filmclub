@@ -42,7 +42,7 @@ export function useRoom(code: string) {
 
     const { data: members } = await db.from("participants").select("*").eq("session_id", current.id).order("joined_at");
     const list = (members ?? []) as Participant[];
-    setPeople(list);
+    setPeople(list.filter((p) => !p.left_session));
 
     const [{ data: swipes }, { data: rounds }] = await Promise.all([
       db.from("swipes").select("participant_id, film_id, liked").eq("session_id", current.id),

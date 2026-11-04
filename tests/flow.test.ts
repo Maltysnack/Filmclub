@@ -55,6 +55,26 @@ describe.runIf(running)("full round", () => {
     const [annP, , eveP] = [ann, ben, eve].map((u) => people.find((p) => p.user_id === u.id));
     expect(new Set(people.map((p) => p.name)).size).toBe(3);
 
+    const names = async () => (await ann.c.from("participants").select("user_id, name, left_session, is_host").eq("session_id", sessionId)).data!;
+    const benName = (await names()).find((p) => p.user_id === ben.id)!.name;
+    expect((await ben.call("leave", { sessionId })).status).toBe(200);
+    expect((await names()).find((p) => p.user_id === ben.id)!.left_session).toBe(true);
+    expect((await ben.call("start", { sessionId })).status).toBe(403);
+    expect((await ben.call("join", { code })).status).toBe(200);
+    const back = (await names()).find((p) => p.user_id === ben.id)!;
+    expect(back).toMatchObject({ name: benName, left_session: false });
+
+    const zoe = await person();
+    expect((await zoe.call("join", { code })).status).toBe(200);
+    expect((await zoe.call("leave", { sessionId })).status).toBe(200);
+    expect((await ann.call("leave", { sessionId })).status).toBe(200);
+    expect((await names()).find((p) => p.user_id === ben.id)!.is_host).toBe(true);
+    expect((await ann.call("join", { code })).status).toBe(200);
+    expect((await names()).find((p) => p.user_id === ann.id)!.is_host).toBe(false);
+    expect((await ben.call("leave", { sessionId })).status).toBe(200);
+    expect((await names()).find((p) => p.user_id === ann.id)!.is_host).toBe(true);
+    expect((await ben.call("join", { code })).status).toBe(200);
+
     expect((await ben.call("start", { sessionId })).status).toBe(403);
     expect((await ben.call("kick", { sessionId, participantId: annP.id })).status).toBe(403);
     expect((await ann.call("kick", { sessionId, participantId: eveP.id })).status).toBe(200);

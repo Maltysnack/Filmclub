@@ -26,6 +26,7 @@ create table participants (
   is_host boolean not null default false,
   ready boolean not null default false,
   rematch boolean not null default false,
+  left_session boolean not null default false,
   joined_at timestamptz not null default now(),
   unique (session_id, user_id),
   unique (session_id, name),
@@ -134,7 +135,7 @@ begin
   if not new.liked then return null; end if;
   select status into current_status from public.sessions where id = new.session_id for update;
   if current_status is distinct from 'swiping' then return null; end if;
-  select count(*) into people from public.participants where session_id = new.session_id;
+  select count(*) into people from public.participants where session_id = new.session_id and not left_session;
   select count(*) into likes from public.swipes
     where session_id = new.session_id and film_id = new.film_id and liked;
   if people >= 2 and likes >= people then

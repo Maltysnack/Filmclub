@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CHARACTER_SETS, nextName } from "@/lib/characters";
 
 describe("nextName", () => {
-  it("stays in one set, then overflows without repeats", () => {
+  it("stays in one set, then takes a random character without repeats", () => {
     const taken: string[] = [];
     const set = "Hogwarts";
     for (let i = 0; i < 12; i++) taken.push(nextName(set, taken));

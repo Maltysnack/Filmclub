@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { room } from "@/lib/supabase";
+import Logo from "./Logo";
 import { posterUrl } from "@/lib/images";
 import { logoUrl, SERVICES } from "@/lib/services";
 
@@ -32,7 +33,10 @@ export default function Home({ posters }: { posters: string[] }) {
     return (
       <main className="column flex h-dvh flex-col pt-14">
         <div className="px-6 pb-6">
-          <button className="label mb-3 h-7" onClick={() => setStep("home")}>Back</button>
+          <div className="mb-3 flex items-center justify-between">
+            <button className="label h-9" onClick={() => setStep("home")}>Back</button>
+            <button aria-label="Filmclub home" onClick={() => setStep("home")}><Logo /></button>
+          </div>
           <h1 className="display text-[38px]">What have<br />you got?</h1>
         </div>
         <div className="grid min-h-0 flex-1 grid-cols-2 gap-px overflow-y-auto border-y border-line bg-line">
@@ -77,7 +81,7 @@ export default function Home({ posters }: { posters: string[] }) {
         </div>
       )}
       <div className="relative z-10 flex w-full max-w-[420px] flex-col gap-3 px-6">
-        <h1 className="display text-center text-[46px] sm:text-[58px]">Filmclub</h1>
+        <h1 className="flex justify-center"><Logo size="lg" /></h1>
         <p className="label mb-4 text-center">Swipe together. Pick one film.</p>
         {step === "join" ? (
           <form
