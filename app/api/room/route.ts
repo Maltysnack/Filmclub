@@ -223,7 +223,10 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     const all = await everyone(session.id);
     const known = all.find((p) => p.user_id === user);
     if (known) {
-      if (known.left_session) must(await db().from("participants").update({ left_session: false }).eq("id", known.id));
+      if (known.left_session) {
+        const hosted = all.some((p) => p.is_host && !p.left_session);
+        must(await db().from("participants").update({ left_session: false, is_host: !hosted }).eq("id", known.id));
+      }
       return { code };
     }
     if (session.status === "deciding" || session.status === "closed") throw new Refused("This round is already deciding.", 409);

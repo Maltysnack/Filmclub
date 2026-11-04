@@ -45,6 +45,12 @@ describe.runIf(running)("full round", () => {
     expect((await ann.call("nonsense")).status).toBe(400);
     expect((await ann.call("constructor")).status).toBe(400);
 
+    const solo = (await ann.call("create", { services: ["netflix"] })).json.code;
+    const soloId = (await ann.c.from("sessions").select("id").eq("code", solo).single()).data!.id;
+    await ann.call("leave", { sessionId: soloId });
+    await ann.call("join", { code: solo });
+    expect((await ann.c.from("participants").select("is_host").eq("session_id", soloId).single()).data!.is_host).toBe(true);
+
     const { json: { code } } = await ann.call("create", { services: ["netflix", "stan"] });
     expect((await ben.call("join", { code })).status).toBe(200);
     expect((await eve.call("join", { code })).status).toBe(200);
