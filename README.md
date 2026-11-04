@@ -1,21 +1,19 @@
 # Filmclub
 
-> Decide on a film with friends — without the argument.
+Swipe together. Pick one film.
 
-**[Setup guide →](SETUP.md)**
+A playful portfolio demo. Friends on a couch each swipe film posters on their own phone, with no login. Everyone starts with different films, and a film one person likes reaches the others. A film everyone likes wins instantly. If not, a fast cross-and-tick decider narrows it to one.
 
----
+On your own? Press Test it and three bots join.
 
-Filmclub is a no-login, session-based film picker for groups. Create a session, share the code, and everyone swipes through films on their own device. A match surfaces when enough people like the same one.
+## Built with
 
-## Quick start
+Next.js, Supabase (Postgres, realtime, anonymous auth), Framer Motion, Tailwind CSS, TMDB and OMDb.
 
-See [SETUP.md](SETUP.md) — three free accounts, three copy-pastes, one deploy.
+The interesting part is the deck. It is a pure calculation over swipe events, so realtime updates can arrive late, twice or out of order without a card moving on screen. See [ALGORITHMS.md](ALGORITHMS.md).
 
-## Stack
+## Run it
 
-- **Next.js 15** — web app, mobile-first
-- **Supabase** — database + real-time match detection
-- **TMDB API** — film data, posters, ratings
-- **Vercel** — hosting (auto-deploys on push)
-- **Framer Motion** — swipe gestures
+See [SETUP.md](SETUP.md).
+
+This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming data from JustWatch.

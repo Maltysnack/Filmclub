@@ -1,76 +1,107 @@
-# Filmclub — Setup Guide
+# Going live
 
-Get the app live in three steps. Each one takes about 5 minutes.
+The app is finished code, but nothing is deployed. Do these in order. Allow about 45 minutes.
 
----
+## 1. Supabase (free plan)
 
-## Step 1 — Supabase (database)
-
-1. Go to [supabase.com](https://supabase.com) and create a free account
-2. Click **New project**, give it a name (e.g. `filmclub`), choose a region close to you
-3. Wait for it to provision (~1 minute)
-4. Go to **SQL Editor** (left sidebar) and paste the entire contents of `supabase/schema.sql`, then click **Run**
-5. Go to **Project Settings → API**
-6. Copy:
-   - **Project URL** → this is your `NEXT_PUBLIC_SUPABASE_URL`
-   - **anon / public key** → this is your `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
----
-
-## Step 2 — TMDB (film data)
-
-1. Go to [themoviedb.org](https://www.themoviedb.org) and create a free account
-2. Go to **Settings → API** and request an API key (choose Developer, fill in the form)
-3. Copy the **API Key (v3 auth)** → this is your `NEXT_PUBLIC_TMDB_API_KEY`
-
----
-
-## Step 3 — Vercel (hosting)
-
-1. Go to [vercel.com](https://vercel.com) and sign up with your GitHub account
-2. Click **Add New → Project**
-3. Import the `Filmclub` repository from GitHub
-4. Before deploying, click **Environment Variables** and add these three:
-
-| Name | Value |
-|------|-------|
-| `NEXT_PUBLIC_SUPABASE_URL` | from Step 1 |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | from Step 1 |
-| `NEXT_PUBLIC_TMDB_API_KEY` | from Step 2 |
-
-5. Click **Deploy**
-6. In ~60 seconds you'll have a live URL — open it on your phone
-
----
-
-## Local development (optional)
+1. Create a project at supabase.com. Pick the Sydney region. Save the database password.
+2. In a terminal, run these from the repo:
 
 ```bash
-# Copy the example env file
-cp .env.example .env.local
+supabase login
+```
 
-# Paste your three keys into .env.local, then:
-npm install
+```bash
+supabase link --project-ref YOUR_PROJECT_REF
+```
+
+```bash
+supabase db push
+```
+
+3. Go to Authentication, then Sign In / Providers, and turn on **Allow anonymous sign-ins**.
+4. Go to Authentication, then Rate Limits, and set anonymous sign-ins to 20 per hour.
+5. Copy the project URL, the anon or publishable key, and the service role or secret key.
+
+The free plan has no overage bills. If a limit is reached, the service stops until it resets.
+
+## 2. Upstash (free plan)
+
+Rate limiting. The app will not run in production without it.
+
+1. Create a Redis database at upstash.com, in the Sydney region.
+2. Copy the REST URL and REST token.
+
+## 3. Vercel (Pro)
+
+1. Import the GitHub repo. The framework is detected automatically.
+2. Add every setting from `.env.example` for **Production**. Create `CRON_SECRET` with this:
+
+```bash
+openssl rand -hex 32
+```
+
+3. Use new TMDB and OMDb keys if the old TMDB key was ever public. The old one shipped in browser code, so rotate it.
+4. Deploy, then add `filmclub.watch` under Domains if you still own it.
+
+## 4. Spending guardrails, do these before sharing the link
+
+Setting a budget alone does **not** stop spending. Pause must be switched on.
+
+1. Team Settings, then Billing, then **Spend Management**.
+2. Turn on Spend Management and set the amount to **$5**. Spend counts only usage beyond your monthly Pro credit, so that means a real-money limit of about $5.
+3. Turn on **Pause Production Deployments**. This is the switch that stops the bill.
+4. Turn on email or SMS alerts at 50%, 75% and 100%.
+5. Under Observability and any other add-ons, leave paid extras off. Keep the seat count at 1.
+
+What to expect:
+
+- Spend is checked every few minutes, so a sudden attack can run slightly past $5.
+- While paused, visitors see a 503 error. Resume it from the project page after checking what happened.
+- Your subscription fee is separate and is still charged.
+
+Guardrails already in the code:
+
+| Risk | Protection |
+|---|---|
+| Spam sessions | 10 per hour per person and per IP, plus 300 per hour across the whole app |
+| Spam joins or guessing codes | 40 tries per 10 minutes per IP |
+| Hammering actions | 150 per minute per person |
+| Draining film API quotas | Results cached for hours or days, 60 detail lookups per minute per IP |
+| Spamming swipes | Swipes go to the database, capped at one per film per person |
+| Image bills | Posters load directly from TMDB, so Vercel image optimisation is never used |
+| Reading or changing other sessions | Database rules, tested in `tests/security.test.ts` |
+| Limiter outage | Actions are refused rather than running unprotected |
+
+## 5. Check it works
+
+1. Open the site on your phone and start a session.
+2. Press Test it, then play a full round with bots.
+3. Join the same session from a second phone.
+4. Vercel, Cron Jobs: run `/api/cron/cleanup` once and confirm it returns 200.
+
+The daily cleanup also touches the database, which should stop a free project pausing after a week without activity. Supabase says this is usually enough but not guaranteed, so check on it now and then.
+
+## Local development
+
+Needs Docker, the Supabase CLI and Node 22 or newer.
+
+```bash
+supabase start
+```
+
+```bash
+supabase status -o env
+```
+
+Put the values in `.env.development.local`, using the names from `.env.example`, then:
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+```bash
+npm test
+```
 
----
-
-## How it works
-
-- **Create a session** — choose Live (for tonight on the couch) or Planned (swipe over days)
-- **Share the code** — friends tap the share button or go to the URL and enter the code
-- **Swipe** — drag right to like, left to pass. Tap the ℹ button for synopsis and cast
-- **Match** — in Live mode the app locks when a film is liked by enough people. In Planned mode check the results page anytime and lock it in when you're ready
-- **Add films** — tap the + button to search for any film and add it to the pool
-
----
-
-## Future features planned
-
-- Letterboxd import
-- Streaming service filtering (at-home mode)
-- Cinema mode with local showtimes
-- Food / restaurant matching
+The database and full-round tests run only when local Supabase and a dev server on port 3100 are up. Otherwise they skip.

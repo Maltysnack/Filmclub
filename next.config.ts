@@ -1,17 +1,12 @@
 import type { NextConfig } from "next";
 
+const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://*.supabase.co";
+const realtime = supabase.replace(/^http/, "ws");
+const dev = process.env.NODE_ENV !== "production";
+
 const nextConfig: NextConfig = {
-  turbopack: {
-    root: __dirname,
-  },
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "image.tmdb.org" },
-    ],
-  },
-  // HTTP security headers (#45). Applied to every response.
-  // CSP is permissive on script/style because Next.js relies on inline runtime
-  // for hydration. The other directives lock things down where we can.
+  turbopack: { root: __dirname },
+  poweredByHeader: false,
   async headers() {
     return [
       {
@@ -21,18 +16,20 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
           {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "img-src 'self' https://image.tmdb.org data: blob:",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.themoviedb.org https://www.omdbapi.com https://vitals.vercel-insights.com",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com",
+              "img-src 'self' https://image.tmdb.org data:",
+              `connect-src 'self' ${supabase} ${realtime}`,
+              `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
               "style-src 'self' 'unsafe-inline'",
-              "font-src 'self' data:",
+              "font-src 'self'",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
+              "object-src 'none'",
             ].join("; "),
           },
         ],
