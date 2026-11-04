@@ -110,12 +110,12 @@ export async function buildPool(serviceIds: string[], people: number, exclude: n
   return shuffle(capForeign(capFamilies([...found.values()]))).slice(0, target);
 }
 
-export async function homePoster(): Promise<string | null> {
+export async function homePosters(): Promise<string[]> {
   try {
     const { results } = await tmdb<{ results: Discovered[] }>("/trending/movie/week", {}, 24 * 60 * 60);
-    return results.find((m) => m.poster_path)?.poster_path ?? null;
+    return results.flatMap((m) => m.poster_path ?? []);
   } catch {
-    return null;
+    return [];
   }
 }
 

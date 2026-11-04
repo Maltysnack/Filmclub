@@ -14,7 +14,8 @@ const MAX_PEOPLE = 12;
 const MIN_POOL = 40;
 const MAX_SESSIONS_PER_HOUR = 300;
 const SWIPE_SECONDS = 120;
-const BOT_SWIPE_LIMIT = 14;
+const BOT_SWIPE_LIMIT = 40;
+const BOT_DAWDLE = 0.3; // chance per tick, so people see themselves waiting on the bots
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 class Refused extends Error {
@@ -148,10 +149,11 @@ async function botsAct(session: SessionRow, people: Participant[]) {
     const likedByAnyone = new Set(swipes.filter((s) => s.liked).map((s) => s.film_id));
     for (const bot of bots) {
       const mine = new Set(swipes.filter((s) => s.participant_id === bot.id).map((s) => s.film_id));
-      if (mine.size >= BOT_SWIPE_LIMIT) {
-        if (!bot.ready) must(await db().from("participants").update({ ready: true }).eq("id", bot.id));
-        continue;
+      const humansReady = people.every((p) => p.is_bot || p.ready);
+      if (humansReady && !bot.ready && Math.random() < BOT_DAWDLE) {
+        must(await db().from("participants").update({ ready: true }).eq("id", bot.id));
       }
+      if (mine.size >= BOT_SWIPE_LIMIT) continue;
       const options = pool.filter((f) => !mine.has(f.id));
       const friendly = options.filter((f) => likedByAnyone.has(f.id));
       const list = friendly.length && Math.random() < 0.5 ? friendly : options;
@@ -173,7 +175,7 @@ async function botsAct(session: SessionRow, people: Participant[]) {
   if (!round || round.resolved) return;
   const marks: Mark[] = must(await db().from("marks").select("*").eq("round_id", round.id));
   for (const bot of bots) {
-    if (marks.some((m) => m.participant_id === bot.id)) continue;
+    if (marks.some((m) => m.participant_id === bot.id) || Math.random() > BOT_DAWDLE) continue;
     const films = [...round.film_ids].sort(() => Math.random() - 0.5);
     must(await db().from("marks").insert({
       round_id: round.id,
@@ -315,19 +317,27 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     return {};
   },
 
-  async again(user, body) {
+  // Play Again needs more than half of the humans, so one person can't pull everyone off the winner.
+  async rematch(user, body) {
     const session = await loadSession(body.sessionId);
     const { me, people } = await member(session.id, user);
-    requireHost(me);
     if (session.status !== "closed") return {};
+    must(await db().from("participants").update({ rematch: body.rematch === true }).eq("id", me.id));
+    const humans = people.filter((p) => !p.is_bot);
+    const keen = humans.filter((p) => (p.id === me.id ? body.rematch === true : p.rematch)).length;
+    if (keen * 2 <= humans.length) return {};
+
+    const game = session.game + 1;
+    const claimed = must(await db().from("sessions").update({ game }).eq("id", session.id).eq("game", session.game).select("id"));
+    if ((claimed as unknown[]).length === 0) return {};
     const old = await poolOf(session.id);
     session.seen_film_ids = [...session.seen_film_ids, ...old.map((f) => f.id)].slice(-1500);
     // Built first: if this fails, the finished game stays on screen.
-    const pool = await freshPool(session, people.length, session.game + 1);
+    const pool = await freshPool(session, people.length, game);
     must(await db().from("session_films").delete().eq("session_id", session.id));
     must(await db().from("rounds").delete().eq("session_id", session.id));
-    must(await db().from("participants").update({ ready: false }).eq("session_id", session.id));
-    await deal(session, pool, session.game + 1);
+    must(await db().from("participants").update({ ready: false, rematch: false }).eq("session_id", session.id));
+    await deal(session, pool, game);
     return {};
   },
 };

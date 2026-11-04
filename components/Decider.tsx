@@ -74,7 +74,8 @@ export default function Decider({ session, round, marks, pool, people, me }: {
   const mine = marks.some((m) => m.participant_id === me.id);
   const done = locked || mine;
   const ready = final ? tick !== null : cross !== null && tick !== null;
-  const lockedIn = new Set(marks.map((m) => m.participant_id)).size;
+  const lockedIds = new Set(marks.map((m) => m.participant_id));
+  const waitingOn = people.filter((p) => p.id !== me.id && !lockedIds.has(p.id)).map((p) => p.name);
 
   // Reset local marks when a new round opens, without an effect.
   const [roundId, setRoundId] = useState(round.id);
@@ -151,8 +152,8 @@ export default function Decider({ session, round, marks, pool, people, me }: {
         <div className="column lg:!max-w-none">
           {error && <p role="alert" className="label mb-2 text-[var(--red-text)]">{error}</p>}
           {done ? (
-            <p className="label flex h-[72px] items-center justify-center border border-text text-center">
-              Locked in / {lockedIn} of {people.length}
+            <p className="label flex h-[72px] items-center justify-center border border-text px-3 text-center leading-relaxed">
+              {waitingOn.length ? `Locked in. Waiting on ${waitingOn.join(", ")}` : "Everyone's in"}
             </p>
           ) : ready ? (
             <button className="slab !h-[72px] !text-[22px]" onClick={confirm}>Confirm</button>

@@ -1,72 +1,121 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { ServiceLogos } from "./FilmInfo";
 import { posterUrl } from "@/lib/images";
-import { logoUrl, serviceById } from "@/lib/services";
 import { room } from "@/lib/supabase";
 import type { Film, Participant, Session } from "@/lib/types";
 
-const CUTS = 16;
+const MIN_MOVES = 12;
+const REST_MS = 900;
 
-export default function Reveal({ session, pool, me }: { session: Session; pool: Film[]; me: Participant }) {
-  const winner = pool.find((f) => f.id === session.winner_film_id);
-  const tied = session.reveal_film_ids.map((id) => pool.find((f) => f.id === id)).filter(Boolean) as Film[];
-  const [shown, setShown] = useState(tied.length > 1 ? tied[0] : winner);
-  const [landed, setLanded] = useState(tied.length <= 1);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function moveMs(step: number, total: number) {
+  return 170 + 620 * (step / total) ** 3;
+}
+
+// A frame glides between the tied posters, slowing like a wheel until it settles.
+function TieBreak({ films, winner, onDone }: { films: Film[]; winner: Film; onDone: () => void }) {
+  const [active, setActive] = useState(0);
+  const [ms, setMs] = useState(moveMs(0, MIN_MOVES));
+  const [settled, setSettled] = useState(false);
+  const done = useRef(onDone);
 
   useEffect(() => {
-    if (tied.length <= 1) return;
+    const n = films.length;
+    const target = films.indexOf(winner);
+    const total = Math.ceil(MIN_MOVES / n) * n + target;
     let step = 0;
     let timer: ReturnType<typeof setTimeout>;
-    const cut = () => {
+    const move = () => {
       step++;
-      if (step >= CUTS) {
-        setShown(winner);
-        setLanded(true);
+      setActive(step % n);
+      const wait = moveMs(step, total);
+      setMs(wait);
+      if (step >= total) {
+        setSettled(true);
+        timer = setTimeout(() => done.current(), REST_MS);
         return;
       }
-      setShown(tied[step % tied.length]);
-      timer = setTimeout(cut, 60 + 280 * (step / CUTS) ** 3); // about two seconds, slowing to a stop
+      timer = setTimeout(move, wait);
     };
-    timer = setTimeout(cut, 400);
+    timer = setTimeout(move, 500);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.game, session.winner_film_id]);
+  }, [films, winner]);
 
-  if (!shown) return null;
-  const services = (winner?.services ?? []).map(serviceById).filter(Boolean);
+  const cols = films.length === 3 ? 3 : Math.min(films.length, 2);
+  return (
+    <main className="screen flex h-dvh flex-col bg-black">
+      <div className="px-6 pb-3 pt-14 lg:pt-8">
+        <h1 className="display text-center text-[30px]">{settled ? "That's the one" : "It's a tie"}</h1>
+      </div>
+      <div
+        className="grid min-h-0 flex-1 content-center gap-3 p-3 lg:!grid-cols-[repeat(var(--count),minmax(0,240px))] lg:justify-center"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, "--count": films.length } as React.CSSProperties}
+      >
+        {films.map((film, i) => (
+          <div key={film.id} className="relative aspect-[2/3] w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={posterUrl(film.poster, "w342")}
+              alt={`${film.title} poster`}
+              className={`size-full object-cover transition-opacity duration-300 ${settled && i !== active ? "opacity-20" : ""}`}
+            />
+            {i === active && (
+              <motion.span
+                layoutId="tie-frame"
+                transition={{ duration: Math.min(ms, 700) / 1000, ease: [0.4, 0, 0.3, 1] }}
+                className="pointer-events-none absolute -inset-1 z-10 border-4 border-text"
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </main>
+  );
+}
+
+export default function Reveal({ session, pool, people, me }: { session: Session; pool: Film[]; people: Participant[]; me: Participant }) {
+  const winner = pool.find((f) => f.id === session.winner_film_id);
+  const [tied] = useState(() => session.reveal_film_ids.map((id) => pool.find((f) => f.id === id)).filter(Boolean) as Film[]);
+  const [landed, setLanded] = useState(tied.length <= 1);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!winner) return null;
+  if (!landed) return <TieBreak films={tied} winner={winner} onDone={() => setLanded(true)} />;
+
+  const humans = people.filter((p) => !p.is_bot);
+  const keen = humans.filter((p) => p.rematch).length;
+  const needed = Math.floor(humans.length / 2) + 1;
+
+  const vote = () => {
+    setError(null);
+    room("rematch", { sessionId: session.id, rematch: !me.rematch }).catch((e) => setError(e.message));
+  };
 
   return (
     <main className="screen flex h-dvh flex-col lg:flex-row">
-      <div className="relative min-h-0 flex-1 lg:w-[600px] lg:flex-none">
+      <motion.div
+        initial={{ opacity: 0, scale: 1.04 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative min-h-0 flex-1 lg:w-[600px] lg:flex-none"
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={posterUrl(shown.poster, landed ? "original" : "w780")} alt={`${shown.title} poster`} className="absolute inset-0 size-full object-cover" />
-        {landed ? <span className="pointer-events-none absolute inset-3 border-[3px] border-text" /> : <span className="label absolute left-3 top-3 bg-black px-2.5 py-1.5">Tie</span>}
-      </div>
-      {landed && winner && (
-        <div className="flex shrink-0 flex-col gap-2 bg-black px-6 pb-7 pt-4 lg:flex-1 lg:justify-center lg:gap-4 lg:px-16">
-          <div className="flex items-center justify-between">
-            <span className="label">Tonight&apos;s film</span>
-            <span className="flex gap-1.5">
-              {services.map((s) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={s!.id} src={logoUrl(s!.logo)} alt={s!.name} className="size-8" />
-              ))}
-            </span>
-          </div>
-          <h1 className="display text-[42px] lg:text-[72px]">{winner.title}</h1>
-          {error && <p role="alert" className="label text-[var(--red-text)]">{error}</p>}
-          {me.is_host ? (
-            <button className="slab mt-2" disabled={busy} onClick={() => { setBusy(true); setError(null); room("again", { sessionId: session.id }).catch((e) => { setBusy(false); setError(e.message); }); }}>
-              {busy ? "Dealing films" : "Play again"}
-            </button>
-          ) : (
-            <p className="label py-5 text-center">Waiting for the host</p>
-          )}
+        <img src={posterUrl(winner.poster, "original")} alt={`${winner.title} poster`} className="absolute inset-0 size-full object-cover" />
+        <span className="pointer-events-none absolute inset-3 border-[3px] border-text" />
+      </motion.div>
+      <div className="flex shrink-0 flex-col gap-2 bg-black px-6 pb-7 pt-4 lg:flex-1 lg:justify-center lg:gap-4 lg:px-16">
+        <div className="flex items-center justify-between">
+          <span className="label">Tonight&apos;s film</span>
+          <span className="flex gap-1.5"><ServiceLogos film={winner} className="size-8" /></span>
         </div>
-      )}
+        <h1 className="display text-[42px] lg:text-[72px]">{winner.title}</h1>
+        {error && <p role="alert" className="label text-[var(--red-text)]">{error}</p>}
+        <button className={`slab mt-2 ${me.rematch ? "slab-outline" : ""}`} onClick={vote}>
+          {me.rematch ? `Waiting ${keen}/${needed}` : needed > 1 && keen > 0 ? `Play again ${keen}/${needed}` : "Play again"}
+        </button>
+      </div>
     </main>
   );
 }

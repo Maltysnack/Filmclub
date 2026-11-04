@@ -126,3 +126,20 @@ button:disabled {
   transform-origin: left;
   animation: countdown linear forwards;
 }
+
+@keyframes drift {
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+.poster-wall {
+  animation: drift 120s linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .poster-wall {
+    animation: none;
+  }
+}

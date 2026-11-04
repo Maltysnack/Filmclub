@@ -8,6 +8,7 @@ import Decider from "@/components/Decider";
 import Lobby from "@/components/Lobby";
 import Reveal from "@/components/Reveal";
 import { useRoom } from "@/hooks/useRoom";
+import { posterUrl } from "@/lib/images";
 import { room as call } from "@/lib/supabase";
 
 const BOT_TICK_MS = 1300;
@@ -49,6 +50,14 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     return () => clearTimeout(t);
   }, [sessionId, status, deadline]);
 
+  // Posters start loading on the who-is-who screen, so the first card is ready when it opens.
+  const nextPosters = deck?.frozen.map((id) => deck.films.get(id)?.poster).join();
+  useEffect(() => {
+    nextPosters?.split(",").forEach((path) => {
+      if (path) new Image().src = posterUrl(path);
+    });
+  }, [nextPosters]);
+
   if (kicked) return <Notice title="You were removed" body="The host removed you from this session." />;
   if (error) return <Notice title="Can't join" body={error} />;
   if (!session || !me) return <main className="flex min-h-dvh items-center justify-center"><p className="label">Loading</p></main>;
@@ -66,6 +75,6 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   if (session.status === "deciding" && round && pool.length) {
     return <Decider session={session} round={round} marks={marks} pool={pool} people={people} me={me} />;
   }
-  if (session.status === "closed" && pool.length) return <Reveal key={session.game} session={session} pool={pool} me={me} />;
+  if (session.status === "closed" && pool.length) return <Reveal key={session.game} session={session} pool={pool} people={people} me={me} />;
   return <main className="flex min-h-dvh items-center justify-center"><p className="label">Loading</p></main>;
 }

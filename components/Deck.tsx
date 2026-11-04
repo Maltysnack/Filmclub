@@ -2,38 +2,54 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useTransform, type PanInfo } from "framer-motion";
-import FilmInfo, { useDetail } from "./FilmInfo";
+import FilmInfo, { ServiceLogos, useDetail } from "./FilmInfo";
 import { frontFilms, likedByOthers, type DeckState } from "@/lib/deck";
 import { posterUrl } from "@/lib/images";
-import { serviceById } from "@/lib/services";
 import { room } from "@/lib/supabase";
 import type { Film, Participant, Session } from "@/lib/types";
 
-const SWIPE_DISTANCE = 110;
-const SWIPE_VELOCITY = 600;
+const SWIPE_DISTANCE = 100;
+const SWIPE_VELOCITY = 500;
+const THROW_DISTANCE = 1100;
 
-function Card({ film, top, onSwipe }: { film: Film; top: boolean; onSwipe: (liked: boolean) => void }) {
+export interface Toss {
+  x: number;
+  y: number;
+  rotate: number;
+}
+
+function Card({ film, top, onSwipe }: { film: Film; top: boolean; onSwipe: (liked: boolean, toss: Toss) => void }) {
   const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotate = useTransform(x, [-320, 320], [-16, 16]);
   const tick = useTransform(x, [0, SWIPE_DISTANCE], [0, 1]);
   const cross = useTransform(x, [-SWIPE_DISTANCE, 0], [1, 0]);
 
+  // Only sideways intent decides. Throwing it straight up or down springs it back.
   const onDragEnd = (_: unknown, info: PanInfo) => {
-    const far = Math.abs(info.offset.x) > SWIPE_DISTANCE || Math.abs(info.velocity.x) > SWIPE_VELOCITY;
-    if (far) onSwipe(info.offset.x > 0);
+    const { offset, velocity } = info;
+    if (Math.abs(offset.x) <= SWIPE_DISTANCE && Math.abs(velocity.x) <= SWIPE_VELOCITY) return;
+    const liked = offset.x + velocity.x * 0.1 > 0;
+    const dx = offset.x + velocity.x * 0.25;
+    const dy = offset.y + velocity.y * 0.25;
+    const scale = THROW_DISTANCE / Math.max(Math.hypot(dx, dy), 1);
+    onSwipe(liked, { x: dx * scale, y: dy * scale, rotate: liked ? 28 : -28 });
   };
 
   return (
     <motion.div
-      className="absolute inset-0 touch-pan-y bg-black"
-      style={{ x, zIndex: top ? 2 : 1, cursor: top ? "grab" : "default" }}
-      drag={top ? "x" : false}
+      className="absolute inset-0 touch-none bg-black will-change-transform"
+      style={{ x, y, rotate, zIndex: top ? 2 : 1, cursor: top ? "grab" : "default" }}
+      drag={top}
       dragSnapToOrigin
-      dragElastic={0.9}
+      dragElastic={1}
       dragMomentum={false}
+      dragTransition={{ bounceStiffness: 500, bounceDamping: 30 }}
+      whileDrag={{ cursor: "grabbing", scale: 1.02 }}
       onDragEnd={onDragEnd}
       exit="gone"
       variants={{
-        gone: (dir: number) => ({ x: dir * 900, transition: { duration: 0.22, ease: [0.3, 0, 0.1, 1] } }),
+        gone: (toss: Toss) => ({ ...toss, transition: { duration: 0.3, ease: [0.2, 0, 0.4, 1] } }),
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -62,7 +78,7 @@ export default function Deck({ session, people, me, deck, swipe }: {
 }) {
   const films = useMemo(() => frontFilms(deck), [deck]);
   const front = films[0];
-  const [dir, setDir] = useState(1);
+  const [toss, setToss] = useState<Toss>({ x: 1100, y: 0, rotate: 28 });
   const [info, setInfo] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const detail = useDetail(front?.id ?? 0);
@@ -72,9 +88,9 @@ export default function Deck({ session, people, me, deck, swipe }: {
     return () => clearInterval(t);
   }, []);
 
-  const decide = useCallback((liked: boolean) => {
+  const decide = useCallback((liked: boolean, thrown?: Toss) => {
     if (!front) return;
-    setDir(liked ? 1 : -1);
+    setToss(thrown ?? { x: liked ? 1100 : -1100, y: 0, rotate: liked ? 28 : -28 });
     swipe(front.id, liked);
   }, [front, swipe]);
 
@@ -102,12 +118,13 @@ export default function Deck({ session, people, me, deck, swipe }: {
   const names = new Map(people.map((p) => [p.id, p.name]));
   const likedBy = front ? likedByOthers(deck, front.id).map((id) => names.get(id)).filter(Boolean) as string[] : [];
   const left = session.swipe_deadline ? Date.parse(session.swipe_deadline) - now : 0;
-  const meta = front && [front.year, serviceById(front.services[0])?.name, detail?.imdb && `IMDb ${detail.imdb}`].filter(Boolean).join(" / ");
+  const waitingOn = people.filter((p) => !p.ready).map((p) => p.name);
+  const waiting = me.ready && waitingOn.length > 0 ? `Ready. Waiting on ${waitingOn.join(", ")}. Keep swiping.` : null;
 
   return (
     <main className="screen flex h-dvh flex-col lg:flex-row">
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-panel lg:w-[600px] lg:flex-none">
-        <AnimatePresence custom={dir} initial={false}>
+      <div className="relative z-20 min-h-0 flex-1 bg-panel lg:w-[600px] lg:flex-none">
+        <AnimatePresence custom={toss} initial={false}>
           {[...films].reverse().map((film) => (
             <Card key={film.id} film={film} top={film.id === front?.id} onSwipe={decide} />
           ))}
@@ -118,7 +135,7 @@ export default function Deck({ session, people, me, deck, swipe }: {
           </div>
         )}
         <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-2 lg:hidden">
-          {likedBy.length > 0 ? <span className="label bg-text px-2.5 py-2.5 text-black">{likedBy.join(", ")} liked this</span> : <span />}
+          {waiting ? <span className="label max-w-[70%] bg-black px-2.5 py-2.5 leading-snug">{waiting}</span> : <span />}
           <span className="label flex shrink-0 items-center gap-2 bg-black px-2.5 py-2.5">
             <span className="size-2.5 bg-red" />
             {clock(left)}
@@ -131,15 +148,28 @@ export default function Deck({ session, people, me, deck, swipe }: {
           <span className="display text-[18px]">You are {me.name}</span>
           <span className="label flex items-center gap-2.5">
             <span className="size-2.5 bg-red" />
-            {readyCount} of {people.length} ready / {clock(left)}
+            {waiting ?? `${readyCount} of ${people.length} ready`} / {clock(left)}
           </span>
         </div>
         {front && (
-          <div className="flex items-center justify-between gap-3 lg:mt-auto lg:block">
+          <div className="flex items-end justify-between gap-3 lg:mt-auto lg:block">
             <div className="min-w-0">
-              {likedBy.length > 0 && <p className="label mb-3 hidden lg:block">{likedBy.join(", ")} liked this</p>}
+              <p className="label mb-1.5 flex h-4 items-center gap-2 lg:mb-3">
+                {likedBy.length > 0 && <span className="size-2 shrink-0 bg-red" />}
+                <span className="truncate">{likedBy.length > 0 && `${likedBy.join(", ")} liked this`}</span>
+              </p>
               <h1 className="display truncate text-[24px] lg:whitespace-normal lg:text-[72px]">{front.title}</h1>
-              <p className="label mt-1 truncate text-muted lg:mt-4">{meta}</p>
+              <div className="mt-1.5 flex h-5 items-center gap-2 lg:mt-4 lg:h-6">
+                <span className="label text-muted">{front.year}</span>
+                <ServiceLogos film={front} />
+                {detail?.imdb && (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/imdb-logo.png" alt="IMDb" className="ml-1 h-4 w-auto" />
+                    <span className="label">{detail.imdb}</span>
+                  </>
+                )}
+              </div>
               <p className="mt-4 hidden max-w-xl text-base leading-relaxed text-muted lg:line-clamp-4 lg:[display:-webkit-box]">{front.overview}</p>
             </div>
             <button className="label h-11 w-14 shrink-0 border border-text lg:mt-4" onClick={() => setInfo(true)}>Info</button>

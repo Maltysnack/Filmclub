@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { imdbLink, letterboxdLink } from "@/lib/images";
-import { serviceById } from "@/lib/services";
+import { logoUrl, serviceById } from "@/lib/services";
 import type { Film } from "@/lib/types";
 
 export interface Detail {
@@ -35,30 +35,39 @@ export function useDetail(id: number) {
   return loaded?.id === id ? loaded.detail : null;
 }
 
+export function ServiceLogos({ film, className = "size-5" }: { film: Film; className?: string }) {
+  return film.services.map((id) => {
+    const service = serviceById(id);
+    // eslint-disable-next-line @next/next/no-img-element
+    return service && <img key={id} src={logoUrl(service.logo)} alt={service.name} className={className} />;
+  });
+}
+
 export default function FilmInfo({ film, likedBy, onClose }: { film: Film; likedBy: string[]; onClose: () => void }) {
   const detail = useDetail(film.id);
-  const services = film.services.map((s) => serviceById(s)?.name).filter(Boolean);
   return (
     <div role="dialog" aria-label={`About ${film.title}`} className="absolute inset-0 z-30 flex flex-col gap-4 overflow-y-auto bg-black/95 px-6 pb-6 pt-14">
       <div className="column flex flex-1 flex-col gap-4">
         <h2 className="display text-[34px]">{film.title}</h2>
-        <p className="label text-muted">
-          {[film.year, detail?.runtime && `${detail.runtime} min`, services.join(", ")].filter(Boolean).join(" / ")}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="label mr-1 text-muted">{[film.year, detail?.runtime && `${detail.runtime} min`].filter(Boolean).join(" / ")}</p>
+          <ServiceLogos film={film} className="size-7" />
+        </div>
         {likedBy.length > 0 && <p className="label">{likedBy.join(", ")} liked this</p>}
         <p className="text-[15px] leading-relaxed">{film.overview}</p>
         {detail && detail.cast.length > 0 && <p className="text-sm leading-relaxed text-muted">{detail.cast.join(", ")}</p>}
         <div className="grid grid-cols-2 gap-px border border-line bg-line">
-          <a href={detail?.imdbId ? imdbLink(detail.imdbId) : undefined} target="_blank" rel="noopener noreferrer" className="bg-black p-3.5">
-            <span className="label block text-muted">IMDb</span>
-            <span className="display mt-1 block text-[26px]">{detail?.imdb ?? "N/A"}</span>
+          <a href={detail?.imdbId ? imdbLink(detail.imdbId) : undefined} target="_blank" rel="noopener noreferrer" aria-label="IMDb" className="flex h-[76px] items-center justify-center gap-3 bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/imdb-logo.png" alt="" className="h-6 w-auto" />
+            <span className="display text-[26px]">{detail?.imdb ?? "N/A"}</span>
           </a>
-          <a href={letterboxdLink(film.id)} target="_blank" rel="noopener noreferrer" className="bg-black p-3.5">
-            <span className="label block text-muted">Letterboxd</span>
-            <span className="mt-2 block text-sm">Open page</span>
+          <a href={letterboxdLink(film.id)} target="_blank" rel="noopener noreferrer" aria-label="Letterboxd" className="flex h-[76px] items-center justify-center bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/letterboxd-logo.svg" alt="" className="h-8 w-auto" />
           </a>
         </div>
-        <button className="slab mt-auto" onClick={onClose}>Back to swiping</button>
+        <button className="slab mt-auto" onClick={onClose}>Back</button>
       </div>
     </div>
   );

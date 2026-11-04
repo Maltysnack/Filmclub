@@ -17,13 +17,18 @@ export async function ensureUser(): Promise<{ id: string; token: string }> {
   return { id: signedIn.session.user.id, token: signedIn.session.access_token };
 }
 
-export async function room<T = unknown>(action: string, body: Record<string, unknown> = {}): Promise<T> {
+export async function room<T = unknown>(action: string, body: Record<string, unknown> = {}, retry = true): Promise<T> {
   const { token } = await ensureUser();
   const res = await fetch("/api/room", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
     body: JSON.stringify({ action, ...body }),
   });
+  if (res.status === 401 && retry) {
+    // The cleanup job removes old anonymous logins, so a returning visitor needs a new one.
+    await supabase().auth.signOut({ scope: "local" });
+    return room<T>(action, body, false);
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error ?? "Something went wrong.");
   return json as T;

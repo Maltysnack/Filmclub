@@ -101,7 +101,9 @@ describe.runIf(running)("full round", () => {
     expect([a, b]).toContain(done.winner_film_id);
     expect(done.reveal_film_ids.sort()).toEqual([a, b].sort());
 
-    expect((await ann.call("again", { sessionId })).status).toBe(200);
+    expect((await ann.call("rematch", { sessionId, rematch: true })).status).toBe(200);
+    expect((await ann.c.from("sessions").select("status").eq("id", sessionId).single()).data!.status).toBe("closed");
+    expect((await ben.call("rematch", { sessionId, rematch: true })).status).toBe(200);
     const next = (await ann.c.from("sessions").select("status, game").eq("id", sessionId).single()).data!;
     expect(next.status).toBe("swiping");
     expect(next.game).toBe(1);

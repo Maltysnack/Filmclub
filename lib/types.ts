@@ -21,6 +21,7 @@ export interface Participant {
   is_bot: boolean;
   is_host: boolean;
   ready: boolean;
+  rematch: boolean;
   joined_at: string;
 }
 

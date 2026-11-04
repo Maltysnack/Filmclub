@@ -25,6 +25,7 @@ create table participants (
   is_bot boolean not null default false,
   is_host boolean not null default false,
   ready boolean not null default false,
+  rematch boolean not null default false,
   joined_at timestamptz not null default now(),
   unique (session_id, user_id),
   unique (session_id, name),

@@ -46,7 +46,7 @@ Pure logic in `lib/decider.ts`, driven by `advance` in `app/api/room/route.ts`.
 - Each person crosses one and ticks one, then confirms.
 - Crossed films go. Ticked survivors continue. If nobody ticked a survivor, all survivors continue.
 - Two films left is a final, tick only.
-- A tie, or a round that eliminates nothing, goes to the randomiser, shown as the poster flicker.
+- A tie, or a round that eliminates nothing, goes to the randomiser, shown as a frame gliding between the tied posters and settling on one.
 - Rounds last 20 seconds at four or more films, 15 at three, 10 at two.
 
 Every transition is a conditional update, so any client may call `advance` at any time and only one call wins.
