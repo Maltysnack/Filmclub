@@ -34,7 +34,7 @@ Rate limiting. The app will not run in production without it.
 
 ## 3. Vercel (Pro)
 
-1. Import the GitHub repo. The framework is detected automatically.
+1. Import the GitHub repo. It can stay private, and the site is still public. The framework is detected automatically.
 2. Add every setting from `.env.example` for **Production**. Create `CRON_SECRET` with this:
 
 ```bash

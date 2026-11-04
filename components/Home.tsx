@@ -113,7 +113,12 @@ export default function Home({ posters }: { posters: string[] }) {
           </>
         )}
       </div>
-      <Link href="/credits" className="label absolute bottom-3 right-4 z-10 p-2 text-[10px] text-muted">Credits</Link>
+      <div className="absolute bottom-3 right-4 z-10 flex">
+        {process.env.NEXT_PUBLIC_GITHUB_URL && (
+          <a href={process.env.NEXT_PUBLIC_GITHUB_URL} target="_blank" rel="noopener noreferrer" className="label p-2 text-[10px] text-muted">GitHub</a>
+        )}
+        <Link href="/credits" className="label p-2 text-[10px] text-muted">Credits</Link>
+      </div>
     </main>
   );
 }
