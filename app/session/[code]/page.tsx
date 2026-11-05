@@ -12,7 +12,7 @@ import { useRoom } from "@/hooks/useRoom";
 import { posterUrl } from "@/lib/images";
 import { room as call } from "@/lib/supabase";
 
-const BOT_TICK_MS = 1300;
+const BOT_TICK_MS = 2000;
 
 function Notice({ title, body }: { title: string; body?: string }) {
   return (

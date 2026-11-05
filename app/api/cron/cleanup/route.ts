@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { admin } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 10;
 
 const KEEP_DAYS = 3;
 

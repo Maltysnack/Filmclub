@@ -1,4 +1,5 @@
 {
   "regions": ["syd1"],
+  "git": { "deploymentEnabled": false },
   "crons": [{ "path": "/api/cron/cleanup", "schedule": "0 4 * * *" }]
 }

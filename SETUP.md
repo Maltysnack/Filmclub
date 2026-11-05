@@ -42,7 +42,7 @@ openssl rand -hex 32
 ```
 
 3. Use new TMDB and OMDb keys if the old TMDB key was ever public. The old one shipped in browser code, so rotate it.
-4. Deploy, then add `filmclub.watch` under Domains if you still own it.
+4. Git auto deploys are off in `vercel.json`. Deploy by hand with `vercel --prod`, then add `filmclub.watch` under Domains if you still own it.
 
 ## 4. Spending guardrails, do these before sharing the link
 
