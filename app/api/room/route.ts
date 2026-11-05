@@ -105,7 +105,7 @@ async function deal(session: SessionRow, pool: Film[], game: number) {
   }).eq("id", session.id));
 }
 
-async function finish(sessionId: string, winner: number, reveal: number[]) {
+async function finish(sessionId: string, winner: number | null, reveal: number[]) {
   must(await db().from("sessions").update({ status: "closed", winner_film_id: winner, reveal_film_ids: reveal }).eq("id", sessionId));
 }
 
@@ -118,16 +118,12 @@ async function openRound(sessionId: string, number: number, films: number[]) {
   }));
 }
 
-// Only fetches the whole pool when fewer than two films were liked, to keep this call fast.
-async function pickShortlist(sessionId: string, people: number): Promise<number[]> {
-  const swipes = await swipesOf(sessionId);
-  const liked = new Set(swipes.filter((s) => s.liked).map((s) => s.film_id));
-  return shortlist(liked.size < 2 ? await poolOf(sessionId) : [], swipes, people);
-}
-
-// Safe to call twice: the unique (session, number) key lets only one first round exist.
+// No likes ends the round with no winner (someone is away, or something broke). One like
+// wins outright. Safe to call twice: the unique (session, number) key lets only one first round exist.
 async function openFirstRound(sessionId: string, people: number) {
-  const films = await pickShortlist(sessionId, people);
+  const swipes = await swipesOf(sessionId);
+  if (!swipes.some((s) => s.liked)) return finish(sessionId, null, []);
+  const films = shortlist([], swipes, people);
   if (films.length === 1) return finish(sessionId, films[0], films);
   try {
     await openRound(sessionId, 1, films);
@@ -289,6 +285,10 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     const session = await loadSession(body.sessionId);
     const { me, people } = await member(session.id, user);
     const ready = body.ready === true;
+    if (ready) {
+      const { count } = await db().from("swipes").select("film_id", { count: "exact", head: true }).eq("participant_id", me.id).eq("liked", true);
+      if (!count) throw new Refused("Like at least one film first.", 409);
+    }
     must(await db().from("participants").update({ ready }).eq("id", me.id));
     await advance(session, people.map((p) => (p.id === me.id ? { ...p, ready } : p)));
     return {};

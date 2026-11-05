@@ -114,10 +114,11 @@ export default function Deck({ session, people, me, deck, swipe, flush }: {
     [session.id, flush],
   );
 
-  // Running out of cards counts as being ready.
+  // Early ready needs at least one like. Running out of cards counts as ready once you have one.
+  const hasLiked = [...deck.swiped.values()].some(Boolean);
   useEffect(() => {
-    if (!front && !me.ready) setReady(true);
-  }, [front, me.ready, setReady]);
+    if (!front && hasLiked && !me.ready) setReady(true);
+  }, [front, hasLiked, me.ready, setReady]);
 
   const readyCount = people.filter((p) => p.ready).length;
   const names = new Map(people.map((p) => [p.id, p.name]));
@@ -182,8 +183,8 @@ export default function Deck({ session, people, me, deck, swipe, flush }: {
           <button aria-label="Skip" disabled={!front} onClick={() => decide(false)} className="flex items-center justify-center border border-text disabled:opacity-40">
             <svg viewBox="0 0 24 24" className="size-8" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="square" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg>
           </button>
-          <button aria-pressed={me.ready} onClick={() => setReady(!me.ready)} className={`label border-y border-text ${me.ready ? "bg-red" : ""}`}>
-            {me.ready ? `Ready ${readyCount}/${people.length}` : "Ready to vote"}
+          <button aria-pressed={me.ready} disabled={!hasLiked && !me.ready} onClick={() => setReady(!me.ready)} className={`label border-y border-text disabled:opacity-40 ${me.ready ? "bg-red" : ""}`}>
+            {me.ready ? `Ready ${readyCount}/${people.length}` : hasLiked ? "Ready to vote" : "Like one to vote"}
           </button>
           <button aria-label="Like" disabled={!front} onClick={() => decide(true)} className="flex items-center justify-center bg-text text-black disabled:opacity-40">
             <svg viewBox="0 0 24 24" className="size-8" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="square" aria-hidden="true"><path d="M4 13l5 6L20 5" /></svg>

@@ -81,9 +81,6 @@ export default function Reveal({ session, pool, people, me }: { session: Session
   const [landed, setLanded] = useState(tied.length <= 1);
   const [error, setError] = useState<string | null>(null);
 
-  if (!winner) return null;
-  if (!landed) return <TieBreak films={tied} winner={winner} onDone={() => setLanded(true)} />;
-
   const humans = people.filter((p) => !p.is_bot);
   const keen = humans.filter((p) => p.rematch).length;
   const needed = Math.floor(humans.length / 2) + 1;
@@ -92,6 +89,20 @@ export default function Reveal({ session, pool, people, me }: { session: Session
     setError(null);
     room("rematch", { sessionId: session.id, rematch: !me.rematch }).catch((e) => setError(e.message));
   };
+  const again = me.rematch ? `Waiting ${keen}/${needed}` : needed > 1 && keen > 0 ? `Play again ${keen}/${needed}` : "Play again";
+
+  if (session.winner_film_id === null) {
+    return (
+      <main className="screen flex h-dvh flex-col justify-end gap-2 bg-black px-6 pb-7">
+        <span className="label">Round over</span>
+        <h1 className="display text-[42px] lg:text-[72px]">Nothing got liked</h1>
+        {error && <p role="alert" className="label text-[var(--red-text)]">{error}</p>}
+        <button className={`slab mt-2 ${me.rematch ? "slab-outline" : ""}`} onClick={vote}>{again}</button>
+      </main>
+    );
+  }
+  if (!winner) return null;
+  if (!landed) return <TieBreak films={tied} winner={winner} onDone={() => setLanded(true)} />;
 
   return (
     <main className="screen flex h-dvh flex-col lg:flex-row">
@@ -113,7 +124,7 @@ export default function Reveal({ session, pool, people, me }: { session: Session
         <h1 className="display text-[42px] lg:text-[72px]">{winner.title}</h1>
         {error && <p role="alert" className="label text-[var(--red-text)]">{error}</p>}
         <button className={`slab mt-2 ${me.rematch ? "slab-outline" : ""}`} onClick={vote}>
-          {me.rematch ? `Waiting ${keen}/${needed}` : needed > 1 && keen > 0 ? `Play again ${keen}/${needed}` : "Play again"}
+          {again}
         </button>
       </div>
     </main>

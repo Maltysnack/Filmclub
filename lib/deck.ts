@@ -63,9 +63,9 @@ function othersLiked(s: DeckState, id: number): number {
   return likers ? likers.size - (likers.has(s.me) ? 1 : 0) : 0;
 }
 
-function visible(s: DeckState, film: Film): boolean {
+function visible(s: DeckState, film: Film, relax = false): boolean {
   if (s.swiped.has(film.id) || s.rejected.has(film.id)) return false;
-  if (othersLiked(s, film.id) > 0) return true; // the group outranks personal taste
+  if (relax || othersLiked(s, film.id) > 0) return true; // the group outranks personal taste
   if (s.blockedFamilies.has(film.family)) return false;
   return !(film.genres.length > 0 && film.genres.every((g) => (s.genreScore.get(g) ?? 0) <= s.rules.genreBlock));
 }
@@ -80,11 +80,11 @@ function score(s: DeckState, film: Film): number {
     - (s.rank.get(film.id) ?? 0);
 }
 
-function pick(s: DeckState, taken: Set<number>, fromReserve: boolean): number | undefined {
+function pick(s: DeckState, taken: Set<number>, fromReserve: boolean, relax = false): number | undefined {
   let best: number | undefined;
   let bestScore = -Infinity;
   for (const film of s.films.values()) {
-    if (taken.has(film.id) || !visible(s, film)) continue;
+    if (taken.has(film.id) || !visible(s, film, relax)) continue;
     if (fromReserve && !s.reserve.has(film.id)) continue;
     const value = score(s, film);
     if (value > bestScore) [best, bestScore] = [film.id, value];
@@ -97,9 +97,11 @@ function topUp(s: DeckState): DeckState {
   const frozen = [...s.frozen];
   const taken = new Set(frozen);
   const swipes = s.swiped.size;
+  // Out of cards with nothing liked yet: show what taste filters hid, so there is something to like.
+  const noLikes = ![...s.swiped.values()].some(Boolean);
   while (frozen.length < s.rules.frozen) {
     const dueDrip = swipes + frozen.length > 0 && (swipes + frozen.length) % s.rules.dripEvery === 0;
-    const next = (dueDrip ? pick(s, taken, true) : undefined) ?? pick(s, taken, false);
+    const next = (dueDrip ? pick(s, taken, true) : undefined) ?? pick(s, taken, false) ?? (noLikes ? pick(s, taken, false, true) : undefined);
     if (next === undefined) break;
     frozen.push(next);
     taken.add(next);

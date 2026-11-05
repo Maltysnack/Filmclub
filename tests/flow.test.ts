@@ -58,7 +58,7 @@ describe.runIf(running)("full round", () => {
     const { data: session } = await ann.c.from("sessions").select("id").eq("code", code).single();
     const sessionId = session!.id;
     const people = (await ann.c.from("participants").select("*").eq("session_id", sessionId)).data!;
-    const [annP, , eveP] = [ann, ben, eve].map((u) => people.find((p) => p.user_id === u.id));
+    const [annP, benP, eveP] = [ann, ben, eve].map((u) => people.find((p) => p.user_id === u.id));
     expect(new Set(people.map((p) => p.name)).size).toBe(3);
 
     const names = async () => (await ann.c.from("participants").select("user_id, name, left_session, is_host").eq("session_id", sessionId)).data!;
@@ -103,6 +103,8 @@ describe.runIf(running)("full round", () => {
     for (const f of films.slice(0, 7)) await ann.c.from("swipes").insert({ participant_id: annP.id, session_id: sessionId, film_id: f.film_id, liked: true });
     expect(await until(async () => heard.length >= 7)).toBe(true);
 
+    expect((await ben.call("ready", { sessionId, ready: true })).status).toBe(409); // no likes yet
+    await ben.c.from("swipes").insert({ participant_id: benP!.id, session_id: sessionId, film_id: films[8].film_id, liked: true }); // one ann has not liked, so it is not unanimous
     expect((await ben.call("ready", { sessionId, ready: true })).status).toBe(200);
     expect((await ann.call("ready", { sessionId, ready: true })).status).toBe(200);
     const rounds = async () => (await ann.c.from("rounds").select("*").eq("session_id", sessionId).order("number")).data!;
@@ -138,16 +140,44 @@ describe.runIf(running)("full round", () => {
     ben.c.removeChannel(channel);
   });
 
-  it("recovers a session stuck deciding with no round", async () => {
+  const twoPeople = async () => {
     const [ann, ben] = [await person(), await person()];
     const { json: { code } } = await ann.call("create", { services: ["netflix"] });
     await ben.call("join", { code });
     const sessionId = (await ann.c.from("sessions").select("id").eq("code", code).single()).data!.id;
     expect((await ann.call("start", { sessionId })).status).toBe(200);
     const service = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-    await service.from("sessions").update({ status: "deciding" }).eq("id", sessionId);
-    expect((await service.from("rounds").select("id").eq("session_id", sessionId)).data).toHaveLength(0);
-    await Promise.all([ann.call("advance", { sessionId }), ben.call("advance", { sessionId })]);
-    expect((await service.from("rounds").select("id").eq("session_id", sessionId)).data).toHaveLength(1);
+    const films = (await service.from("session_films").select("film_id").eq("session_id", sessionId).order("position")).data!;
+    const annP = (await ann.c.from("participants").select("id").eq("session_id", sessionId).eq("user_id", ann.id).single()).data!.id;
+    const like = (n: number) => Promise.all(films.slice(0, n).map((f) => ann.c.from("swipes").insert({ participant_id: annP, session_id: sessionId, film_id: f.film_id, liked: true })));
+    const end = () => service.from("sessions").update({ swipe_deadline: new Date(Date.now() - 5000).toISOString() }).eq("id", sessionId);
+    const state = async () => (await service.from("sessions").select("status, winner_film_id").eq("id", sessionId).single()).data!;
+    const rounds = async () => (await service.from("rounds").select("id").eq("session_id", sessionId)).data!;
+    return { ann, ben, sessionId, service, films, like, end, state, rounds };
+  };
+
+  it("recovers a session stuck deciding with no round", async () => {
+    const t = await twoPeople();
+    await t.like(2);
+    await t.service.from("sessions").update({ status: "deciding" }).eq("id", t.sessionId);
+    expect(await t.rounds()).toHaveLength(0);
+    await Promise.all([t.ann.call("advance", { sessionId: t.sessionId }), t.ben.call("advance", { sessionId: t.sessionId })]);
+    expect(await t.rounds()).toHaveLength(1);
+  });
+
+  it("cannot ready without a like, and a round with no likes ends with no winner", async () => {
+    const t = await twoPeople();
+    expect((await t.ann.call("ready", { sessionId: t.sessionId, ready: true })).status).toBe(409);
+    await t.end();
+    await t.ann.call("advance", { sessionId: t.sessionId });
+    expect(await t.state()).toEqual({ status: "closed", winner_film_id: null });
+  });
+
+  it("one liked film wins outright when the clock runs out", async () => {
+    const t = await twoPeople();
+    await t.like(1);
+    await t.end();
+    await t.ann.call("advance", { sessionId: t.sessionId });
+    expect(await t.state()).toEqual({ status: "closed", winner_film_id: t.films[0].film_id });
   });
 });
