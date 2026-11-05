@@ -137,4 +137,17 @@ describe.runIf(running)("full round", () => {
     expect(fresh.some((id) => films.some((f) => f.film_id === id))).toBe(false);
     ben.c.removeChannel(channel);
   });
+
+  it("recovers a session stuck deciding with no round", async () => {
+    const [ann, ben] = [await person(), await person()];
+    const { json: { code } } = await ann.call("create", { services: ["netflix"] });
+    await ben.call("join", { code });
+    const sessionId = (await ann.c.from("sessions").select("id").eq("code", code).single()).data!.id;
+    expect((await ann.call("start", { sessionId })).status).toBe(200);
+    const service = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    await service.from("sessions").update({ status: "deciding" }).eq("id", sessionId);
+    expect((await service.from("rounds").select("id").eq("session_id", sessionId)).data).toHaveLength(0);
+    await Promise.all([ann.call("advance", { sessionId }), ben.call("advance", { sessionId })]);
+    expect((await service.from("rounds").select("id").eq("session_id", sessionId)).data).toHaveLength(1);
+  });
 });

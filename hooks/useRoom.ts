@@ -155,6 +155,7 @@ export function useRoom(code: string) {
     if (joinedRef.current && userId && people.length > 0 && !me) setKicked(true);
   }, [me, people, userId]);
 
+  const pendingRef = useRef(new Set<Promise<void>>());
   const deckRef = useRef<DeckState | null>(null);
   useEffect(() => {
     deckRef.current = deck;
@@ -175,8 +176,15 @@ export function useRoom(code: string) {
         return write(attempt + 1);
       }
     };
-    write();
+    const pending = write().finally(() => pendingRef.current.delete(pending));
+    pendingRef.current.add(pending);
   }, [session]);
 
-  return { session, people, pool, deck, round, marks, me, error, kicked, swipe, refresh };
+  // Resolves once local swipes have reached the database, or after 3 seconds.
+  const flush = useCallback(
+    () => Promise.race([Promise.allSettled([...pendingRef.current]), new Promise((r) => setTimeout(r, 3000))]).then(() => {}),
+    [],
+  );
+
+  return { session, people, pool, deck, round, marks, me, error, kicked, swipe, flush, refresh };
 }

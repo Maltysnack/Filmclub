@@ -118,6 +118,24 @@ async function openRound(sessionId: string, number: number, films: number[]) {
   }));
 }
 
+// Only fetches the whole pool when fewer than two films were liked, to keep this call fast.
+async function pickShortlist(sessionId: string, people: number): Promise<number[]> {
+  const swipes = await swipesOf(sessionId);
+  const liked = new Set(swipes.filter((s) => s.liked).map((s) => s.film_id));
+  return shortlist(liked.size < 2 ? await poolOf(sessionId) : [], swipes, people);
+}
+
+// Safe to call twice: the unique (session, number) key lets only one first round exist.
+async function openFirstRound(sessionId: string, people: number) {
+  const films = await pickShortlist(sessionId, people);
+  if (films.length === 1) return finish(sessionId, films[0], films);
+  try {
+    await openRound(sessionId, 1, films);
+  } catch (e) {
+    if (!/duplicate key/i.test((e as Error).message)) throw e;
+  }
+}
+
 // Idempotent: any client may call this at any time, and only one caller gets each transition.
 async function advance(session: SessionRow, people: Participant[]) {
   if (session.status === "swiping") {
@@ -126,14 +144,14 @@ async function advance(session: SessionRow, people: Participant[]) {
     const taken = must(await db().from("sessions").update({ status: "deciding" })
       .eq("id", session.id).eq("status", "swiping").select("id"));
     if ((taken as unknown[]).length === 0) return;
-    const films = shortlist(await poolOf(session.id), await swipesOf(session.id), people.length);
-    if (films.length === 1) return finish(session.id, films[0], films);
-    return openRound(session.id, 1, films);
+    return openFirstRound(session.id, people.length);
   }
 
   if (session.status !== "deciding") return;
   const round = await currentRound(session.id);
-  if (!round || round.resolved) return;
+  // A crash after the flip to deciding leaves no round; any later call finishes the job.
+  if (!round) return openFirstRound(session.id, people.length);
+  if (round.resolved) return;
   const marks: Mark[] = must(await db().from("marks").select("*").eq("round_id", round.id));
   const allIn = people.every((p) => marks.some((m) => m.participant_id === p.id));
   if (!allIn && Date.now() < Date.parse(round.deadline) - 500) return;
@@ -177,7 +195,9 @@ async function botsAct(session: SessionRow, people: Participant[]) {
   }
   if (session.status !== "deciding") return;
   const round = await currentRound(session.id);
-  if (!round || round.resolved) return;
+  // A crash after the flip to deciding leaves no round; any later call finishes the job.
+  if (!round) return openFirstRound(session.id, people.length);
+  if (round.resolved) return;
   const marks: Mark[] = must(await db().from("marks").select("*").eq("round_id", round.id));
   for (const bot of bots) {
     if (marks.some((m) => m.participant_id === bot.id) || Math.random() > BOT_DAWDLE) continue;

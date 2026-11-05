@@ -69,12 +69,13 @@ function clock(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function Deck({ session, people, me, deck, swipe }: {
+export default function Deck({ session, people, me, deck, swipe, flush }: {
   session: Session;
   people: Participant[];
   me: Participant;
   deck: DeckState;
   swipe: (id: number, liked: boolean) => void;
+  flush: () => Promise<void>;
 }) {
   const films = useMemo(() => frontFilms(deck), [deck]);
   const front = films[0];
@@ -105,8 +106,12 @@ export default function Deck({ session, people, me, deck, swipe }: {
   }, [decide, info]);
 
   const setReady = useCallback(
-    (ready: boolean) => room("ready", { sessionId: session.id, ready }).catch(() => {}),
-    [session.id],
+    // Wait for our swipes to land first, or the shortlist can miss our last likes.
+    async (ready: boolean) => {
+      await flush();
+      await room("ready", { sessionId: session.id, ready }).catch(() => {});
+    },
+    [session.id, flush],
   );
 
   // Running out of cards counts as being ready.

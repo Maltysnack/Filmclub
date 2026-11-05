@@ -28,7 +28,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const { code } = use(params);
   const upper = code.toUpperCase();
   const room = useRoom(upper);
-  const { session, people, pool, deck, round, marks, me, error, kicked, swipe } = room;
+  const { session, people, pool, deck, round, marks, me, error, kicked, swipe, flush } = room;
   const [castDismissed, setCastDismissed] = useState(false);
 
   const sessionId = session?.id;
@@ -47,9 +47,17 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
   const deadline = session?.swipe_deadline;
   useEffect(() => {
     if (!sessionId || status !== "swiping" || !deadline) return;
-    const t = setTimeout(() => call("advance", { sessionId }).catch(() => {}), Math.max(0, Date.parse(deadline) - Date.now()) + 200);
+    const t = setTimeout(() => flush().then(() => call("advance", { sessionId })).catch(() => {}), Math.max(0, Date.parse(deadline) - Date.now()) + 200);
     return () => clearTimeout(t);
-  }, [sessionId, status, deadline]);
+  }, [sessionId, status, deadline, flush]);
+
+  // If the shortlist round never appeared, ask the server to finish making it.
+  const hasRound = !!round;
+  useEffect(() => {
+    if (!sessionId || status !== "deciding" || hasRound) return;
+    const t = setInterval(() => call("advance", { sessionId }).catch(() => {}), 3000);
+    return () => clearInterval(t);
+  }, [sessionId, status, hasRound]);
 
   // Posters start loading on the who-is-who screen, so the first card is ready when it opens.
   const nextPosters = deck?.frozen.map((id) => deck.films.get(id)?.poster).join();
@@ -74,7 +82,7 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     }} /></>;
   }
 
-  if (session.status === "swiping" && deck) return <>{leave}<Deck session={session} people={people} me={me} deck={deck} swipe={swipe} /></>;
+  if (session.status === "swiping" && deck) return <>{leave}<Deck session={session} people={people} me={me} deck={deck} swipe={swipe} flush={flush} /></>;
   if (session.status === "deciding" && round && pool.length) {
     return <>{leave}<Decider session={session} round={round} marks={marks} pool={pool} people={people} me={me} /></>;
   }
