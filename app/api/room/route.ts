@@ -7,7 +7,7 @@ import { buildPool } from "@/lib/tmdb";
 import type { Film, Mark, Participant, Round, Swipe } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 10;
+export const maxDuration = 30;
 
 const MAX_BODY = 2_000;
 const MAX_PEOPLE = 12;
