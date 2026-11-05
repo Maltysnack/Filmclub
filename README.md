@@ -32,7 +32,7 @@ On your own? Press Test it and three labelled bots join, so you can see the whol
 
 ## Built with
 
-Next.js, TypeScript, Supabase (Postgres, realtime, anonymous auth), Upstash, Framer Motion, Tailwind CSS, Vitest, TMDB and OMDb.
+Next.js, TypeScript, Supabase (Postgres, realtime, anonymous auth), Framer Motion, Tailwind CSS, Vitest, TMDB and OMDb.
 
 Built with Claude Code as a development tool. Product direction, design decisions and testing are mine.
 

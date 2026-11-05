@@ -5,8 +5,6 @@ const REQUIRED = [
   "TMDB_API_KEY",
   "OMDB_API_KEY",
   "CRON_SECRET",
-  "UPSTASH_REDIS_REST_URL",
-  "UPSTASH_REDIS_REST_TOKEN",
 ];
 
 export function assertProductionEnv() {

@@ -1,35 +1,19 @@
 import "server-only";
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import { admin } from "@/lib/admin";
 
-type Window = `${number} ${"s" | "m" | "h"}`;
-
-const LIMITS: Record<string, [number, Window]> = {
-  create: [10, "1 h"],
-  join: [40, "10 m"],
-  action: [150, "1 m"],
-  film: [60, "1 m"],
+// [hits allowed, window in seconds]
+const LIMITS: Record<string, [number, number]> = {
+  create: [10, 3600],
+  join: [40, 600],
+  action: [150, 60],
+  film: [60, 60],
 };
 
-const URL = process.env.UPSTASH_REDIS_REST_URL;
-const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-const redis = URL && TOKEN ? new Redis({ url: URL, token: TOKEN }) : null;
-const limiters = new Map<string, Ratelimit>();
-
+// Fails closed: if the counter cannot be reached, the request is refused.
 export async function allowed(name: keyof typeof LIMITS & string, key: string): Promise<boolean> {
-  // Fails closed in production: an unprotected endpoint is worse than a brief outage.
-  if (!redis) return process.env.NODE_ENV !== "production";
-  let limiter = limiters.get(name);
-  if (!limiter) {
-    const [count, window] = LIMITS[name];
-    limiter = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(count, window), prefix: `filmclub:${name}` });
-    limiters.set(name, limiter);
-  }
-  try {
-    return (await limiter.limit(key)).success;
-  } catch {
-    return false;
-  }
+  const [limit, seconds] = LIMITS[name];
+  const { data, error } = await admin().rpc("rate_limit", { p_name: name, p_key: key, p_limit: limit, p_window_seconds: seconds });
+  return !error && data === true;
 }
 
 export function clientIp(req: Request): string {

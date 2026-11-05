@@ -25,14 +25,7 @@ supabase db push
 
 The free plan has no overage bills. If a limit is reached, the service stops until it resets.
 
-## 2. Upstash (free plan)
-
-Rate limiting. The app will not run in production without it.
-
-1. Create a Redis database at upstash.com, in the Sydney region.
-2. Copy the REST URL and REST token.
-
-## 3. Vercel (Pro)
+## 2. Vercel (Pro)
 
 1. Import the GitHub repo. It can stay private, and the site is still public. The framework is detected automatically.
 2. Add every setting from `.env.example` for **Production**. Create `CRON_SECRET` with this:
@@ -44,7 +37,7 @@ openssl rand -hex 32
 3. Use new TMDB and OMDb keys if the old TMDB key was ever public. The old one shipped in browser code, so rotate it.
 4. Git auto deploys are off in `vercel.json`. Deploy by hand with `vercel --prod`, then add `filmclub.watch` under Domains if you still own it.
 
-## 4. Spending guardrails, do these before sharing the link
+## 3. Spending guardrails, do these before sharing the link
 
 Setting a budget alone does **not** stop spending. Pause must be switched on.
 
@@ -71,9 +64,10 @@ Guardrails already in the code:
 | Spamming swipes | Swipes go to the database, capped at one per film per person |
 | Image bills | Posters load directly from TMDB, so Vercel image optimisation is never used |
 | Reading or changing other sessions | Database rules, tested in `tests/security.test.ts` |
-| Limiter outage | Actions are refused rather than running unprotected |
+| Limiter outage | Actions are refused rather than running unprotected. Counters live in Supabase (`rate_hits`), no extra service |
+| Bots and AI crawlers | Vercel Firewall: Bot Protection on Challenge, AI Bots on Deny |
 
-## 5. Check it works
+## 4. Check it works
 
 1. Open the site on your phone and start a session.
 2. Press Test it, then play a full round with bots.

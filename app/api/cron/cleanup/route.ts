@@ -21,6 +21,8 @@ export async function GET(req: Request) {
   const { error, count } = await db.from("sessions").delete({ count: "exact" }).lt("created_at", cutoff);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
+  await db.from("rate_hits").delete().lt("expires_at", new Date().toISOString());
+
   let users = 0;
   const { data } = await db.auth.admin.listUsers({ perPage: 1000 });
   for (const user of data?.users ?? []) {

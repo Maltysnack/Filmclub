@@ -97,4 +97,13 @@ describe.runIf(running)("database rules", () => {
   it("no swipes after the round closes", async () => {
     expect((await alice.c.from("swipes").insert({ participant_id: aliceP, session_id: sid, film_id: 3, liked: true })).error).not.toBeNull();
   });
+
+  it("the rate limiter is for the server only and counts correctly", async () => {
+    const args = { p_name: "t", p_key: crypto.randomUUID(), p_limit: 2, p_window_seconds: 60 };
+    expect((await alice.c.rpc("rate_limit", args)).error).not.toBeNull();
+    expect((await alice.c.from("rate_hits").select("*")).data ?? []).toHaveLength(0);
+    const hits = [];
+    for (let i = 0; i < 3; i++) hits.push((await service.rpc("rate_limit", args)).data);
+    expect(hits).toEqual([true, true, false]);
+  });
 });
