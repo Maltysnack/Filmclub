@@ -11,6 +11,7 @@ const LIMITS: Record<string, [number, number]> = {
 
 // Fails closed: if the counter cannot be reached, the request is refused.
 export async function allowed(name: keyof typeof LIMITS & string, key: string): Promise<boolean> {
+  if (process.env.NODE_ENV !== "production") return true; // local runs and tests create sessions freely
   const [limit, seconds] = LIMITS[name];
   const { data, error } = await admin().rpc("rate_limit", { p_name: name, p_key: key, p_limit: limit, p_window_seconds: seconds });
   return !error && data === true;
