@@ -371,17 +371,19 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     const keen = humans.filter((p) => (p.id === me.id ? body.rematch === true : p.rematch)).length;
     if (keen * 2 <= humans.length) return {};
 
-    const game = session.game + 1;
-    const claimed = must(await db().from("sessions").update({ game }).eq("id", session.id).eq("game", session.game).select("id"));
-    if ((claimed as unknown[]).length === 0) return {};
     const old = await poolOf(session.id);
-    session.seen_film_ids = [...session.seen_film_ids, ...old.map((f) => f.id)].slice(-1500);
+    const seen = [...session.seen_film_ids, ...old.map((f) => f.id)].slice(-1500);
     // Built first: if this fails, the finished game stays on screen.
-    const pool = await freshPool(session, people.length, game);
-    must(await db().from("session_films").delete().eq("session_id", session.id));
-    must(await db().from("rounds").delete().eq("session_id", session.id));
-    must(await db().from("participants").update({ ready: false, rematch: false }).eq("session_id", session.id));
-    await deal(session, pool, game);
+    const pool = await freshPool({ ...session, seen_film_ids: seen }, people.length, session.game + 1);
+    // One transaction, so no phone can see the new game number with the old films.
+    // Two people can get here together; the swap only lets one through.
+    must(await db().rpc("swap_game", {
+      p_session: session.id,
+      p_game: session.game,
+      p_films: pool.map((film, position) => ({ film_id: film.id, position, data: film })),
+      p_seen: seen,
+      p_seconds: SWIPE_SECONDS,
+    }));
     return {};
   },
 };

@@ -156,6 +156,41 @@ describe.runIf(running)("full round", () => {
     return { ann, ben, sessionId, service, films, like, end, state, rounds };
   };
 
+  it("Play Again never shows the new game with the old films, and swipes save", async () => {
+    const t = await twoPeople();
+    await t.like(1);
+    await t.end();
+    await t.ann.call("advance", { sessionId: t.sessionId });
+    const oldFilms = new Set(t.films.map((f) => f.film_id));
+
+    // Reads what a phone reads: the game number, then the films for it.
+    let watching = true;
+    let stale = 0;
+    const watcher = (async () => {
+      while (watching) {
+        const { data: s } = await t.ann.c.from("sessions").select("game").eq("id", t.sessionId).single();
+        const { data: f } = await t.ann.c.from("session_films").select("film_id").eq("session_id", t.sessionId);
+        if (s!.game === 1 && f!.some((row) => oldFilms.has(row.film_id))) stale++;
+      }
+    })();
+
+    expect((await t.ann.call("rematch", { sessionId: t.sessionId, rematch: true })).status).toBe(200);
+    expect((await t.ben.call("rematch", { sessionId: t.sessionId, rematch: true })).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 300));
+    watching = false;
+    await watcher;
+    expect(stale).toBe(0);
+
+    const after = (await t.service.from("sessions").select("status, game, winner_film_id").eq("id", t.sessionId).single()).data!;
+    expect(after).toEqual({ status: "swiping", game: 1, winner_film_id: null });
+    const people = (await t.service.from("participants").select("id, user_id, ready, rematch").eq("session_id", t.sessionId)).data!;
+    expect(people.every((p) => !p.ready && !p.rematch)).toBe(true);
+    const fresh = (await t.service.from("session_films").select("film_id").eq("session_id", t.sessionId)).data!;
+    const annP = people.find((p) => p.user_id === t.ann.id)!.id;
+    const { error } = await t.ann.c.from("swipes").insert({ participant_id: annP, session_id: t.sessionId, film_id: fresh[0].film_id, liked: true });
+    expect(error).toBeNull();
+  });
+
   it("recovers a session stuck deciding with no round", async () => {
     const t = await twoPeople();
     await t.like(2);

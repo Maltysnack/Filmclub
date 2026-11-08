@@ -32,6 +32,7 @@ Built on the server in `lib/tmdb.ts`: popular and top-rated films per chosen ser
 - `lib/family.ts` joins franchises by name, because TMDB splits Spider-Man into at least four collections.
 - Size is 40 films per person plus two spare slices, up to 400.
 - Each Play Again reads further down the lists and excludes films already dealt.
+- Play Again builds the new pool first, then `swap_game` replaces the game in one transaction. Phones reload films when the game number changes, so the number must never appear before the new films.
 
 ## Ending a round
 
