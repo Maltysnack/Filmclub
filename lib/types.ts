@@ -53,6 +53,7 @@ export interface Round {
   film_ids: number[];
   deadline: string;
   resolved: boolean;
+  extended: boolean;
 }
 
 export interface Mark {

@@ -104,12 +104,14 @@ describe.runIf(running)("full round", () => {
     expect(await until(async () => heard.length >= 7)).toBe(true);
 
     expect((await ben.call("ready", { sessionId, ready: true })).status).toBe(409); // no likes yet
-    await ben.c.from("swipes").insert({ participant_id: benP!.id, session_id: sessionId, film_id: films[8].film_id, liked: true }); // one ann has not liked, so it is not unanimous
+    await ben.c.from("swipes").insert({ participant_id: benP!.id, session_id: sessionId, film_id: films[0].film_id, liked: true }); // a mutual like no longer ends swiping
+    expect((await ann.c.from("sessions").select("status").eq("id", sessionId).single()).data!.status).toBe("swiping");
     expect((await ben.call("ready", { sessionId, ready: true })).status).toBe(200);
     expect((await ann.call("ready", { sessionId, ready: true })).status).toBe(200);
     const rounds = async () => (await ann.c.from("rounds").select("*").eq("session_id", sessionId).order("number")).data!;
     let round = (await rounds()).at(-1)!;
-    expect(round.film_ids.length).toBe(4);
+    expect(round.film_ids.length).toBe(7); // every liked film
+    expect(round.film_ids[0]).toBe(films[0].film_id); // the mutual like leads
 
     const [a, b, c] = round.film_ids;
     expect((await ann.call("mark", { sessionId, roundId: round.id, cross: 999999, tick: a })).status).toBe(400);
@@ -155,6 +157,41 @@ describe.runIf(running)("full round", () => {
     const rounds = async () => (await service.from("rounds").select("id").eq("session_id", sessionId)).data!;
     return { ann, ben, sessionId, service, films, like, end, state, rounds };
   };
+
+  it("Play Again never shows the new game with the old films, and swipes save", async () => {
+    const t = await twoPeople();
+    await t.like(1);
+    await t.end();
+    await t.ann.call("advance", { sessionId: t.sessionId });
+    const oldFilms = new Set(t.films.map((f) => f.film_id));
+
+    // Reads what a phone reads: the game number, then the films for it.
+    let watching = true;
+    let stale = 0;
+    const watcher = (async () => {
+      while (watching) {
+        const { data: s } = await t.ann.c.from("sessions").select("game").eq("id", t.sessionId).single();
+        const { data: f } = await t.ann.c.from("session_films").select("film_id").eq("session_id", t.sessionId);
+        if (s!.game === 1 && f!.some((row) => oldFilms.has(row.film_id))) stale++;
+      }
+    })();
+
+    expect((await t.ann.call("rematch", { sessionId: t.sessionId, rematch: true })).status).toBe(200);
+    expect((await t.ben.call("rematch", { sessionId: t.sessionId, rematch: true })).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 300));
+    watching = false;
+    await watcher;
+    expect(stale).toBe(0);
+
+    const after = (await t.service.from("sessions").select("status, game, winner_film_id").eq("id", t.sessionId).single()).data!;
+    expect(after).toEqual({ status: "swiping", game: 1, winner_film_id: null });
+    const people = (await t.service.from("participants").select("id, user_id, ready, rematch").eq("session_id", t.sessionId)).data!;
+    expect(people.every((p) => !p.ready && !p.rematch)).toBe(true);
+    const fresh = (await t.service.from("session_films").select("film_id").eq("session_id", t.sessionId)).data!;
+    const annP = people.find((p) => p.user_id === t.ann.id)!.id;
+    const { error } = await t.ann.c.from("swipes").insert({ participant_id: annP, session_id: t.sessionId, film_id: fresh[0].film_id, liked: true });
+    expect(error).toBeNull();
+  });
 
   it("recovers a session stuck deciding with no round", async () => {
     const t = await twoPeople();

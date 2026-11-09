@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useTransform, type PanInfo } from "framer-motion";
 import FilmInfo, { ServiceLogos, useDetail } from "./FilmInfo";
 import { frontFilms, likedByOthers, type DeckState } from "@/lib/deck";
 import { posterUrl } from "@/lib/images";
-import { room } from "@/lib/supabase";
+import { report, room, RoomError } from "@/lib/supabase";
 import type { Film, Participant, Session } from "@/lib/types";
 
 const SWIPE_DISTANCE = 100;
@@ -69,13 +69,14 @@ function clock(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function Deck({ session, people, me, deck, swipe, flush }: {
+export default function Deck({ session, people, me, deck, swipe, flush, notify }: {
   session: Session;
   people: Participant[];
   me: Participant;
   deck: DeckState;
   swipe: (id: number, liked: boolean) => void;
   flush: () => Promise<void>;
+  notify: (message: string) => void;
 }) {
   const films = useMemo(() => frontFilms(deck), [deck]);
   const front = films[0];
@@ -105,27 +106,43 @@ export default function Deck({ session, people, me, deck, swipe, flush }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [decide, info]);
 
+  // The button answers at once. The server catches up, and on failure it flips back with a message.
+  const [wanted, setWanted] = useState<boolean | null>(null);
+  if (wanted !== null && wanted === me.ready) setWanted(null);
+  const ready = wanted ?? me.ready;
+
   const setReady = useCallback(
     // Wait for our swipes to land first, or the shortlist can miss our last likes.
-    async (ready: boolean) => {
+    async (next: boolean) => {
+      setWanted(next);
       await flush();
-      await room("ready", { sessionId: session.id, ready }).catch(() => {});
+      try {
+        await room("ready", { sessionId: session.id, ready: next });
+      } catch (e) {
+        setWanted(null);
+        notify((e as Error).message);
+        report(session.id, "ready_failed", { ready: next, error: (e as Error).message, status: e instanceof RoomError ? e.status : null });
+      }
     },
-    [session.id, flush],
+    [session.id, flush, notify],
   );
 
   // Early ready needs at least one like. Running out of cards counts as ready once you have one.
   const hasLiked = [...deck.swiped.values()].some(Boolean);
+  // Tried once, so a failing connection shows one message instead of a loop of them.
+  const autoReadied = useRef(false);
   useEffect(() => {
-    if (!front && hasLiked && !me.ready) setReady(true);
-  }, [front, hasLiked, me.ready, setReady]);
+    if (front || !hasLiked || ready || autoReadied.current) return;
+    autoReadied.current = true;
+    void Promise.resolve().then(() => setReady(true));
+  }, [front, hasLiked, ready, setReady]);
 
-  const readyCount = people.filter((p) => p.ready).length;
+  const readyCount = people.filter((p) => (p.id === me.id ? ready : p.ready)).length;
   const names = new Map(people.map((p) => [p.id, p.name]));
   const likedBy = front ? likedByOthers(deck, front.id).map((id) => names.get(id)).filter(Boolean) as string[] : [];
   const left = session.swipe_deadline ? Date.parse(session.swipe_deadline) - now : 0;
-  const waitingOn = people.filter((p) => !p.ready).map((p) => p.name);
-  const waiting = me.ready && waitingOn.length > 0 ? `Ready. Waiting on ${waitingOn.join(", ")}. Keep swiping.` : null;
+  const waitingOn = people.filter((p) => p.id !== me.id && !p.ready).map((p) => p.name);
+  const waiting = ready && waitingOn.length > 0 ? `Ready. Waiting on ${waitingOn.join(", ")}. Keep swiping.` : null;
 
   return (
     <main className="screen flex h-dvh flex-col lg:flex-row">
@@ -183,8 +200,21 @@ export default function Deck({ session, people, me, deck, swipe, flush }: {
           <button aria-label="Skip" disabled={!front} onClick={() => decide(false)} className="flex items-center justify-center border border-text disabled:opacity-40">
             <svg viewBox="0 0 24 24" className="size-8" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="square" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg>
           </button>
-          <button aria-pressed={me.ready} disabled={!hasLiked && !me.ready} onClick={() => setReady(!me.ready)} className={`label border-y border-text disabled:opacity-40 ${me.ready ? "bg-red" : ""}`}>
-            {me.ready ? `Ready ${readyCount}/${people.length}` : hasLiked ? "Ready to vote" : "Like one to vote"}
+          {/* Filled and arrowed when it can be pressed, so it reads as a button, not a status. */}
+          <button
+            aria-pressed={ready}
+            disabled={!hasLiked && !ready}
+            onClick={() => setReady(!ready)}
+            className={`flex items-center justify-center gap-2 px-2 disabled:opacity-40 ${
+              ready ? "label border-y border-text" : hasLiked ? "display bg-red text-[15px] active:opacity-80 lg:text-[22px]" : "label border-y border-text"
+            }`}
+          >
+            {ready ? `Ready ${readyCount}/${people.length}. Tap to undo` : hasLiked ? (
+              <>
+                Go to vote
+                <svg viewBox="0 0 24 24" className="size-5 shrink-0 lg:size-7" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="square" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
+              </>
+            ) : "Like one to vote"}
           </button>
           <button aria-label="Like" disabled={!front} onClick={() => decide(true)} className="flex items-center justify-center bg-text text-black disabled:opacity-40">
             <svg viewBox="0 0 24 24" className="size-8" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="square" aria-hidden="true"><path d="M4 13l5 6L20 5" /></svg>
