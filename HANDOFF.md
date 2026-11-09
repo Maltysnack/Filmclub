@@ -1,23 +1,26 @@
 # Handoff
 
 ## State
-Branch `fix/play-again-swap`: Play Again builds the new pool, then `swap_game` (migration `20261107000000`) swaps the game in one transaction. Fixes swipes after Play Again failing silently (old films under the new game number). Typecheck, lint and unit tests pass. The new flow test needs local Supabase, so it has not run. Migration NOT applied to production; nothing deployed.
+Branch `fix/playtest-1` (contains `fix/play-again-swap`): every fix from the 6 Nov playtest. Typecheck, lint, unit tests and `next build` pass. All five new migrations are applied to production Supabase (history rows match the files). Code is NOT deployed, and production still runs the old build against the new schema, which is compatible.
 
-## Next steps (plan from first playtest, 6 Nov)
-1. Done above. Apply migration, then deploy.
-2. `session_events` table with durations; show swipe, Ready and vote failures on screen.
-3. Survive a Supabase stall (one hit the VU7T vote, 14 to 35 s responses): verify logins locally with `getClaims`, never sign out on a failed check, request timeouts, simpler retried votes, reopen a round with no votes instead of a random pick.
-4. Feel fast: optimistic Ready, show the lobby at once, stop full reloads on every event, time and speed up Start.
-5. Polish: filled "Go to vote" button, prefetch IMDb for the next 4 cards and retry failures, slimmer Info links with no "N/A" while loading.
-6. Round redesign: drop the instant unanimous win (trigger), first 20 cards private, shortlist of mutual likes first then single likes (4 to 8), 30 s first round, pool large enough for separate decks.
-7. Housekeeping: revoke anon on `is_member` and `can_swipe`, index `swipes(session_id, film_id)`, check the Auth Site URL.
-8. Deploy and a two-person retest including Play Again.
+What changed:
+- Play Again swaps the game in one transaction (`swap_game`), so swipes after Play Again save.
+- `session_events` timeline: phases, rounds, every action with its duration, client failure and slow reports. Kept 30 days.
+- Stall resilience: logins checked locally with `getClaims`, 8 to 15 s timeouts, an expired token is renewed instead of a new identity, votes retried with a 2.5 s grace, a round with no votes runs once more.
+- Speed: instant Ready, the lobby shows its code at once, realtime rows applied directly instead of full reloads, film cache warmed at create.
+- Polish: filled "Go to vote" button, IMDb prefetched for the next four cards and retried, slimmer Info links.
+- Round: no instant unanimous win, first ~20 cards private, shortlist of every like up to 8 (mutual first, rated ties), 30 s first round with 5+ films.
+
+## Next steps
+1. Merge to `main` and deploy (`vercel --prod`, or the Vercel connector once team access is approved).
+2. Two-person retest including Play Again, then read the timeline (below).
+3. Check the Supabase Auth Site URL; it looks like `localhost:3000`.
 
 ## Gotchas
-- Git auto deploys are off. Deploy with `vercel --prod`.
-- The Vercel connector needs team access approved before it can read deployments or logs.
-- Supabase project `tpginnnnkbethhntsylx` (Sydney). Debug a session by code from `sessions`, `swipes`, `rounds`, `marks` and the Postgres and auth logs.
-- Play Again deletes the previous game's swipes; cleanup deletes sessions after 3 days.
+- Git auto deploys are off.
+- Flow and security tests need `supabase start` and the dev server on 3100; there is no Docker on this machine, so they have not run.
+- Timeline: `select at, kind, ms, ok, detail from session_events where code = 'ABCD' or session_id = (select id from sessions where code = 'ABCD') order by at;`
+- Supabase project `tpginnnnkbethhntsylx` (Sydney), free tier; one stall on 6 Nov had no clear cause.
 
 ## Run
-`npm ci`, `npm run typecheck`, `npm run lint`, `npm test`. Flow and security tests need `supabase start` and the dev server on port 3100, otherwise they skip.
+`npm ci`, `npm run typecheck`, `npm run lint`, `npm test`.
