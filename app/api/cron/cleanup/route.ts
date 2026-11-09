@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 10;
 
 const KEEP_DAYS = 3;
+const EVENT_DAYS = 30;
 
 function authorised(req: Request): boolean {
   const given = Buffer.from(req.headers.get("authorization") ?? "");
@@ -22,6 +23,8 @@ export async function GET(req: Request) {
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   await db.from("rate_hits").delete().lt("expires_at", new Date().toISOString());
+  // The debugging timeline outlives its sessions, for looking back at a playtest.
+  await db.from("session_events").delete().lt("at", new Date(Date.now() - EVENT_DAYS * 86_400_000).toISOString());
 
   let users = 0;
   const { data } = await db.auth.admin.listUsers({ perPage: 1000 });

@@ -104,12 +104,14 @@ describe.runIf(running)("full round", () => {
     expect(await until(async () => heard.length >= 7)).toBe(true);
 
     expect((await ben.call("ready", { sessionId, ready: true })).status).toBe(409); // no likes yet
-    await ben.c.from("swipes").insert({ participant_id: benP!.id, session_id: sessionId, film_id: films[8].film_id, liked: true }); // one ann has not liked, so it is not unanimous
+    await ben.c.from("swipes").insert({ participant_id: benP!.id, session_id: sessionId, film_id: films[0].film_id, liked: true }); // a mutual like no longer ends swiping
+    expect((await ann.c.from("sessions").select("status").eq("id", sessionId).single()).data!.status).toBe("swiping");
     expect((await ben.call("ready", { sessionId, ready: true })).status).toBe(200);
     expect((await ann.call("ready", { sessionId, ready: true })).status).toBe(200);
     const rounds = async () => (await ann.c.from("rounds").select("*").eq("session_id", sessionId).order("number")).data!;
     let round = (await rounds()).at(-1)!;
-    expect(round.film_ids.length).toBe(4);
+    expect(round.film_ids.length).toBe(7); // every liked film
+    expect(round.film_ids[0]).toBe(films[0].film_id); // the mutual like leads
 
     const [a, b, c] = round.film_ids;
     expect((await ann.call("mark", { sessionId, roundId: round.id, cross: 999999, tick: a })).status).toBe(400);

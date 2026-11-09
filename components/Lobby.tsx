@@ -4,6 +4,27 @@ import { useState } from "react";
 import { room } from "@/lib/supabase";
 import type { Participant, Session } from "@/lib/types";
 
+export function CodeBoxes({ code }: { code: string }) {
+  return (
+    <div className="grid grid-cols-4 border border-text" aria-label={`Code ${code}`}>
+      {[...code].map((c, i) => (
+        <div key={i} className="display flex h-28 items-center justify-center border-r border-text text-[56px] last:border-r-0">{c}</div>
+      ))}
+    </div>
+  );
+}
+
+// Shown the moment the page opens, since the code is already in the address.
+export function LobbyLoading({ code }: { code: string }) {
+  return (
+    <main className="column flex min-h-dvh flex-col gap-5 px-6 pb-8 pt-14">
+      <span className="label">Your code</span>
+      <CodeBoxes code={code} />
+      <p className="label mt-auto py-5 text-center">Connecting</p>
+    </main>
+  );
+}
+
 export default function Lobby({ session, people, me }: { session: Session; people: Participant[]; me: Participant }) {
   const [askBots, setAskBots] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -45,11 +66,7 @@ export default function Lobby({ session, people, me }: { session: Session; peopl
         <span className="label">Your code</span>
         <button className="label h-7" onClick={share}>Share invite</button>
       </div>
-      <div className="grid grid-cols-4 border border-text" aria-label={`Code ${session.code}`}>
-        {[...session.code].map((c, i) => (
-          <div key={i} className="display flex h-28 items-center justify-center border-r border-text text-[56px] last:border-r-0">{c}</div>
-        ))}
-      </div>
+      <CodeBoxes code={session.code} />
       <div className="flex flex-1 flex-col justify-end">
         <span className="label mb-3">{session.character_set} / {people.length} in</span>
         <ul>

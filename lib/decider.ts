@@ -1,17 +1,23 @@
 import type { Film, Mark, Swipe } from "./types";
 
-export const roundSeconds = (films: number) => (films >= 4 ? 20 : films === 3 ? 15 : 10);
+export const MAX_SHORTLIST = 8;
 
-// Most-liked first, with at least enough films that everyone can cross one.
+export const roundSeconds = (films: number) => (films >= 5 ? 30 : films === 4 ? 20 : films === 3 ? 15 : 10);
+
+// Every liked film, up to the cap. Films everyone liked come first, then the most liked,
+// then films someone also turned down. Ties go to the better rated film.
 export function shortlist(pool: Film[], swipes: Swipe[], people: number): number[] {
   const likes = new Map<number, number>();
-  for (const s of swipes) if (s.liked) likes.set(s.film_id, (likes.get(s.film_id) ?? 0) + 1);
-  const size = people + 2;
-  const liked = [...likes.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).map(([id]) => id);
-  const ranked = liked.slice(0, size);
-  if (ranked.length >= 2) return ranked;
-  const rest = pool.map((f) => f.id).filter((id) => !ranked.includes(id));
-  return [...ranked, ...rest].slice(0, size);
+  const rejected = new Set<number>();
+  for (const s of swipes) {
+    if (s.liked) likes.set(s.film_id, (likes.get(s.film_id) ?? 0) + 1);
+    else rejected.add(s.film_id);
+  }
+  const rating = new Map(pool.map((f) => [f.id, f.rating]));
+  const tier = (id: number) => (likes.get(id)! >= people ? 0 : rejected.has(id) ? 2 : 1);
+  return [...likes.keys()]
+    .sort((a, b) => tier(a) - tier(b) || likes.get(b)! - likes.get(a)! || (rating.get(b) ?? 0) - (rating.get(a) ?? 0) || a - b)
+    .slice(0, MAX_SHORTLIST);
 }
 
 export type Outcome = { winner: number } | { tied: number[] } | { next: number[] };

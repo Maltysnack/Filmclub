@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Mark from "./Mark";
 import { posterUrl } from "@/lib/images";
-import { room } from "@/lib/supabase";
+import { report, room, RoomError } from "@/lib/supabase";
 import type { Film, Mark as MarkRow, Participant, Round, Session } from "@/lib/types";
 
 const HOLD_MS = 320;
@@ -95,17 +95,30 @@ export default function Decider({ session, round, marks, pool, people, me }: {
     setTick(id);
   }, [cross, done, final, tick]);
 
+  // A vote that gets no answer is sent again. The server keeps the round open a moment
+  // past the clock and ignores a second copy, so a retry can only help.
   const confirm = useCallback(async () => {
     if (!ready || done) return;
     setLocked(true);
     setError(null);
-    try {
-      await room("mark", { sessionId: session.id, roundId: round.id, cross, tick });
-    } catch (e) {
-      setLocked(false);
-      setError((e as Error).message);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await room("mark", { sessionId: session.id, roundId: round.id, cross, tick });
+        return;
+      } catch (e) {
+        const status = e instanceof RoomError ? e.status : 0;
+        const worthRetrying = status === 0 || status >= 500;
+        if (worthRetrying && attempt < 2) {
+          await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+          continue;
+        }
+        setLocked(false);
+        setError((e as Error).message);
+        report(session.id, "mark_failed", { round: round.number, status, error: (e as Error).message });
+        return;
+      }
     }
-  }, [cross, done, ready, round.id, session.id, tick]);
+  }, [cross, done, ready, round.id, round.number, session.id, tick]);
 
   // At the deadline a completed sheet still counts, and any client can move the round on.
   const confirmRef = useRef(confirm);
@@ -115,7 +128,8 @@ export default function Decider({ session, round, marks, pool, people, me }: {
   useEffect(() => {
     const ms = Date.parse(round.deadline) - Date.now();
     const lockIn = setTimeout(() => confirmRef.current(), Math.max(0, ms - 400));
-    const nudge = setTimeout(() => room("advance", { sessionId: session.id }).catch(() => {}), Math.max(0, ms + 300));
+    // After the server's grace period for late votes.
+    const nudge = setTimeout(() => room("advance", { sessionId: session.id }).catch(() => {}), Math.max(0, ms + 2_800));
     return () => {
       clearTimeout(lockIn);
       clearTimeout(nudge);
@@ -146,7 +160,7 @@ export default function Decider({ session, round, marks, pool, people, me }: {
         ))}
       </div>
       <div className="h-1 shrink-0 bg-line">
-        <Countdown key={round.id} deadline={round.deadline} />
+        <Countdown key={`${round.id}-${round.deadline}`} deadline={round.deadline} />
       </div>
       <div className="flex h-[122px] shrink-0 flex-col justify-center px-4 pb-4 pt-2 lg:h-[160px] lg:px-16">
         <div className="column lg:!max-w-none">
@@ -160,7 +174,7 @@ export default function Decider({ session, round, marks, pool, people, me }: {
           ) : (
             <div className="flex items-center justify-between">
               <span className="display text-[30px]">{prompt}</span>
-              <span className="label">Round {round.number}</span>
+              <span className="label text-right">{round.extended ? "No votes came through. Again" : `Round ${round.number}`}</span>
             </div>
           )}
         </div>

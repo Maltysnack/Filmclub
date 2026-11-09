@@ -5,14 +5,16 @@ import Link from "next/link";
 import Cast from "@/components/Cast";
 import Deck from "@/components/Deck";
 import Decider from "@/components/Decider";
+import { prefetchDetail } from "@/components/FilmInfo";
 import LeaveLogo from "@/components/LeaveLogo";
-import Lobby from "@/components/Lobby";
+import Lobby, { LobbyLoading } from "@/components/Lobby";
 import Reveal from "@/components/Reveal";
 import { useRoom } from "@/hooks/useRoom";
 import { posterUrl } from "@/lib/images";
 import { room as call } from "@/lib/supabase";
 
 const BOT_TICK_MS = 2000;
+const CODE = /^[A-HJ-NP-Z2-9]{4}$/;
 
 function Notice({ title, body }: { title: string; body?: string }) {
   return (
@@ -24,11 +26,20 @@ function Notice({ title, body }: { title: string; body?: string }) {
   );
 }
 
+function Toast({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <p role="status" className="label pointer-events-none fixed inset-x-3 top-3 z-50 mx-auto max-w-md bg-red px-3 py-2.5 text-center leading-snug">
+      {message}
+    </p>
+  );
+}
+
 export default function SessionPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
   const upper = code.toUpperCase();
   const room = useRoom(upper);
-  const { session, people, pool, deck, round, marks, me, error, kicked, swipe, flush } = room;
+  const { session, people, pool, deck, round, marks, me, error, kicked, notice, notify, swipe, flush } = room;
   const [castDismissed, setCastDismissed] = useState(false);
 
   const sessionId = session?.id;
@@ -59,21 +70,29 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     return () => clearInterval(t);
   }, [sessionId, status, hasRound]);
 
-  // Posters start loading on the who-is-who screen, so the first card is ready when it opens.
-  const nextPosters = deck?.frozen.map((id) => deck.films.get(id)?.poster).join();
+  // Posters and ratings for the next cards start loading early, so each card is complete when it arrives.
+  const next = deck?.frozen.join();
   useEffect(() => {
-    nextPosters?.split(",").forEach((path) => {
-      if (path) new Image().src = posterUrl(path);
-    });
-  }, [nextPosters]);
+    if (!deck || !next) return;
+    for (const id of deck.frozen) {
+      const film = deck.films.get(id);
+      if (film?.poster) new Image().src = posterUrl(film.poster);
+      prefetchDetail(id);
+    }
+    // Only when the cards change, not on every swipe from someone else.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [next]);
 
   if (kicked) return <Notice title="You were removed" body="The host removed you from this session." />;
   if (error) return <Notice title="Can't join" body={error} />;
-  if (!session || !me) return <main className="flex min-h-dvh items-center justify-center"><p className="label">Loading</p></main>;
+  if (!session || !me) {
+    return CODE.test(upper) ? <LobbyLoading code={upper} /> : <main className="flex min-h-dvh items-center justify-center"><p className="label">Loading</p></main>;
+  }
 
   const leave = <LeaveLogo sessionId={session.id} code={session.code} />;
+  const toast = <Toast message={notice} />;
 
-  if (session.status === "lobby") return <>{leave}<Lobby session={session} people={people} me={me} /></>;
+  if (session.status === "lobby") return <>{leave}{toast}<Lobby session={session} people={people} me={me} /></>;
 
   if (!castDismissed && sessionStorage.getItem(`cast-${session.id}`) !== "1") {
     return <>{leave}<Cast me={me} people={people} onDone={() => {
@@ -82,10 +101,12 @@ export default function SessionPage({ params }: { params: Promise<{ code: string
     }} /></>;
   }
 
-  if (session.status === "swiping" && deck) return <>{leave}<Deck session={session} people={people} me={me} deck={deck} swipe={swipe} flush={flush} /></>;
-  if (session.status === "deciding" && round && pool.length) {
-    return <>{leave}<Decider session={session} round={round} marks={marks} pool={pool} people={people} me={me} /></>;
+  if (session.status === "swiping" && deck) {
+    return <>{leave}{toast}<Deck session={session} people={people} me={me} deck={deck} swipe={swipe} flush={flush} notify={notify} /></>;
   }
-  if (session.status === "closed" && pool.length) return <>{leave}<Reveal key={session.game} session={session} pool={pool} people={people} me={me} /></>;
+  if (session.status === "deciding" && round && pool.length) {
+    return <>{leave}{toast}<Decider session={session} round={round} marks={marks} pool={pool} people={people} me={me} /></>;
+  }
+  if (session.status === "closed" && pool.length) return <>{leave}{toast}<Reveal key={session.game} session={session} pool={pool} people={people} me={me} /></>;
   return <main className="flex min-h-dvh items-center justify-center"><p className="label">Loading</p></main>;
 }

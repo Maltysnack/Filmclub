@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { room } from "@/lib/supabase";
@@ -17,6 +17,11 @@ export default function Home({ posters }: { posters: string[] }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Loads the session screen ahead of time, so it opens the moment a code comes back.
+  useEffect(() => {
+    router.prefetch("/session/AAAA");
+  }, [router]);
 
   async function go(run: () => Promise<{ code: string }>) {
     setBusy(true);

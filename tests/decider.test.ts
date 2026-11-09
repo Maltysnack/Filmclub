@@ -3,7 +3,6 @@ import { resolveRound, shortlist } from "@/lib/decider";
 import type { Film, Swipe } from "@/lib/types";
 
 const m = (cross_id: number | null, tick_id: number) => ({ cross_id, tick_id });
-const film = (id: number) => ({ id }) as Film;
 const like = (film_id: number, n: string): Swipe => ({ film_id, participant_id: n, liked: true });
 
 describe("resolveRound", () => {
@@ -48,12 +47,26 @@ describe("resolveRound", () => {
 });
 
 describe("shortlist", () => {
-  it("ranks by likes and sizes to the group", () => {
-    const swipes = [like(1, "a"), like(1, "b"), like(2, "a"), like(3, "a"), like(4, "a"), like(5, "b")];
-    expect(shortlist([], swipes, 2)).toHaveLength(4);
-    expect(shortlist([], swipes, 2)[0]).toBe(1);
+  const rated = (id: number, rating: number) => ({ id, rating }) as Film;
+  const no = (film_id: number, n: string): Swipe => ({ film_id, participant_id: n, liked: false });
+
+  it("puts films everyone liked first and keeps every liked film up to eight", () => {
+    const swipes = [like(1, "a"), like(2, "a"), like(3, "a"), like(3, "b"), like(4, "b"), like(5, "b")];
+    const list = shortlist([], swipes, 2);
+    expect(list[0]).toBe(3);
+    expect([...list].sort()).toEqual([1, 2, 3, 4, 5]);
   });
-  it("fills from the pool when too few were liked", () => {
-    expect(shortlist([film(7), film(8), film(9), film(10)], [like(9, "a")], 2)).toEqual([9, 7, 8, 10].slice(0, 4));
+  it("caps the shortlist at eight", () => {
+    const swipes = Array.from({ length: 12 }, (_, i) => like(i + 1, "a"));
+    expect(shortlist([], swipes, 2)).toHaveLength(8);
+  });
+  it("ranks the better rated film first among equals", () => {
+    expect(shortlist([rated(1, 6), rated(2, 8.5)], [like(1, "a"), like(2, "b")], 2)).toEqual([2, 1]);
+  });
+  it("puts a film someone turned down last", () => {
+    expect(shortlist([rated(1, 9), rated(2, 5)], [like(1, "a"), no(1, "b"), like(2, "b")], 2)).toEqual([2, 1]);
+  });
+  it("never adds films nobody liked", () => {
+    expect(shortlist([rated(7, 9), rated(8, 9)], [like(9, "a")], 2)).toEqual([9]);
   });
 });

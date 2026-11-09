@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
-import { applySwipe, buildDeck, createDeck, DECK_RULES, frontFilms, type DeckState } from "@/lib/deck";
+import { applySwipe, buildDeck, createDeck, DECK_RULES, frontFilms, likedByOthers, type DeckState } from "@/lib/deck";
 import { familyKey } from "@/lib/family";
 import type { Film, Swipe } from "@/lib/types";
 
@@ -27,9 +27,29 @@ describe("slices", () => {
   });
 });
 
+const sharingNow = { ...DECK_RULES, privateCards: 0 };
+
 describe("rules", () => {
-  it("surfaces a film someone else liked behind the frozen cards", () => {
+  it("keeps the first cards private: others' likes neither jump the queue nor show", () => {
     let d = createDeck(pool(160), "me", 0);
+    const outside = [...d.reserve][0];
+    d = applySwipe(d, { participant_id: "you", film_id: outside, liked: true });
+    const shown: number[] = [];
+    for (let i = 0; i < DECK_RULES.privateCards; i++) {
+      shown.push(d.frozen[0]);
+      expect(likedByOthers(d, d.frozen[0])).toEqual([]);
+      d = applySwipe(d, { participant_id: "me", film_id: d.frozen[0], liked: false });
+    }
+    expect(shown).not.toContain(outside);
+    expect(likedByOthers(d, outside)).toEqual(["you"]);
+    for (let i = 0; i < DECK_RULES.frozen && d.frozen[0] !== outside; i++) {
+      d = applySwipe(d, { participant_id: "me", film_id: d.frozen[0], liked: false });
+    }
+    expect(d.frozen[0]).toBe(outside);
+  });
+
+  it("surfaces a film someone else liked behind the frozen cards", () => {
+    let d = createDeck(pool(160), "me", 0, sharingNow);
     const outside = [...d.reserve][0];
     const front = [...d.frozen];
     d = applySwipe(d, { participant_id: "you", film_id: outside, liked: true });
@@ -53,7 +73,7 @@ describe("rules", () => {
 
   it("hides a franchise after one no, unless a friend liked it", () => {
     const films = [...pool(40), film(101, { family: "spiderman" }), film(102, { family: "spiderman" }), film(103, { family: "spiderman" })];
-    let d = createDeck(films, "me", 0);
+    let d = createDeck(films, "me", 0, sharingNow);
     d = applySwipe(d, { participant_id: "you", film_id: 103, liked: true });
     d = applySwipe(d, { participant_id: "me", film_id: 101, liked: false });
     const shown: number[] = [];

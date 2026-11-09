@@ -9,6 +9,7 @@ import type { Film, Swipe } from "./types";
 export const DECK_RULES = {
   frozen: 4, // cards committed to the screen and preload
   sliceSize: 40, // each person's own opening films
+  privateCards: 16, // swipes before others' likes count; with the frozen cards, about the first 20 are yours alone
   likeBoost: 1000, // a film someone else liked jumps the queue
   perExtraLike: 100,
   genreStep: 12, // score change per point of genre taste
@@ -26,7 +27,7 @@ export interface DeckState {
   frozen: number[];
   swiped: Map<number, boolean>; // mine
   likes: Map<number, Set<string>>; // film to everyone who liked it
-  rejected: Set<number>; // someone said no, so it cannot be unanimous
+  rejected: Set<number>; // someone said no, so it can't be everyone's pick
   genreScore: Map<number, number>;
   blockedFamilies: Set<string>;
 }
@@ -58,7 +59,11 @@ export function createDeck(pool: Film[], me: string, slot: number, rules: DeckRu
   return topUp(state);
 }
 
+// Early on, each person judges their own films without seeing what anyone else liked.
+const sharing = (s: DeckState) => s.swiped.size >= s.rules.privateCards;
+
 function othersLiked(s: DeckState, id: number): number {
+  if (!sharing(s)) return 0;
   const likers = s.likes.get(id);
   return likers ? likers.size - (likers.has(s.me) ? 1 : 0) : 0;
 }
@@ -155,4 +160,4 @@ export function buildDeck(pool: Film[], me: string, slot: number, swipes: Swipe[
 
 export const frontFilms = (s: DeckState): Film[] => s.frozen.map((id) => s.films.get(id)!);
 export const likedByOthers = (s: DeckState, id: number): string[] =>
-  [...(s.likes.get(id) ?? [])].filter((p) => p !== s.me);
+  sharing(s) ? [...(s.likes.get(id) ?? [])].filter((p) => p !== s.me) : [];

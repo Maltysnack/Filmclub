@@ -16,8 +16,8 @@ On your own? Press Test it and three labelled bots join, so you can see the whol
 
 1. The host picks streaming services and shares a four-letter code.
 2. Everyone gets a nickname from one shared story and their own opening films.
-3. A film one person likes spreads to the others. A film anyone rejects leaves the other decks, because it can no longer be unanimous.
-4. Unanimous likes end the round. Otherwise, everyone readies up or the two-minute clock runs out.
+3. The first 20 or so cards are private. After that, a film one person likes spreads to the others, and a film anyone rejects leaves the other decks.
+4. Swiping ends when everyone readies up or the two-minute clock runs out. Every round goes to the vote, with films everyone liked first.
 5. Each person crosses one film and ticks one. Crossed films go, ticked survivors continue, and ties go to the randomiser.
 
 ## The interesting engineering

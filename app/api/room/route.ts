@@ -1,6 +1,9 @@
+import { after } from "next/server";
 import { admin } from "@/lib/admin";
 import { nextName, randomSet } from "@/lib/characters";
+import { DECK_RULES } from "@/lib/deck";
 import { resolveRound, roundSeconds, shortlist } from "@/lib/decider";
+import { record, withEvents } from "@/lib/events";
 import { allowed, clientIp } from "@/lib/ratelimit";
 import { SERVICES } from "@/lib/services";
 import { buildPool } from "@/lib/tmdb";
@@ -14,9 +17,14 @@ const MAX_PEOPLE = 12;
 const MIN_POOL = 40;
 const MAX_SESSIONS_PER_HOUR = 300;
 const SWIPE_SECONDS = 120;
+const ROUND_GRACE_MS = 2_500; // late votes still count, so a slow connection doesn't lose one
 const BOT_SWIPE_LIMIT = 40;
 const BOT_DAWDLE = 0.3; // chance per tick, so people see themselves waiting on the bots
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const UUID = /^[0-9a-f-]{36}$/;
+// Polled every few seconds, so only slow or failed calls go in the timeline.
+const QUIET_ACTIONS = new Set(["bots", "advance", "report"]);
+const REPORTS = new Set(["swipe_failed", "ready_failed", "mark_failed", "slow"]);
 
 class Refused extends Error {
   constructor(message: string, public status = 400) {
@@ -38,6 +46,7 @@ interface SessionRow {
 
 const db = () => admin();
 const inSeconds = (s: number) => new Date(Date.now() + s * 1000).toISOString();
+const about = (session: SessionRow) => ({ session_id: session.id, code: session.code, game: session.game });
 
 function must<T>(result: { data: T | null; error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message);
@@ -68,7 +77,7 @@ async function currentRound(sessionId: string): Promise<Round | null> {
 }
 
 async function loadSession(id: unknown): Promise<SessionRow> {
-  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/.test(id)) throw new Refused("Unknown session.", 404);
+  if (typeof id !== "string" || !UUID.test(id)) throw new Refused("Unknown session.", 404);
   const row = must(await db().from("sessions").select("*").eq("id", id).maybeSingle());
   if (!row) throw new Refused("Unknown session.", 404);
   return row as SessionRow;
@@ -85,48 +94,57 @@ function requireHost(me: Participant) {
   if (!me.is_host) throw new Refused("Only the host can do that.", 403);
 }
 
+// Big enough that everyone opens on films nobody else is seeing.
 async function freshPool(session: SessionRow, people: number, game: number): Promise<Film[]> {
+  const needed = Math.max(MIN_POOL, DECK_RULES.sliceSize * people);
   let pool = await buildPool(session.services, people, session.seen_film_ids, game);
-  if (pool.length < MIN_POOL) pool = await buildPool(session.services, people, [], 0); // the group has seen everything
+  if (pool.length < needed) pool = await buildPool(session.services, people, [], 0); // the group has seen everything
   if (pool.length < MIN_POOL) throw new Refused("Not enough films on those services. Try adding one.");
   return pool;
 }
 
-async function deal(session: SessionRow, pool: Film[], game: number) {
+async function deal(session: SessionRow, pool: Film[]) {
   const rows = pool.map((film, position) => ({ session_id: session.id, film_id: film.id, position, data: film }));
   must(await db().from("session_films").insert(rows));
   must(await db().from("sessions").update({
     status: "swiping",
-    game,
     swipe_deadline: inSeconds(SWIPE_SECONDS),
     winner_film_id: null,
     reveal_film_ids: [],
-    seen_film_ids: session.seen_film_ids,
   }).eq("id", session.id));
+  record({ kind: "swiping", ...about(session), detail: { films: pool.length } });
 }
 
-async function finish(sessionId: string, winner: number | null, reveal: number[]) {
-  must(await db().from("sessions").update({ status: "closed", winner_film_id: winner, reveal_film_ids: reveal }).eq("id", sessionId));
+async function finish(session: SessionRow, winner: number | null, reveal: number[], why: string) {
+  must(await db().from("sessions").update({ status: "closed", winner_film_id: winner, reveal_film_ids: reveal }).eq("id", session.id));
+  record({ kind: "finished", ...about(session), detail: { why, winner, reveal } });
 }
 
-async function openRound(sessionId: string, number: number, films: number[]) {
-  must(await db().from("rounds").insert({
-    session_id: sessionId,
-    number,
-    film_ids: films,
-    deadline: inSeconds(roundSeconds(films.length)),
-  }));
+async function openRound(session: SessionRow, number: number, films: number[]) {
+  const seconds = roundSeconds(films.length);
+  must(await db().from("rounds").insert({ session_id: session.id, number, film_ids: films, deadline: inSeconds(seconds) }));
+  record({ kind: "round_open", ...about(session), detail: { number, films: films.length, seconds } });
 }
 
 // No likes ends the round with no winner (someone is away, or something broke). One like
 // wins outright. Safe to call twice: the unique (session, number) key lets only one first round exist.
-async function openFirstRound(sessionId: string, people: number) {
-  const swipes = await swipesOf(sessionId);
-  if (!swipes.some((s) => s.liked)) return finish(sessionId, null, []);
-  const films = shortlist([], swipes, people);
-  if (films.length === 1) return finish(sessionId, films[0], films);
+async function openFirstRound(session: SessionRow, people: Participant[]) {
+  const [swipes, pool] = await Promise.all([swipesOf(session.id), poolOf(session.id)]);
+  record({
+    kind: "deciding",
+    ...about(session),
+    detail: {
+      people: people.map((p) => {
+        const mine = swipes.filter((s) => s.participant_id === p.id);
+        return { name: p.name, bot: p.is_bot, swipes: mine.length, likes: mine.filter((s) => s.liked).length, ready: p.ready };
+      }),
+    },
+  });
+  if (!swipes.some((s) => s.liked)) return finish(session, null, [], "no likes");
+  const films = shortlist(pool, swipes, people.length);
+  if (films.length === 1) return finish(session, films[0], films, "one like");
   try {
-    await openRound(sessionId, 1, films);
+    await openRound(session, 1, films);
   } catch (e) {
     if (!/duplicate key/i.test((e as Error).message)) throw e;
   }
@@ -140,25 +158,34 @@ async function advance(session: SessionRow, people: Participant[]) {
     const taken = must(await db().from("sessions").update({ status: "deciding" })
       .eq("id", session.id).eq("status", "swiping").select("id"));
     if ((taken as unknown[]).length === 0) return;
-    return openFirstRound(session.id, people.length);
+    return openFirstRound(session, people);
   }
 
   if (session.status !== "deciding") return;
   const round = await currentRound(session.id);
   // A crash after the flip to deciding leaves no round; any later call finishes the job.
-  if (!round) return openFirstRound(session.id, people.length);
+  if (!round) return openFirstRound(session, people);
   if (round.resolved) return;
   const marks: Mark[] = must(await db().from("marks").select("*").eq("round_id", round.id));
   const allIn = people.every((p) => marks.some((m) => m.participant_id === p.id));
-  if (!allIn && Date.now() < Date.parse(round.deadline) - 500) return;
+  if (!allIn && Date.now() < Date.parse(round.deadline) + ROUND_GRACE_MS) return;
+
+  // Not one vote arrived, which usually means they were lost on the way. One more go.
+  if (marks.length === 0 && !round.extended) {
+    const extended = must(await db().from("rounds").update({ deadline: inSeconds(roundSeconds(round.film_ids.length)), extended: true })
+      .eq("id", round.id).eq("resolved", false).eq("extended", false).select("id"));
+    if ((extended as unknown[]).length) record({ kind: "round_extended", ...about(session), detail: { number: round.number } });
+    return;
+  }
 
   const taken = must(await db().from("rounds").update({ resolved: true }).eq("id", round.id).eq("resolved", false).select("id"));
   if ((taken as unknown[]).length === 0) return;
   const outcome = resolveRound(round.film_ids, marks);
-  if ("next" in outcome) return openRound(session.id, round.number + 1, outcome.next);
-  if ("winner" in outcome) return finish(session.id, outcome.winner, [outcome.winner]);
+  record({ kind: "round_resolved", ...about(session), detail: { number: round.number, votes: marks.length, people: people.length, outcome } });
+  if ("next" in outcome) return openRound(session, round.number + 1, outcome.next);
+  if ("winner" in outcome) return finish(session, outcome.winner, [outcome.winner], "vote");
   const pick = outcome.tied[Math.floor(Math.random() * outcome.tied.length)];
-  return finish(session.id, pick, outcome.tied);
+  return finish(session, pick, outcome.tied, "tie");
 }
 
 async function botsAct(session: SessionRow, people: Participant[]) {
@@ -178,10 +205,7 @@ async function botsAct(session: SessionRow, people: Participant[]) {
       const list = friendly.length && Math.random() < 0.5 ? friendly : options;
       const film = list[Math.floor(Math.random() * list.length)];
       if (!film) continue;
-      const likes = swipes.filter((s) => s.film_id === film.id && s.liked).length;
-      // Rarely completes a unanimous match, so someone testing alone gets to see the decider.
-      const wouldWin = likes >= people.length - 1;
-      const liked = Math.random() < (wouldWin ? 0.1 : likedByAnyone.has(film.id) ? 0.6 : 0.35);
+      const liked = Math.random() < (likedByAnyone.has(film.id) ? 0.6 : 0.35);
       await db().from("swipes").upsert(
         { participant_id: bot.id, session_id: session.id, film_id: film.id, liked },
         { onConflict: "participant_id,film_id", ignoreDuplicates: true },
@@ -192,7 +216,7 @@ async function botsAct(session: SessionRow, people: Participant[]) {
   if (session.status !== "deciding") return;
   const round = await currentRound(session.id);
   // A crash after the flip to deciding leaves no round; any later call finishes the job.
-  if (!round) return openFirstRound(session.id, people.length);
+  if (!round) return openFirstRound(session, people);
   if (round.resolved) return;
   const marks: Mark[] = must(await db().from("marks").select("*").eq("round_id", round.id));
   for (const bot of bots) {
@@ -206,6 +230,13 @@ async function botsAct(session: SessionRow, people: Participant[]) {
       tick_id: films[0],
     }));
   }
+}
+
+// Keeps a client report small and plain before it goes in the timeline.
+function cleanDetail(detail: unknown): Record<string, unknown> {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return {};
+  const text = JSON.stringify(detail);
+  return text.length > 600 ? { truncated: text.slice(0, 600) } : (detail as Record<string, unknown>);
 }
 
 const handlers: Record<string, (user: string, body: Record<string, unknown>, ip: string) => Promise<unknown>> = {
@@ -224,6 +255,9 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
       const { data, error } = await db().from("sessions").insert({ code, character_set: set, services }).select("id").single();
       if (error) continue;
       must(await db().from("participants").insert({ session_id: data.id, user_id: user, name: nextName(set, []), is_host: true }));
+      record({ kind: "created", session_id: data.id, code, game: 0, user_id: user, detail: { services } });
+      // Warms the film cache while people gather in the lobby, so Start is quicker.
+      after(() => buildPool(services as string[], 4, [], 0).then(() => {}, () => {}));
       return { code };
     }
     throw new Error("No free code");
@@ -242,6 +276,7 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
       if (known.left_session) {
         const hosted = all.some((p) => p.is_host && !p.left_session);
         must(await db().from("participants").update({ left_session: false, is_host: !hosted }).eq("id", known.id));
+        record({ kind: "rejoined", ...about(session), user_id: user });
       }
       return { code };
     }
@@ -250,7 +285,10 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     const taken = all.map((p) => p.name);
     for (let attempt = 0; attempt < 5; attempt++) {
       const { error } = await db().from("participants").insert({ session_id: session.id, user_id: user, name: nextName(session.character_set, taken) });
-      if (!error) return { code };
+      if (!error) {
+        record({ kind: "joined", ...about(session), user_id: user });
+        return { code };
+      }
       taken.push(...(await everyone(session.id)).map((p) => p.name));
     }
     throw new Error("Could not join");
@@ -277,7 +315,7 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     requireHost(me);
     if (session.status !== "lobby") return {};
     if (people.length < 2) throw new Refused("You need at least one more person.", 409);
-    await deal(session, await freshPool(session, people.length, session.game), session.game);
+    await deal(session, await freshPool(session, people.length, session.game));
     return {};
   },
 
@@ -344,6 +382,7 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     const session = await loadSession(body.sessionId);
     const { me, people } = await member(session.id, user);
     must(await db().from("participants").update({ left_session: true, ready: false, rematch: false, is_host: false }).eq("id", me.id));
+    record({ kind: "left", ...about(session), user_id: user });
     const remaining = people.filter((p) => p.id !== me.id);
     const next = remaining.find((p) => !p.is_bot);
     if (!next) return {};
@@ -377,38 +416,78 @@ const handlers: Record<string, (user: string, body: Record<string, unknown>, ip:
     const pool = await freshPool({ ...session, seen_film_ids: seen }, people.length, session.game + 1);
     // One transaction, so no phone can see the new game number with the old films.
     // Two people can get here together; the swap only lets one through.
-    must(await db().rpc("swap_game", {
+    const swapped = must(await db().rpc("swap_game", {
       p_session: session.id,
       p_game: session.game,
       p_films: pool.map((film, position) => ({ film_id: film.id, position, data: film })),
       p_seen: seen,
       p_seconds: SWIPE_SECONDS,
     }));
+    if (swapped) record({ kind: "play_again", ...about(session), game: session.game + 1, detail: { films: pool.length } });
+    return {};
+  },
+
+  // A phone telling the timeline about something that went wrong on its side.
+  async report(user, body) {
+    const session = await loadSession(body.sessionId);
+    await member(session.id, user);
+    const kind = typeof body.kind === "string" && REPORTS.has(body.kind) ? body.kind : null;
+    if (!kind) throw new Refused("Unknown report.");
+    const ms = typeof body.ms === "number" && Number.isFinite(body.ms) ? Math.round(body.ms) : null;
+    record({ kind: `client:${kind}`, ...about(session), user_id: user, ms, ok: kind === "slow", detail: cleanDetail(body.detail) });
     return {};
   },
 };
 
+// Checked on our own server against the project's public signing key, so it needs no
+// network call and keeps working when Supabase is slow. A token that can't be checked
+// right now is not the same as a bad one, so it must never look like a logout.
 async function userFrom(req: Request): Promise<string | null> {
   const token = req.headers.get("authorization")?.replace(/^Bearer /, "");
   if (!token) return null;
-  const { data } = await db().auth.getUser(token);
-  return data.user?.id ?? null;
+  const { data, error } = await db().auth.getClaims(token).catch((e: Error) => ({ data: null, error: e }));
+  const sub = data?.claims?.sub;
+  if (typeof sub === "string" && UUID.test(sub)) return sub;
+  // Only failing to fetch the signing key is our problem. Bad, forged and expired tokens are the caller's.
+  const unreachable = error && (/RetryableFetch|TypeError|AbortError|TimeoutError/.test(error.name) || /fetch|network|timed? ?out|abort/i.test(error.message));
+  if (unreachable) throw new Refused("Connection trouble. Try again.", 503);
+  return null;
 }
 
 export async function POST(req: Request) {
-  try {
-    if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) throw new Refused("Too large.", 413);
-    const user = await userFrom(req);
-    if (!user) throw new Refused("Please reload.", 401);
-    if (!(await allowed("action", user))) throw new Refused("Slow down a little.", 429);
-    const body = (await req.json()) as Record<string, unknown>;
-    const handler = typeof body.action === "string" && Object.hasOwn(handlers, body.action) ? handlers[body.action] : null;
-    if (!handler) throw new Refused("Unknown action.");
-    return Response.json(await handler(user, body, clientIp(req)));
-  } catch (error) {
-    if (error instanceof Refused) return Response.json({ error: error.message }, { status: error.status });
-    console.error("room action failed", error);
-    return Response.json({ error: "Something went wrong." }, { status: 500 });
-  }
+  return withEvents(async () => {
+    const started = Date.now();
+    let action = "unknown";
+    let user: string | null = null;
+    let sessionId: string | null = null;
+    let status = 200;
+    let failure: string | undefined;
+    try {
+      if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) throw new Refused("Too large.", 413);
+      user = await userFrom(req);
+      if (!user) throw new Refused("Please reload.", 401);
+      if (!(await allowed("action", user))) throw new Refused("Slow down a little.", 429);
+      const body = (await req.json()) as Record<string, unknown>;
+      if (typeof body.action === "string") action = body.action.slice(0, 40);
+      if (typeof body.sessionId === "string" && UUID.test(body.sessionId)) sessionId = body.sessionId;
+      const handler = Object.hasOwn(handlers, action) ? handlers[action] : null;
+      if (!handler) throw new Refused("Unknown action.");
+      return Response.json(await handler(user, body, clientIp(req)));
+    } catch (error) {
+      if (error instanceof Refused) {
+        status = error.status;
+        failure = error.message;
+        return Response.json({ error: error.message }, { status: error.status });
+      }
+      status = 500;
+      failure = (error as Error).message;
+      console.error("room action failed", error);
+      return Response.json({ error: "Something went wrong." }, { status: 500 });
+    } finally {
+      const ms = Date.now() - started;
+      if (!(QUIET_ACTIONS.has(action) && status === 200 && ms < 1000)) {
+        record({ kind: `action:${action}`, session_id: sessionId, user_id: user, ms, ok: status < 500, detail: { status, error: failure } });
+      }
+    }
+  });
 }
-
